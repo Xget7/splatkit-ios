@@ -30,7 +30,16 @@ class TileMode {
   std::optional<std::string> previous_;
 };
 
-TEST(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacement) {
+class MetalRasterTest : public testing::Test {
+ protected:
+  void SetUp() override {
+    id<MTLDevice> device = MTLCreateSystemDefaultDevice();
+    if (device == nil || ![device supportsFamily:MTLGPUFamilyApple7])
+      GTEST_SKIP() << "Apple GPU family 7 unavailable; renderer validation requires A14/M1+";
+  }
+};
+
+TEST_F(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacement) {
   TileMode option(false);
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
@@ -71,7 +80,7 @@ TEST(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacement)
   EXPECT_FALSE(renderer->hasCompletedWorldFrame());
 }
 
-TEST(MetalRasterTest, HybridCompletesOverflowTilesWithTheFullHardwareImage) {
+TEST_F(MetalRasterTest, HybridCompletesOverflowTilesWithTheFullHardwareImage) {
   std::vector<uint8_t> images[2];
   for (int mode = 0; mode < 2; ++mode) {
     TileMode option(mode != 0);
@@ -113,7 +122,7 @@ TEST(MetalRasterTest, HybridCompletesOverflowTilesWithTheFullHardwareImage) {
   EXPECT_GT(images[1][(32 * 64 + 56) * 4 + 1], 80);
 }
 
-TEST(MetalRasterTest, LargeFootprintAndCrossTileBoundaryMatchHardwareImage) {
+TEST_F(MetalRasterTest, LargeFootprintAndCrossTileBoundaryMatchHardwareImage) {
   std::vector<uint8_t> images[2];
   for (int mode = 0; mode < 2; ++mode) {
     TileMode option(mode != 0);
@@ -165,7 +174,7 @@ TEST(MetalRasterTest, LargeFootprintAndCrossTileBoundaryMatchHardwareImage) {
   EXPECT_GT(images[1][(56 * 128 + 96) * 4 + 2], 60);
 }
 
-TEST(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
+TEST_F(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
   splat::LodTree tree;
   tree.leafCount = 514;
   tree.nodes.positions = {0, 0, -2};
@@ -221,7 +230,7 @@ TEST(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
   EXPECT_GT(images[1][(32 * 64 + 56) * 4 + 1], 80);
 }
 
-TEST(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {
+TEST_F(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   CAMetalLayer* layer = [CAMetalLayer layer];
@@ -255,7 +264,7 @@ TEST(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {
   EXPECT_LT(pixels[center + 1], 20);
 }
 
-TEST(MetalRasterTest, IssFixtureProducesVisiblePixels) {
+TEST_F(MetalRasterTest, IssFixtureProducesVisiblePixels) {
   const char* path = std::getenv("SPLAT_ISS_PATH");
   if (!path) GTEST_SKIP() << "Set SPLAT_ISS_PATH to the ISS SPZ fixture";
   auto file = splat::MappedFile::open(path);

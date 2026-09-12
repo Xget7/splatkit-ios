@@ -158,7 +158,9 @@ TEST(TileStreamer, TilesOfTheOrderOnTheGpuStayUntilANewerOrderIsTaken) {
   for (const std::uint32_t tile : shown) {
     EXPECT_EQ(streamer.state(tile), TileState::resident) << set.tiles[tile].file;
   }
-  EXPECT_LE(streamer.held(), 450u);
+  // normal_distribution produces different tile populations across standard libraries.
+  // The invariant is the configured residency budget, not one platform's population.
+  EXPECT_LE(streamer.held(), options.residency);
 
   // Once the order for the far view is taken and the frames that drew the old one are
   // done, the near tiles may go and the far cluster refines all the way.
@@ -212,7 +214,7 @@ TEST(TileStreamer, TilesDrawnNowStayUntilTheFramesInFlightAreDone) {
   for (const std::uint32_t tile : shown) {
     EXPECT_EQ(streamer.state(tile), TileState::resident) << set.tiles[tile].file;
   }
-  EXPECT_LE(streamer.held(), 450u);
+  EXPECT_LE(streamer.held(), options.residency);
 
   // Drawing the far set frees the near tiles a couple of updates later, and the far
   // cluster refines all the way.
