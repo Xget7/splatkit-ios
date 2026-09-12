@@ -65,7 +65,7 @@
   "packages/splat-core/src/formats/SpzDecoder.cpp": "05eb76efc31016d12a5adc848ba7bbd23dd36a5d41e893d7b5b55a09ec3a9609",
   "packages/splat-core/src/io/MappedFile.cpp": "3f37512a2367f0273f11387cdd239d6628f57395220a978f6cd3a5a6ef3add7f",
   "packages/splat-core/src/loading/SplatWorldLoader.cpp": "5fc3b4f656b6002de7c7d96909bf984675d26958115c7918fb64e4696ec37d70",
-  "packages/splat-core/src/lod/LodFile.cpp": "dbee1ef83b016d829d27382dc1f66aaa6a5e5bd00827e7301f86999b069edb53",
+  "packages/splat-core/src/lod/LodFile.cpp": "ccf0fbfd5a719b68f0daaa683c8e51904a9f138b4eca71bcdeb3769eabe2e0eb",
   "packages/splat-core/src/lod/LodSelection.cpp": "e8797727c4e49aad4057e443e48b31e8f454241cb6dc3ec0892f40a5bed7e049",
   "packages/splat-core/src/lod/LodTree.cpp": "4b9bd8a6c8d2bd93484a71216c796c7cd176a4ea88f321f7212a76b209b77d9a",
   "packages/splat-core/src/math/SymmetricEigen.cpp": "bc288e0539cb9c542d65b36f81fecb6975d1a090facf9578b2ba8d231259573b",

@@ -220,7 +220,8 @@ Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path) {
   const auto valid = validateLodTree(tree);
   if (!valid) return valid.error();
   // Exclusive creation: an interrupted output cannot replace a user's existing asset.
-  std::unique_ptr<FILE, decltype(&std::fclose)> file(std::fopen(path.c_str(), "wbx"), &std::fclose);
+  const auto closeFile = [](FILE* handle) { std::fclose(handle); };
+  std::unique_ptr<FILE, decltype(closeFile)> file(std::fopen(path.c_str(), "wbx"), closeFile);
   if (!file)
     return Error{ErrorCode::unreadable, "cannot create LODSPLAT output (exists or unwritable)"};
   const auto& c = tree.nodes;
