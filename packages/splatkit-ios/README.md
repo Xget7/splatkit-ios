@@ -6,6 +6,7 @@ Requires iOS 17+ and Apple GPU family 7+ (A14/M1+); unsupported GPUs report unav
 ## Use it
 
 Swift Package Manager: add `https://github.com/Xget7/splatkit-ios`, product `SplatKit`, then `import SplatKit`.
+Choose exact version `0.1.0-alpha.2`.
 For source builds:
 
 Build the static libraries with `scripts/build-ios.sh` from the repository root, then add to your target:

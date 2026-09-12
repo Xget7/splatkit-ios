@@ -6,6 +6,7 @@ MIT-licensed sources include the shared C++ engine/core.
 ## Install
 
 Add `https://github.com/Xget7/splatkit-ios` in Xcode Package Dependencies and select product `SplatKit`.
+Choose exact version `0.1.0-alpha.2`.
 The package downloads the release XCFramework for arm64 devices and arm64/x86_64 simulators.
 
 ```swift
