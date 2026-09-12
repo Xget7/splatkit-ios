@@ -1,0 +1,25 @@
+name: splat-core
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitize: ["", "thread", "address"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure
+        run: >
+          cmake -S packages/splat-core -B build/splat-core
+          -DCMAKE_BUILD_TYPE=${{ matrix.sanitize == '' && 'Release' || 'Debug' }}
+          -DSPLAT_CORE_SANITIZE=${{ matrix.sanitize }}
+      - name: Build
+        run: cmake --build build/splat-core --parallel
+      - name: Test
+        run: ctest --test-dir build/splat-core --output-on-failure

@@ -1,0 +1,22 @@
+name: splatkit-ios
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  # The Metal code and its tests build on macOS; the device library is the same source
+  # with the iOS toolchain flags, built here to keep it compiling.
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure (macOS, tests)
+        run: cmake -S packages/splatkit-ios -B build/ios-mac -DCMAKE_BUILD_TYPE=Release
+      - name: Build
+        run: cmake --build build/ios-mac --parallel
+      - name: Test
+        run: ctest --test-dir build/ios-mac --output-on-failure
+      - name: Build for iOS
+        run: scripts/build-ios.sh

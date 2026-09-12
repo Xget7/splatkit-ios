@@ -1,0 +1,116 @@
+{
+  "date": "2026-09-12",
+  "status": "rejected_visual_quality",
+  "platform": "iPhone 17 Pro / Apple A19 Pro GPU / Metal / Release",
+  "os_version": "26.6.1",
+  "os_build": "23G83",
+  "source_splats": 9999999,
+  "hierarchy_nodes": 11744642,
+  "spatial_subdivisions": 10,
+  "gpu_refinement_rounds": 11,
+  "file": "iss_10M-depth10-sh1.lodsplat",
+  "file_bytes": 1174464264,
+  "sh_degree": 1,
+  "viewport": [
+    1206,
+    2622
+  ],
+  "render_scale": 1,
+  "lod_budget": 1200000,
+  "lod_pixel_limit": 1,
+  "min_pixel_radius": 1,
+  "tile_raster": false,
+  "orbit": {
+    "radius_m": 45,
+    "degrees_per_second": 4,
+    "start_degrees": 90,
+    "pivot": [
+      0,
+      -2,
+      -2
+    ],
+    "up": [
+      1,
+      0,
+      0
+    ],
+    "fov_y_degrees": 65
+  },
+  "measurement": {
+    "start": "2026-09-12 01:17:55.607",
+    "end": "2026-09-12 01:19:26.387",
+    "elapsed_seconds": 90.78,
+    "sample_count": 45,
+    "summary": {
+      "fps": {
+        "mean": 35.74666666666666,
+        "min": 23.7,
+        "max": 46.7
+      },
+      "frame_cadence_estimated_ms": {
+        "mean": 28.783827186276778,
+        "min": 21.41327623126338,
+        "max": 42.19409282700422
+      },
+      "gpu_render_command_ms": {
+        "mean": 27.719999999999995,
+        "min": 20.4,
+        "max": 42.9
+      },
+      "visibility_radix_command_ms": {
+        "mean": 28.84666666666666,
+        "min": 22,
+        "max": 40
+      },
+      "lod_command_ms": {
+        "mean": 17.322222222222226,
+        "min": 10.3,
+        "max": 25.9
+      },
+      "drawn": {
+        "mean": 584513.6222222223,
+        "min": 466383,
+        "max": 728429
+      },
+      "selected": {
+        "mean": 1199999.177777778,
+        "min": 1199997,
+        "max": 1200000
+      }
+    },
+    "timezone": "America/Argentina/Buenos_Aires",
+    "full_orbit_window": true,
+    "method": "Arithmetic means of 45 periodic console samples, about 2 seconds apart. FPS represents a roughly 0.5 s window; command durations are latest completed observations, not per-frame means. Loading and initial image capture are excluded.",
+    "timestamp_warning": "GPU render, visibility/radix and LOD command intervals can overlap and may refer to different in-flight frames. Do not add them or infer isolated radix cost.",
+    "frame_cadence_warning": "Estimated as 1000 / each rounded FPS log sample, then averaged.",
+    "thermal_state": null,
+    "memory_footprint_bytes": null
+  },
+  "load": {
+    "decode_ms": 2385,
+    "tree_build_ms": 0,
+    "upload_ms": 1315
+  },
+  "validation": {
+    "launch_succeeded": true,
+    "capture_received": true,
+    "gpu_errors_in_captured_log": 0,
+    "user_visual_acceptance": false,
+    "visual_notes": "User confirmed compromised quality on device. Capture shows softened fine detail. No new identical-pose reference comparison performed on phone.",
+    "target_60_fps_met": false,
+    "memory_stability_validated": false
+  },
+  "provenance": {
+    "git_head": "704dd1750969dcdccc1e81a650d3f0c0ec456405",
+    "dirty_worktree": true,
+    "local_app_executable_sha256": "77fd59d04e596d2960128a3ba29c57384daecbd5bd9431863a427ff948161e09",
+    "metal_lod_mm_sha256": "ef1055c8b4db4fb24208be891e7084e651bb9b1702a6116a1842048f760f15a1",
+    "splat_lod_metal_sha256": "ae7551e7d7fb7c7304f3b4bcc861b641a747f44d79866e7f355d7b613f0eec12"
+  },
+  "artifacts": {
+    "console_log": "/tmp/splatkit-lod-phone.YD2Ad7/orbit.log",
+    "capture": "/tmp/splatkit-lod-phone.YD2Ad7/capture.png",
+    "samples_csv": "2026-09-12-iss-metal-lod-phone.csv"
+  },
+  "launch_command": "xcrun devicectl device process launch --device D52700C0-C2DE-5D04-9FF2-EEDA9394F018 --terminate-existing --console com.splatkit.devapp --world iss_10M-depth10-sh1.lodsplat --sh 1 --budget 1200000 --scale 1 --radius 45 --speed 4 --start 90 --metal-culling 1 --min-pixel-radius 1 --tile-raster 0 --keep-awake 1 --capture 8"
+}

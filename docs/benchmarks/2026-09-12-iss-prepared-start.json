@@ -1,0 +1,68 @@
+{
+  "date": "2026-09-12",
+  "status": "startup_sequence_verified_quality_unresolved",
+  "device": "iPhone 17 Pro / Apple A19 Pro / iOS 26.6.1",
+  "world": "iss_10M-sse-depth10-sh1.lodsplat",
+  "configuration": {
+    "loaded": 9999999,
+    "resident_nodes": 11744642,
+    "selection_capacity": 2200000,
+    "sh": 1,
+    "viewport": [1206, 2622],
+    "scale": 1,
+    "radius_m": 45,
+    "speed_degrees_per_second": 4,
+    "start_degrees": 90,
+    "min_pixel_radius": 1,
+    "tile_raster": false,
+    "run_seconds_after_ready": 20,
+    "capture_delay_from_start_seconds": 8
+  },
+  "timings": {
+    "decode_ms": 884,
+    "upload_ms": 1227,
+    "upload_ready_since_session_preparation_seconds": 2.143,
+    "first_frame_ready_since_session_preparation_seconds": 2.216,
+    "upload_ready_local": "2026-09-12 03:00:53.682",
+    "first_frame_ready_local": "2026-09-12 03:00:53.755",
+    "orbit_start_local": "2026-09-12 03:00:53.755",
+    "duration_stop_local": "2026-09-12 03:01:13.833"
+  },
+  "verification": {
+    "ordered_upload_frame_orbit_stop_events": "passed",
+    "first_camera_angle_degrees": 3.7971354486932296,
+    "expected_degrees_since_ready": 4.043999671936035,
+    "camera_time_tolerance_degrees": 1,
+    "native_readiness_gpu_test": "passed, including replacement reset and background exclusion",
+    "metal_debug_shader_validation": "readiness GPU test passed",
+    "full_mac_ctest": {"total": 195, "passed": 191, "skipped": 4, "failed": 0},
+    "release_ios_and_app_build": "passed",
+    "gpu_errors_in_phone_log": 0,
+    "stop_reason": "duration-complete",
+    "sampled_peak_process_bytes": 2801370968,
+    "thermal_state": "nominal in sampled run",
+    "render_capture": "ISS visible; simplified LOD details still visible; no quality acceptance"
+  },
+  "caveats": [
+    "Elapsed preparation begins with SplatSession preparation, not process launch.",
+    "Repeated loading may benefit from warm filesystem/shader caches; this is not evidence of reduced decoding cost.",
+    "One short smoke run with a PNG capture, not the full-orbit performance reference.",
+    "The native GPU capture excludes SwiftUI, so the loading-cover appearance was not independently screenshot-validated.",
+    "Readiness waits for successful GPU work, not screen scanout or exact LOD quality.",
+    "LOD selection, parent data, SH degree and tile mode were not changed by this startup fix."
+  ],
+  "provenance": {
+    "head": "704dd1750969dcdccc1e81a650d3f0c0ec456405",
+    "dirty": true,
+    "ios_executable_sha256": "1abf49741b423b421bcf11f3f19f7cd96a275f84b3c9af6efaf022422031efa7",
+    "metal_renderer_sha256": "ad9f06c91038e210103f7bcdf9d22bc9ddea0fbfa8de21e147aea217c6e0cf2e",
+    "objc_engine_sha256": "dde324b2ee6d0bfe73225dece9dbccef4e86c15d3d87eb843924a54917d0def3",
+    "session_swift_sha256": "ddf8e7e690f40e5c392873de01f0f380a3c9a1fb42c3f5dd775b9e94ce3c444d"
+  },
+  "artifacts": {
+    "phone_log": "/tmp/splatkit-stability.k0lBJw/iss-prepared.log",
+    "native_capture": "/tmp/splatkit-stability.k0lBJw/prepared-capture.png",
+    "ctest_log": "/tmp/splatkit-stability.k0lBJw/final-ctest.log",
+    "app_build_log": "/tmp/splatkit-stability.k0lBJw/preparation-app-build.log"
+  }
+}

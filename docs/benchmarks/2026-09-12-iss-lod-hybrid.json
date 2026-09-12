@@ -1,0 +1,249 @@
+{
+  "date": "2026-09-12",
+  "status": "experimental_functional_performance_regression_quality_not_accepted",
+  "device": "iPhone 17 Pro / Apple A19 Pro / iOS 26.6.1",
+  "configuration": {
+    "world": "iss_10M-sse-depth10-sh1.lodsplat",
+    "loaded_splats": 9999999,
+    "resident_nodes": 11744642,
+    "selection_capacity": 2200000,
+    "sh": 1,
+    "viewport": [
+      1206,
+      2622
+    ],
+    "radius_m": 45,
+    "speed_degrees_s": 4,
+    "start_degrees": 90,
+    "min_pixel_radius": 1,
+    "duration_after_first_frame_s": 20,
+    "capture_delay_from_session_start_s": 8,
+    "resource_guard_mib": 2800
+  },
+  "phone": [
+    {
+      "name": "iss-prepared",
+      "log": "/tmp/splatkit-stability.k0lBJw/iss-prepared.log",
+      "sample_count": 10,
+      "mean": {
+        "fps": {
+          "mean": 23.110000000000003,
+          "min": 21.7,
+          "max": 26.2
+        },
+        "estimated_frame_ms": {
+          "mean": 43.42467873530035,
+          "min": 38.16793893129771,
+          "max": 46.082949308755765
+        },
+        "gpu_ms": {
+          "mean": 37.900000000000006,
+          "min": 33.5,
+          "max": 40.8
+        },
+        "sort_ms": {
+          "mean": 47.81999999999999,
+          "min": 42.1,
+          "max": 50.5
+        },
+        "lod_ms": {
+          "mean": 4.01,
+          "min": 3.5,
+          "max": 4.3
+        },
+        "drawn": {
+          "mean": 1982922.8,
+          "min": 1969327,
+          "max": 1995119
+        },
+        "selected": {
+          "mean": 2199987.6,
+          "min": 2199952,
+          "max": 2200000
+        }
+      },
+      "resources": {
+        "sampled_peak_bytes": 2801370968,
+        "steady_footprint_bytes": {
+          "mean": 1335274978.6666667,
+          "min": 1335198520,
+          "max": 1335329592
+        },
+        "steady_metal_bytes": {
+          "mean": 1037598720,
+          "min": 1037598720,
+          "max": 1037598720
+        },
+        "thermal_states": [
+          0
+        ]
+      },
+      "tile_samples": []
+    },
+    {
+      "name": "iss-lod-hybrid-phone",
+      "log": "/tmp/splatkit-stability.k0lBJw/iss-lod-hybrid-phone.log",
+      "sample_count": 9,
+      "mean": {
+        "fps": {
+          "mean": 18.92222222222222,
+          "min": 17.9,
+          "max": 21.1
+        },
+        "estimated_frame_ms": {
+          "mean": 53.01134231344636,
+          "min": 47.393364928909946,
+          "max": 55.8659217877095
+        },
+        "gpu_ms": {
+          "mean": 47.56666666666666,
+          "min": 42.5,
+          "max": 50.5
+        },
+        "sort_ms": {
+          "mean": 57.522222222222226,
+          "min": 50.9,
+          "max": 60.8
+        },
+        "lod_ms": {
+          "mean": 3.755555555555555,
+          "min": 3.1,
+          "max": 4.1
+        },
+        "drawn": {
+          "mean": 1983640.6666666667,
+          "min": 1970775,
+          "max": 1994827
+        },
+        "selected": {
+          "mean": 2199988,
+          "min": 2199974,
+          "max": 2199998
+        }
+      },
+      "resources": {
+        "sampled_peak_bytes": 2827519808,
+        "steady_footprint_bytes": {
+          "mean": 1361568982.0952382,
+          "min": 1361412944,
+          "max": 1361576784
+        },
+        "steady_metal_bytes": {
+          "mean": 1063256064,
+          "min": 1063256064,
+          "max": 1063256064
+        },
+        "thermal_states": [
+          0
+        ]
+      },
+      "tile_samples": [
+        {
+          "time_local": "2026-09-12 03:15:00.035",
+          "compute": 5257,
+          "nonempty": 589,
+          "hardware": 7207,
+          "invalid": 0
+        },
+        {
+          "time_local": "2026-09-12 03:15:00.107",
+          "compute": 5257,
+          "nonempty": 589,
+          "hardware": 7207,
+          "invalid": 0
+        },
+        {
+          "time_local": "2026-09-12 03:15:00.154",
+          "compute": 5279,
+          "nonempty": 597,
+          "hardware": 7185,
+          "invalid": 0
+        },
+        {
+          "time_local": "2026-09-12 03:15:06.059",
+          "compute": 4323,
+          "nonempty": 308,
+          "hardware": 8141,
+          "invalid": 0
+        },
+        {
+          "time_local": "2026-09-12 03:15:12.677",
+          "compute": 3151,
+          "nonempty": 530,
+          "hardware": 9313,
+          "invalid": 0
+        },
+        {
+          "time_local": "2026-09-12 03:15:19.171",
+          "compute": 4235,
+          "nonempty": 401,
+          "hardware": 8229,
+          "invalid": 0
+        }
+      ]
+    }
+  ],
+  "mac": {
+    "configuration": "same fixed pose (0,-2,43) looking at (0,-2,-2), SH1, 1206x2622, 2.2M capacity, 1px cutoff",
+    "selected": 2199983,
+    "drawn": 1996050,
+    "hardware_warm_gpu_command_ms": [
+      14.7,
+      17.04
+    ],
+    "hybrid_warm_gpu_command_ms": [
+      90.51,
+      25.26
+    ],
+    "compute_tiles": 5257,
+    "nonempty_compute_tiles": 589,
+    "hardware_tiles": 7207,
+    "hybrid_vs_hardware_diff": {
+      "rgb_mae_255": 0.005890540517178494,
+      "max_channel_delta_255": 52,
+      "pixels_above_2": 498
+    },
+    "hardware_repeat_diff": {
+      "rgb_mae_255": 0.0032914501987899303,
+      "max_channel_delta_255": 28,
+      "pixels_above_2": 467
+    }
+  },
+  "verification": {
+    "lod_hybrid_overflow_integration": "passed on Mac GPU, also with Metal shader validation",
+    "full_mac_suite": {
+      "total": 196,
+      "passed": 192,
+      "skipped": 4,
+      "failed": 0
+    },
+    "phone_stop": "duration-complete",
+    "phone_gpu_errors": 0,
+    "phone_tile_invalid_inputs": 0
+  },
+  "caveats": [
+    "Two sequential short phone runs, not randomized repeated A/B trials or sustained full orbits.",
+    "Only periodic loaded-scene samples before the duration-stop marker are included; one in-flight hybrid sample after pause is excluded.",
+    "Frame cadence is estimated from rounded FPS. GPU and sort command intervals overlap; sort is visibility/radix command time, not isolated radix cost.",
+    "Native PNG capture occurs relative to session start, so different load durations produce different phone capture poses; only Mac fixed-pose images were numerically compared.",
+    "The strict 2/255 per-channel parity diagnostic failed for the real ISS hybrid image and also for a hardware-only repeat. The source of these localized differences is not established; no exact parity or seam-free visual acceptance claim.",
+    "Most compute tiles contain only background, while dense/large-footprint regions still use hardware. Global hardware geometry submission remains, masked on completed compute tiles.",
+    "The LOD cut and its approximation errors are unchanged by enabling tile rasterization.",
+    "Memory peak values are sampled at 2 Hz and can miss short spikes. All sampled thermal states were nominal.",
+    "Combined mode remains opt-in and is not promoted to an accepted SDK performance option."
+  ],
+  "provenance": {
+    "head": "704dd1750969dcdccc1e81a650d3f0c0ec456405",
+    "dirty": true,
+    "phone_executable_sha256": "1abf49741b423b421bcf11f3f19f7cd96a275f84b3c9af6efaf022422031efa7"
+  },
+  "artifacts": {
+    "hardware_mac_log": "/tmp/splatkit-stability.k0lBJw/lod-hardware-mac.log",
+    "hybrid_mac_log": "/tmp/splatkit-stability.k0lBJw/lod-hybrid-mac.log",
+    "hardware_repeat_mac_log": "/tmp/splatkit-stability.k0lBJw/lod-hardware-repeat-mac.log",
+    "hardware_mac_capture": "/tmp/splatkit-stability.k0lBJw/lod-hardware.png",
+    "hybrid_mac_capture": "/tmp/splatkit-stability.k0lBJw/lod-hybrid.png",
+    "phone_capture": "/tmp/splatkit-stability.k0lBJw/lod-hybrid-phone.png",
+    "ctest_log": "/tmp/splatkit-stability.k0lBJw/combined-final-ctest.log"
+  }
+}

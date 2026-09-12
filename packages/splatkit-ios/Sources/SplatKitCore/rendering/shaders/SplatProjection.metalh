@@ -1,0 +1,163 @@
+#pragma once
+#include "SplatTypes.metalh"
+
+// Shared by the visibility compute pass and the CPU-order vertex path.
+// Projects the 3D covariance to screen space: Sigma' = J W Sigma W^T J^T.
+inline float3 projectCovariance(constant Camera& cam, float3 viewPos, float4 covA, float2 covB) {
+  float invZ = 1.0 / viewPos.z;
+  float invZ2 = invZ * invZ;
+
+  float2 lim = 1.3 * cam.tanHalfFov;
+  viewPos.x = clamp(viewPos.x * invZ, -lim.x, lim.x) * viewPos.z;
+  viewPos.y = clamp(viewPos.y * invZ, -lim.y, lim.y) * viewPos.z;
+
+  float3x3 J = float3x3(float3(cam.focal.x * invZ, 0.0, 0.0),
+                        float3(0.0, cam.focal.y * invZ, 0.0),
+                        float3(-cam.focal.x * viewPos.x * invZ2, -cam.focal.y * viewPos.y * invZ2, 0.0));
+  float3x3 W = float3x3(cam.view[0].xyz, cam.view[1].xyz, cam.view[2].xyz);
+  float3x3 T = J * W;
+  float3x3 Vrk = float3x3(float3(covA.x, covA.y, covA.z), 
+                          float3(covA.y, covA.w, covB.x),
+                          float3(covA.z, covB.x, covB.y));
+  float3x3 cov = T * Vrk * transpose(T);
+  return float3(cov[0][0] + 0.3, cov[0][1], cov[1][1] + 0.3);
+}
+
+inline void ellipseAxes(float3 cov2D, thread float2& axis1, thread float2& axis2) {
+  float a = cov2D.x, b = cov2D.y, d = cov2D.z;
+  float det = a * d - b * b;
+  float mean = 0.5 * (a + d);
+  float dist = max(0.1, sqrt(max(mean * mean - det, 0.0)));
+  float lambda1 = mean + dist;
+  float lambda2 = mean - dist;
+  float2 e1 = (b == 0.0) ? ((a > d) ? float2(1, 0) : float2(0, 1)) : normalize(float2(b, d - lambda2));
+  float2 e2 = float2(e1.y, -e1.x);
+  axis1 = e1 * sqrt(lambda1);
+  axis2 = e2 * sqrt(max(lambda2, 0.0));
+}
+
+inline float shHalf(const device uint* shData, uint base, uint h) {
+  float2 pair = unpackHalf2(shData[base + h / 2u]);
+  return (h & 1u) == 0u ? pair.x : pair.y;
+}
+
+inline float3 shCoefficient(const device uint* shData, uint base, uint k) {
+  return float3(shHalf(shData, base, k * 3u), 
+                shHalf(shData, base, k * 3u + 1u),
+                shHalf(shData, base, k * 3u + 2u));
+}
+
+inline float3 shColor(const device uint* shData, uint index, float3 d) {
+  const float C1 = 0.4886025119;
+  const float C2[5] = {1.0925484306, -1.0925484306, 0.3153915653, -1.0925484306, 0.5462742153};
+  const float C3[7] = {-0.5900435899, 2.8906114426, -0.4570457995, 0.3731763326,
+                       -0.4570457995, 1.4453057213, -0.5900435899};
+  uint base = index * SH_STRIDE;
+  float x = d.x, y = d.y, z = d.z;
+  float3 c = -C1 * y * shCoefficient(shData, base, 0u) + C1 * z * shCoefficient(shData, base, 1u) -
+             C1 * x * shCoefficient(shData, base, 2u);
+  if (SH_DEGREE >= 2u) {
+    float xx = x * x, yy = y * y, zz = z * z, xy = x * y, yz = y * z, xz = x * z;
+    c += C2[0] * xy * shCoefficient(shData, base, 3u) + C2[1] * yz * shCoefficient(shData, base, 4u) +
+         C2[2] * (2.0 * zz - xx - yy) * shCoefficient(shData, base, 5u) +
+         C2[3] * xz * shCoefficient(shData, base, 6u) +
+         C2[4] * (xx - yy) * shCoefficient(shData, base, 7u);
+    if (SH_DEGREE >= 3u) {
+      c += C3[0] * y * (3.0 * xx - yy) * shCoefficient(shData, base, 8u) +
+           C3[1] * xy * z * shCoefficient(shData, base, 9u) +
+           C3[2] * y * (4.0 * zz - xx - yy) * shCoefficient(shData, base, 10u) +
+           C3[3] * z * (2.0 * zz - 3.0 * xx - 3.0 * yy) * shCoefficient(shData, base, 11u) +
+           C3[4] * x * (4.0 * zz - xx - yy) * shCoefficient(shData, base, 12u) +
+           C3[5] * z * (xx - yy) * shCoefficient(shData, base, 13u) +
+           C3[6] * x * (xx - 3.0 * yy) * shCoefficient(shData, base, 14u);
+    }
+  }
+  return c;
+}
+
+inline bool projectSplat(constant Camera& cam, Splat s, uint index, const device uint* shData,
+                         thread Projected& out, bool tightCulling = false,
+                         float minPixelRadius = 0.5) {
+  float4 rgba = unpackUnorm4x8(s.rgba8);
+  // This is the peak opacity actually sent to rasterization, including LoD's
+  // above-one override. There is no separate opacity multiplier (scale = 1).
+  // exp(-r²/2) <= 1: if the peak fails the fragment cutoff, every pixel fails.
+  // Keep equality: the fragment uses <, not <=. Do not cull dark but opaque splats.
+  float alpha = s.lodAlpha != 0u ? as_type<float>(s.lodAlpha) : rgba.a;
+  if (tightCulling && alpha < 1.0 / 255.0) return false;
+
+  float4 viewPos4 = cam.view * float4(s.px, s.py, s.pz, 1.0);
+  float3 viewPos = viewPos4.xyz;
+  if (viewPos.z >= 0.0) return false;
+  float4 clip = cam.proj * viewPos4;
+  float bounds = 1.2 * clip.w;
+  // Metal's perspective clip depth is [0,w], not OpenGL's [-w,w].
+  // For this camera, clip.w = -viewPos.z and near = proj[3][2] / proj[2][2].
+  // Keep the existing centre near/far convention; side planes use footprint bounds below.
+  if (clip.z < 0.0 || clip.z > clip.w ||
+      (!tightCulling && (clip.x < -bounds || clip.x > bounds || clip.y < -bounds || clip.y > bounds))) {
+    return false;
+  }
+  if (tightCulling && clip.w <= cam.proj[3][2] / cam.proj[2][2]) return false;
+
+  float2 c0 = unpackHalf2(s.cov0);
+  float2 c1 = unpackHalf2(s.cov1);
+  float2 c2 = unpackHalf2(s.cov2);
+  float3 cov2D = projectCovariance(cam, viewPos, float4(c0, c1), c2);
+  float2 axis1, axis2;
+  ellipseAxes(cov2D, axis1, axis2);
+
+  float radius = min(s.lodAlpha != 0u ? kLodBoundsRadius : kBoundsRadius, sqrt(2.0 * log(max(alpha * 255.0, 1.0))));
+
+  if (tightCulling) {
+    // Use the unfiltered covariance eigenvalue for the configurable source-footprint
+    // approximation. ellipseAxes' stabilizing floor is for drawing, not culling.
+    float halfDifference = 0.5 * (cov2D.x - cov2D.z);
+    float sourceVariance = 0.5 * (cov2D.x + cov2D.z) +
+        sqrt(halfDifference * halfDifference + cov2D.y * cov2D.y) - 0.3;
+    if (sqrt(max(sourceVariance, 0.0)) * radius < minPixelRadius) return false;
+
+    // Bound the actual half-packed raster quad, not just its centre or a fixed
+    // 20% margin. Large/anisotropic splats crossing an edge must survive.
+    float2 packedAxis1 = float2(half2(axis1));
+    float2 packedAxis2 = float2(half2(axis2));
+    float2 extentPixels = radius * (abs(packedAxis1) + abs(packedAxis2));
+    float2 margin = (extentPixels + 0.5) * 2.0 * clip.w / cam.screenSize;
+    if (any(abs(clip.xy) > clip.w + margin)) return false;
+  } else {
+    float maxVariance = max(dot(axis1, axis1), dot(axis2, axis2));
+    float maxSourceSigma = sqrt(max(maxVariance - 0.3, 0.0));
+    if (maxSourceSigma * radius < kMinPixelRadius) return false;
+  }
+
+  float3 rgb = rgba.rgb;
+  if (SH_DEGREE >= 1u) {
+    float3 dir = normalize(float3(s.px, s.py, s.pz) - cam.cameraPosition.xyz);
+    rgb = max(rgb + shColor(shData, index, dir), float3(0.0));
+  }
+  if (cam.outputLinear == 1u) rgb = pow(rgb, float3(2.2));
+
+  out.center = clip.xy / clip.w;
+  out.axis1 = as_type<uint>(half2(axis1));
+  out.axis2 = as_type<uint>(half2(axis2));
+  out.color0 = as_type<uint>(half2(rgb.rg));
+  out.color1 = as_type<uint>(half2(rgb.b, alpha));
+  out.radius = radius;
+  out.index = index;
+  return true;
+}
+
+inline SplatVertex expandQuad(constant Camera& cam, Projected p, uint vertexId) {
+  float2 corner = kCorners[vertexId];
+  float2 delta = (corner.x * unpackHalf2(p.axis1) + corner.y * unpackHalf2(p.axis2)) * 2.0 * p.radius / cam.screenSize;
+  SplatVertex out;
+  out.position = float4(p.center + delta, kSplatDepth, 1.0);
+  out.relativePosition = p.radius * corner;
+  out.color = float4(unpackHalf2(p.color0), unpackHalf2(p.color1));
+  return out;
+}
+
+inline float splatAlpha(SplatVertex in) {
+  float r2 = dot(in.relativePosition, in.relativePosition);
+  return min(exp(-0.5 * r2) * in.color.a, 1.0);
+}

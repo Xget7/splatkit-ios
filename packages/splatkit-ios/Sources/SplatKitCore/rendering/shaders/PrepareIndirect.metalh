@@ -1,0 +1,19 @@
+#pragma once
+#include "SplatTypes.metalh"
+
+constant uint kDrawBatches = 7;
+constant uint kBatchEndSixtyFourths[kDrawBatches] = {1, 2, 4, 8, 16, 32, 64};
+
+// Exactly one thread, after compaction. DrawArguments matches Metal's native
+// MTLDrawPrimitivesIndirectArguments layout (four uint32 values).
+kernel void prepareDrawArguments(const device uint* count [[buffer(0)]],
+                                 device DrawArguments* draw [[buffer(1)]]) {
+  uint n = count[0];
+  draw[kDrawBatches] = DrawArguments{4, n, 0, 0};
+  uint start = 0;
+  for (uint b = 0; b < kDrawBatches; ++b) {
+    uint end = uint((ulong(n) * kBatchEndSixtyFourths[b]) / 64);
+    draw[b] = DrawArguments{4, end - start, 0, start};
+    start = end;
+  }
+}

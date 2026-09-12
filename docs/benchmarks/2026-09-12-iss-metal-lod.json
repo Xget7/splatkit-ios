@@ -1,0 +1,58 @@
+{
+  "date": "2026-09-12",
+  "status": "experimental_quality_not_accepted",
+  "subsequent_phone_benchmark": "2026-09-12-iss-metal-lod-phone.json",
+  "platform": "macOS / Apple M4 Pro / Metal / Release",
+  "source_splats": 9999999,
+  "hierarchy_nodes": 11744642,
+  "spatial_subdivisions": 10,
+  "gpu_refinement_rounds": 11,
+  "file_bytes": 1174464264,
+  "sh_degree": 1,
+  "viewport": [1206, 2622],
+  "camera_position": [0, -2, 43],
+  "camera_target": [0, -2, -2],
+  "camera_up": [1, 0, 0],
+  "fov_y_degrees": 65,
+  "min_pixel_radius": 1,
+  "lod_pixel_limit": 1,
+  "lod_budget": 1200000,
+  "tile_raster": false,
+  "timestamp_warning": "Completed command-buffer intervals, not isolated pass costs; may overlap. Do not sum or derive FPS.",
+  "reference_frames": [
+    {"cold": true, "drawn": 5359499, "sort_command_ms": 50.02, "render_command_ms": 61.61},
+    {"cold": false, "drawn": 5359499, "sort_command_ms": 7.29, "render_command_ms": 31.00},
+    {"cold": false, "drawn": 5359499, "sort_command_ms": 7.32, "render_command_ms": 32.60}
+  ],
+  "lod_frames": [
+    {"cold": true, "selected": 1200000, "drawn": 711835, "lod_command_ms": 20.18, "sort_command_ms": 21.43, "render_command_ms": 16.43},
+    {"cold": false, "selected": 1200000, "drawn": 711835, "lod_command_ms": 8.04, "sort_command_ms": 9.31, "render_command_ms": 9.00},
+    {"cold": false, "selected": 1200000, "drawn": 711835, "lod_command_ms": 8.31, "sort_command_ms": 9.48, "render_command_ms": 9.05}
+  ],
+  "image_diff": {
+    "mean_absolute_rgb_error_255": 6.7082468410553382,
+    "max_rgb_error_255": 219,
+    "pixels_above_2": 1341969,
+    "fraction_pixels_above_2": 0.42438740697731786,
+    "interpretation": "Visible loss of fine panel and label detail; threshold is diagnostic, not agreed perceptual acceptance."
+  },
+  "artifacts": {
+    "reference_log": "/tmp/splatkit-lod-reference-mac.log",
+    "lod_log": "/tmp/splatkit-lod-priority-radius1-mac.log",
+    "reference_image": "/tmp/iss-reference-mac.png",
+    "lod_image": "/tmp/iss-lod-priority-radius1-mac.png",
+    "depth6_build_log": "/tmp/splatkit-lod-iss-build.log",
+    "depth10_build_log": "/tmp/splatkit-lod-iss-depth10.log",
+    "phone_launch_log": "/tmp/splatkit-lod-orbit-phone.log"
+  },
+  "phone": {
+    "device": "iPhone 17 Pro / A19 Pro",
+    "app_installed": true,
+    "asset_copied": true,
+    "launch_succeeded": false,
+    "blocker": "Device locked",
+    "fps": null,
+    "memory_footprint": null,
+    "sustained_orbit_completed": false
+  }
+}

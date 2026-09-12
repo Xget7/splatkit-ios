@@ -1,0 +1,14 @@
+# Google style at 100 columns, which is how the code was written by hand.
+BasedOnStyle: Google
+ColumnLimit: 100
+IndentWidth: 2
+AccessModifierOffset: -1
+DerivePointerAlignment: false
+PointerAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: WithoutElse
+AllowShortLoopsOnASingleLine: true
+# Include blocks are meaningful: own header, C system, C++ standard, third party, ours.
+IncludeBlocks: Preserve
+SortIncludes: CaseSensitive
+QualifierAlignment: Left

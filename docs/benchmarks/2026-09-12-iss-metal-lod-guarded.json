@@ -1,0 +1,225 @@
+{
+  "date": "2026-09-12",
+  "status": "guarded_execution_completed_quality_not_accepted",
+  "device": "iPhone 17 Pro / Apple A19 Pro / iOS 26.6.1",
+  "timezone": "America/Argentina/Buenos_Aires",
+  "configuration": {
+    "world": "iss_10M-sse-depth10-sh1.lodsplat",
+    "source_splats": 9999999,
+    "resident_nodes": 11744642,
+    "sh": 1,
+    "viewport": [
+      1206,
+      2622
+    ],
+    "scale": 1,
+    "orbit_radius_m": 45,
+    "orbit_speed_degrees_s": 4,
+    "orbit_start_degrees": 90,
+    "min_pixel_radius": 1,
+    "tile_raster": false,
+    "resource_sample_hz": 2,
+    "footprint_guard_mib": 2800,
+    "minimum_available_process_mib": 256,
+    "stop_on_thermal_states": [
+      2,
+      3
+    ]
+  },
+  "runs": [
+    {
+      "name": "iss-1200k",
+      "capacity": 1200000,
+      "log": "/tmp/splatkit-stability.k0lBJw/iss-1200k.log",
+      "status": "duration-complete",
+      "sample_count": 10,
+      "sample_window_local": [
+        "2026-09-12 02:46:52.275",
+        "2026-09-12 02:47:10.744"
+      ],
+      "sample_span_seconds": 18.4689998626709,
+      "monitored_loaded_seconds": 20.5,
+      "metrics": {
+        "fps": {
+          "mean": 38.18,
+          "min": 36,
+          "max": 39.8
+        },
+        "estimated_frame_ms": {
+          "mean": 26.218712833066668,
+          "min": 25.12562814070352,
+          "max": 27.77777777777778
+        },
+        "gpu_ms": {
+          "mean": 32.15,
+          "min": 29.5,
+          "max": 38.7
+        },
+        "visibility_radix_ms": {
+          "mean": 19.38,
+          "min": 16.8,
+          "max": 21.5
+        },
+        "lod_ms": {
+          "mean": 6.29,
+          "min": 2.8,
+          "max": 9.2
+        },
+        "drawn": {
+          "mean": 1084314.6,
+          "min": 1068461,
+          "max": 1102207
+        },
+        "selected": {
+          "mean": 1199996.2,
+          "min": 1199984,
+          "max": 1200000
+        }
+      },
+      "resources": {
+        "observed_peak_bytes": 2721941360,
+        "steady_footprint_bytes": {
+          "mean": 1240653951.2727273,
+          "min": 1240548200,
+          "max": 1240695656
+        },
+        "metal_bytes": {
+          "mean": 958578688,
+          "min": 958578688,
+          "max": 958578688
+        },
+        "thermal_states": [
+          0
+        ],
+        "minimum_available_process_bytes": 818051216,
+        "sampled_current_process_limit_bytes": 3539992576
+      },
+      "errors": []
+    },
+    {
+      "name": "iss-2200k",
+      "capacity": 2200000,
+      "log": "/tmp/splatkit-stability.k0lBJw/iss-2200k.log",
+      "status": "duration-complete",
+      "sample_count": 44,
+      "sample_window_local": [
+        "2026-09-12 02:47:48.806",
+        "2026-09-12 02:49:18.786"
+      ],
+      "sample_span_seconds": 89.98000001907349,
+      "monitored_loaded_seconds": 92.001,
+      "metrics": {
+        "fps": {
+          "mean": 21.62954545454545,
+          "min": 20,
+          "max": 26
+        },
+        "estimated_frame_ms": {
+          "mean": 46.35607972364002,
+          "min": 38.46153846153846,
+          "max": 50
+        },
+        "gpu_ms": {
+          "mean": 40.675000000000004,
+          "min": 34.9,
+          "max": 44.2
+        },
+        "visibility_radix_ms": {
+          "mean": 51.11136363636363,
+          "min": 37.6,
+          "max": 55.3
+        },
+        "lod_ms": {
+          "mean": 3.9340909090909104,
+          "min": 3.2,
+          "max": 4.5
+        },
+        "drawn": {
+          "mean": 1972901.1590909092,
+          "min": 1933745,
+          "max": 1998903
+        },
+        "selected": {
+          "mean": 2199984.227272727,
+          "min": 2199926,
+          "max": 2200000
+        }
+      },
+      "resources": {
+        "observed_peak_bytes": 2801092464,
+        "steady_footprint_bytes": {
+          "mean": 1320112629.2848485,
+          "min": 1319994168,
+          "max": 1320174392
+        },
+        "metal_bytes": {
+          "mean": 1037598720,
+          "min": 1037598720,
+          "max": 1037598720
+        },
+        "thermal_states": [
+          0
+        ],
+        "minimum_available_process_bytes": 738900112,
+        "sampled_current_process_limit_bytes": 3539992576
+      },
+      "errors": []
+    }
+  ],
+  "caveats": [
+    "Arithmetic means of periodic performance snapshots, not per-frame averages.",
+    "Frame cadence is estimated from rounded FPS; command intervals can overlap and must not be added.",
+    "HUD sort measures the visibility/radix command interval, not isolated radix kernels.",
+    "The 1.2M run is a 20.5-second partial orbit; the 2.2M run rendered for 92.001 seconds, with a performance-sample span of 89.980 seconds. These are different windows, not a controlled speedup ratio.",
+    "Memory peaks are observations at 2 Hz, not guaranteed maxima. Guards cannot cancel in-flight work or protect against every transient allocation spike.",
+    "Available process memory is remaining allowance under the current dirty-memory limit, not device-wide free RAM. This limit can change.",
+    "Metal allocation is a separate resource-allocation metric, not additive to process footprint.",
+    "Thermal state 0 means nominal, not a measured temperature in degrees.",
+    "Neither successful run establishes the cause of the preceding uninstrumented SIGKILL or guarantees long-session stability.",
+    "The LOD algorithm and parent quality were unchanged in these runs; the previously rejected approximation is not visually approved."
+  ],
+  "hypotheses": [
+    {
+      "hypothesis": "Process-memory pressure or growth caused the previous failure.",
+      "prediction": "Repeated load/orbit shows approaching process allowance, growth, a warning, or a matching Jetsam report.",
+      "result": "No matching report for the prior failure. Current 2.2M run settled near 1.32 GB and stayed below the 2800 MiB guard; prior cause remains unproven."
+    },
+    {
+      "hypothesis": "Larger selected/drawn workload increases GPU frame cost.",
+      "prediction": "Raising only the selection capacity increases drawn count and command intervals.",
+      "result": "Observed about 1.08M versus 1.97M drawn with higher render/order intervals. Unequal orbit windows prevent a controlled ratio or an isolated-kernel attribution."
+    },
+    {
+      "hypothesis": "Thermal pressure explains the severe prior slowdown.",
+      "prediction": "The slowdown recurs alongside serious/critical thermal state.",
+      "result": "All current resource samples were nominal; prior thermal state was not recorded, so retrospective attribution is unavailable."
+    },
+    {
+      "hypothesis": "A user action or external process terminated the prior app.",
+      "prediction": "SIGKILL occurs without an app crash/Jetsam report and does not recur in an attended bounded run.",
+      "result": "Current runs reached duration-complete; neither this nor absence of a report proves who issued the prior signal."
+    }
+  ],
+  "verification": {
+    "release_build": "passed",
+    "kitchen_duration_guard": "passed, 10 seconds",
+    "gpu_command_errors": 0,
+    "unexpected_termination_during_measured_runs": false,
+    "quality_acceptance": "not established",
+    "performance_target_30fps_at_2200000": "not met"
+  },
+  "provenance": {
+    "head": "704dd1750969dcdccc1e81a650d3f0c0ec456405",
+    "dirty": true,
+    "ios_executable_sha256": "28bc066736d1440ce6386e2720a3628793c0006f78c0f5254d65cc3ed3e861d3",
+    "resource_monitor_swift_sha256": "b6d36c774cec9a9e5ac2c6c430c2b98b728734a5439a22aaa3aac7754e88ddcf",
+    "metal_lod_mm_sha256": "b377b0b0be41d0df23037d7ed2f5a55ed9074c7e1f47def5130ff3c4e5078f6c",
+    "shader_sha256": "5815c9079ff0ffe2b0a19f8b93a6a45700a2597f8b4cbffa0ff8fce62b164073"
+  },
+  "artifacts": {
+    "performance_csv": "docs/benchmarks/2026-09-12-iss-metal-lod-guarded.csv",
+    "resource_csv": "docs/benchmarks/2026-09-12-iss-metal-lod-guarded-resources.csv",
+    "build_log": "/tmp/splatkit-stability.k0lBJw/app-build.log",
+    "kitchen_log": "/tmp/splatkit-stability.k0lBJw/kitchen.log"
+  }
+}

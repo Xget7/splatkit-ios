@@ -1,0 +1,100 @@
+{
+  "date": "2026-09-12",
+  "purpose": "camera framing visual smoke, not comparable to vertical benchmarks",
+  "configuration": {
+    "world": "iss_10M-sse-depth10-sh1.lodsplat",
+    "lod_capacity": 2200000,
+    "sh": 1,
+    "scale": 1,
+    "viewport": [
+      1206,
+      2622
+    ],
+    "depth_key_bits": 16,
+    "tile_raster": true,
+    "min_pixel_radius": 1,
+    "orbit_horizontal": true,
+    "axis": "X",
+    "radius_m": 45,
+    "speed_degrees_s": 4,
+    "start_degrees": 90,
+    "run_seconds": 10
+  },
+  "executable_sha256": "f33a38bb556608eb0a9ad259157d74f87a3cb0a2d46652915e91533317db79d0",
+  "log": "/tmp/splatkit-stability.k0lBJw/iss-horizontal-phone.log",
+  "capture": "/tmp/splatkit-stability.k0lBJw/horizontal-phone.png",
+  "samples": [
+    {
+      "time_local": "2026-09-12 03:37:34.375",
+      "fps": 31.1,
+      "estimated_frame_ms": 32.154340836012864,
+      "gpu_ms": 34.8,
+      "sort_ms": 20.2,
+      "lod_ms": 9.2,
+      "drawn": 1955354,
+      "selected": 2199991
+    },
+    {
+      "time_local": "2026-09-12 03:37:36.441",
+      "fps": 30.2,
+      "estimated_frame_ms": 33.11258278145696,
+      "gpu_ms": 33.5,
+      "sort_ms": 23.6,
+      "lod_ms": 9.3,
+      "drawn": 1958804,
+      "selected": 2199995
+    },
+    {
+      "time_local": "2026-09-12 03:37:38.526",
+      "fps": 28.4,
+      "estimated_frame_ms": 35.21126760563381,
+      "gpu_ms": 38.9,
+      "sort_ms": 22.2,
+      "lod_ms": 9.6,
+      "drawn": 1964523,
+      "selected": 2199952
+    },
+    {
+      "time_local": "2026-09-12 03:37:40.607",
+      "fps": 27,
+      "estimated_frame_ms": 37.03703703703704,
+      "gpu_ms": 43.5,
+      "sort_ms": 22.2,
+      "lod_ms": 10.8,
+      "drawn": 1970646,
+      "selected": 2199982
+    },
+    {
+      "time_local": "2026-09-12 03:37:42.631",
+      "fps": 23.9,
+      "estimated_frame_ms": 41.84100418410042,
+      "gpu_ms": 46.6,
+      "sort_ms": 23.1,
+      "lod_ms": 10,
+      "drawn": 1970888,
+      "selected": 2199998
+    }
+  ],
+  "mean": {
+    "fps": 28.119999999999997,
+    "estimated_frame_ms": 35.871246488848215,
+    "gpu_ms": 39.459999999999994,
+    "sort_ms": 22.26,
+    "lod_ms": 9.780000000000001,
+    "drawn": 1964043,
+    "selected": 2199983.6
+  },
+  "sampled_peak_process_bytes": 2826864496,
+  "steady_process_bytes": 1361249152,
+  "metal_allocated_bytes": 1063256064,
+  "thermal_states": [
+    0
+  ],
+  "stop_reason": "duration-complete",
+  "caveats": [
+    "Periodic snapshot means, not per-frame timings.",
+    "Command intervals overlap; cannot sum.",
+    "Changed roll changes visible content; do not use this as radix A/B.",
+    "10-second smoke does not establish sustained performance."
+  ]
+}

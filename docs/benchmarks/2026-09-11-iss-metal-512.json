@@ -1,0 +1,88 @@
+{
+  "requestedWindow": {
+    "start": "2026-09-11 23:25:35.000",
+    "end": "2026-09-11 23:26:35.000",
+    "timezone": "America/Argentina/Buenos_Aires"
+  },
+  "sampleCount": 19,
+  "first": "2026-09-11 23:25:35.387",
+  "last": "2026-09-11 23:26:14.297",
+  "latestAvailable": "2026-09-11 23:26:14.297",
+  "stats": {
+    "fps": {
+      "mean": 11.06315789473684,
+      "min": 9.5,
+      "max": 13.2,
+      "p50": 10.5,
+      "p95": 13.2
+    },
+    "frame_est_ms": {
+      "mean": 91.64863752080826,
+      "min": 75.75757575757576,
+      "max": 105.26315789473684,
+      "p50": 95.23809523809524,
+      "p95": 105.26315789473684
+    },
+    "gpu_ms": {
+      "mean": 78.86315789473684,
+      "min": 65.4,
+      "max": 92.5,
+      "p50": 76.6,
+      "p95": 92.5
+    },
+    "sort_ms": {
+      "mean": 104.39473684210526,
+      "min": 83.4,
+      "max": 117.8,
+      "p50": 109.3,
+      "p95": 117.8
+    },
+    "drawn": {
+      "mean": 4482075.105263158,
+      "min": 3698332,
+      "max": 5309029,
+      "p50": 4596738,
+      "p95": 5309029
+    }
+  },
+  "errors": [],
+  "tileDiagnostics": [
+    "2026-09-11 23:25:46.254 SplatKitDev[47711:5628463] SplatKit I: hybrid tiles: 0 compute, 12464 hardware, whole-frame guard 1",
+    "2026-09-11 23:25:56.613 SplatKitDev[47711:5628463] SplatKit I: hybrid tiles: 0 compute, 12464 hardware, whole-frame guard 1",
+    "2026-09-11 23:26:08.722 SplatKitDev[47711:5628463] SplatKit I: hybrid tiles: 0 compute, 12464 hardware, whole-frame guard 1"
+  ],
+  "status": "partial window: 19 periodic log samples spanning 38.910 seconds; not a complete 60-second capture",
+  "build": {
+    "commit": "704dd1750969dcdccc1e81a650d3f0c0ec456405",
+    "dirty": true,
+    "shaderSHA256": "2325ebb1fc2e4569469686586c55bf8190c3da0c036f2cba84c8a57f71dea626",
+    "hostSHA256": "a315ebae7111c8897c376af80eb6545bb72822b8b59be4e1a21ab09738df35af"
+  },
+  "configuration": {
+    "device": "iPhone 17 Pro",
+    "gpu": "Apple A19 Pro",
+    "world": "iss_10M.spz",
+    "loadedSplats": 9999999,
+    "shDegree": 1,
+    "width": 1206,
+    "height": 2622,
+    "scale": 1,
+    "orbitRadiusMeters": 45,
+    "orbitDegreesPerSecond": 4,
+    "culling": true,
+    "minPixelRadius": 1,
+    "tileRaster": true,
+    "tileCandidates": 512,
+    "maxFootprintTiles": 16,
+    "visibleCountGuard": false
+  },
+  "methodology": {
+    "sampling": "Arithmetic means of periodic console samples, approximately every 2 seconds; not per-frame averages or a full orbit. Loading and initial capture excluded. Temperature and thermal state not measured.",
+    "frame": "Estimated per sample as 1000 / FPS from the rounded log value, matching the HUD's cadence definition approximately; not a GPU frame timestamp.",
+    "gpu": "Last completed render command duration at each sample, including tile binning/compositing, hardware raster and final blit.",
+    "sort": "Last completed visibility/projection/culling plus radix-sort command duration at each sample, NOT isolated radix-sort timing.",
+    "nonAdditive": "GPU and sort samples may refer to different in-flight frames; do not add them to infer frame time.",
+    "backend": "Whole-frame footprint guard active in available tile diagnostics: 0 compute tiles / 12464 hardware tiles. No compute-only ISS speedup demonstrated.",
+    "stream": "Log stops advancing at 23:26:14.297 in this snapshot; reason not established. No GPU error appears in the captured log."
+  }
+}

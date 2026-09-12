@@ -1,0 +1,293 @@
+{
+  "date": "2026-09-12",
+  "status": "experimental_faster_short_phone_run_below_30fps_quality_unapproved",
+  "configuration": {
+    "world": "iss_10M-sse-depth10-sh1.lodsplat",
+    "loaded_splats": 9999999,
+    "resident_nodes": 11744642,
+    "selected_capacity": 2200000,
+    "sh": 1,
+    "viewport": [
+      1206,
+      2622
+    ],
+    "render_scale": 1,
+    "min_pixel_radius": 1,
+    "tile_raster": true,
+    "orbit_axis": "X",
+    "orbit_horizontal": false,
+    "radius_m": 45,
+    "speed_degrees_s": 4,
+    "start_degrees": 90,
+    "near_m": 0.05,
+    "far_m": 200,
+    "duration_s": 20
+  },
+  "implementation": {
+    "key_type": "ushort linear camera depth, stored in uint32",
+    "radix_passes": 2,
+    "radix_digit_bits": 8,
+    "default_depth_key_bits": 32,
+    "changed_lod": false,
+    "changed_culling": false
+  },
+  "phone": {
+    "executable_sha256": "c7c4fd1df32d87bd0a460aa559cb234600a3a1b5580eb8ec4e89aeee14ed3911",
+    "log": "/tmp/splatkit-stability.k0lBJw/iss-radix16-phone.log",
+    "image": "/tmp/splatkit-stability.k0lBJw/radix16-phone.png",
+    "run_stopped": "duration-complete",
+    "samples": [
+      {
+        "time_local": "2026-09-12 03:33:22.695",
+        "fps": 25.8,
+        "estimated_frame_ms": 38.75968992248062,
+        "gpu_ms": 47.4,
+        "sort_ms": 17.4,
+        "lod_ms": 12.3,
+        "drawn": 1992869,
+        "selected": 2199996
+      },
+      {
+        "time_local": "2026-09-12 03:33:24.858",
+        "fps": 25.3,
+        "estimated_frame_ms": 39.52569169960474,
+        "gpu_ms": 47.4,
+        "sort_ms": 18.4,
+        "lod_ms": 11.2,
+        "drawn": 1994938,
+        "selected": 2199973
+      },
+      {
+        "time_local": "2026-09-12 03:33:26.971",
+        "fps": 24.4,
+        "estimated_frame_ms": 40.98360655737705,
+        "gpu_ms": 41.1,
+        "sort_ms": 43.2,
+        "lod_ms": 4.2,
+        "drawn": 1994495,
+        "selected": 2199982
+      },
+      {
+        "time_local": "2026-09-12 03:33:29.100",
+        "fps": 22.2,
+        "estimated_frame_ms": 45.04504504504504,
+        "gpu_ms": 53.1,
+        "sort_ms": 23.6,
+        "lod_ms": 13.3,
+        "drawn": 1995121,
+        "selected": 2199945
+      },
+      {
+        "time_local": "2026-09-12 03:33:31.133",
+        "fps": 21.5,
+        "estimated_frame_ms": 46.51162790697674,
+        "gpu_ms": 54.8,
+        "sort_ms": 23.1,
+        "lod_ms": 13.9,
+        "drawn": 1978097,
+        "selected": 2199982
+      },
+      {
+        "time_local": "2026-09-12 03:33:33.160",
+        "fps": 21.8,
+        "estimated_frame_ms": 45.87155963302752,
+        "gpu_ms": 53.9,
+        "sort_ms": 24.1,
+        "lod_ms": 13,
+        "drawn": 1983751,
+        "selected": 2199999
+      },
+      {
+        "time_local": "2026-09-12 03:33:35.247",
+        "fps": 22.2,
+        "estimated_frame_ms": 45.04504504504504,
+        "gpu_ms": 51.9,
+        "sort_ms": 23.1,
+        "lod_ms": 13.9,
+        "drawn": 1970493,
+        "selected": 2199998
+      },
+      {
+        "time_local": "2026-09-12 03:33:37.317",
+        "fps": 22.8,
+        "estimated_frame_ms": 43.859649122807014,
+        "gpu_ms": 52.5,
+        "sort_ms": 21.1,
+        "lod_ms": 13.7,
+        "drawn": 1968895,
+        "selected": 2199964
+      },
+      {
+        "time_local": "2026-09-12 03:33:39.421",
+        "fps": 23.6,
+        "estimated_frame_ms": 42.3728813559322,
+        "gpu_ms": 49.7,
+        "sort_ms": 21.1,
+        "lod_ms": 13.3,
+        "drawn": 1974230,
+        "selected": 2199996
+      },
+      {
+        "time_local": "2026-09-12 03:33:41.511",
+        "fps": 24,
+        "estimated_frame_ms": 41.666666666666664,
+        "gpu_ms": 48.6,
+        "sort_ms": 21.2,
+        "lod_ms": 13.4,
+        "drawn": 1977049,
+        "selected": 2199994
+      }
+    ],
+    "mean": {
+      "fps": {
+        "mean": 23.36,
+        "min": 21.5,
+        "max": 25.8
+      },
+      "estimated_frame_ms": {
+        "mean": 42.96414629549626,
+        "min": 38.75968992248062,
+        "max": 46.51162790697674
+      },
+      "gpu_ms": {
+        "mean": 50.04,
+        "min": 41.1,
+        "max": 54.8
+      },
+      "sort_ms": {
+        "mean": 23.629999999999995,
+        "min": 17.4,
+        "max": 43.2
+      },
+      "lod_ms": {
+        "mean": 12.220000000000002,
+        "min": 4.2,
+        "max": 13.9
+      },
+      "drawn": {
+        "mean": 1982993.8,
+        "min": 1968895,
+        "max": 1995121
+      },
+      "selected": {
+        "mean": 2199982.9,
+        "min": 2199945,
+        "max": 2199999
+      }
+    },
+    "tiles": [
+      {
+        "compute": 5257,
+        "nonempty": 589,
+        "hardware": 7207,
+        "invalid": 0
+      },
+      {
+        "compute": 5257,
+        "nonempty": 589,
+        "hardware": 7207,
+        "invalid": 0
+      },
+      {
+        "compute": 5279,
+        "nonempty": 597,
+        "hardware": 7185,
+        "invalid": 0
+      },
+      {
+        "compute": 4841,
+        "nonempty": 311,
+        "hardware": 7623,
+        "invalid": 0
+      },
+      {
+        "compute": 2999,
+        "nonempty": 212,
+        "hardware": 9465,
+        "invalid": 0
+      },
+      {
+        "compute": 3929,
+        "nonempty": 650,
+        "hardware": 8535,
+        "invalid": 0
+      }
+    ],
+    "sampled_peak_bytes": 2827044672,
+    "steady_footprint_bytes": 1361544040,
+    "metal_allocated_bytes": 1063256064,
+    "thermal_states": [
+      0
+    ]
+  },
+  "baseline": {
+    "source": "2026-09-12-iss-lod-hybrid.json",
+    "depth_key_bits": 32,
+    "sample_count": 9,
+    "mean": {
+      "fps": 18.92222222222222,
+      "estimated_frame_ms": 53.01134231344636,
+      "gpu_ms": 47.56666666666666,
+      "sort_ms": 57.522222222222226,
+      "lod_ms": 3.7555555555555555,
+      "drawn": 1983640.6666666667
+    }
+  },
+  "mac": {
+    "selected": 2199983,
+    "drawn": 1996050,
+    "cull_sort_warm_ms": {
+      "bits32": [
+        3.94,
+        4.01
+      ],
+      "bits16": [
+        3.62,
+        3.35
+      ]
+    },
+    "raster_warm_ms": {
+      "bits32": [
+        53.74,
+        23.45
+      ],
+      "bits16": [
+        107.4,
+        21.38
+      ]
+    },
+    "image_comparison": {
+      "width": 1206,
+      "height": 2622,
+      "mean_absolute_rgb_error_255": 0.1007451091014965,
+      "max_rgb_error_255": 101,
+      "pixels_above_2": 28013,
+      "fraction_pixels_above_2": 0.00885889646605518
+    },
+    "artifacts": [
+      "/tmp/splatkit-stability.k0lBJw/radix16-hybrid-mac.log",
+      "/tmp/splatkit-stability.k0lBJw/radix32-hybrid-mac.log",
+      "/tmp/splatkit-stability.k0lBJw/radix16-hybrid-mac.png",
+      "/tmp/splatkit-stability.k0lBJw/radix32-hybrid-mac.png"
+    ]
+  },
+  "validation": {
+    "full_mac": {
+      "total": 198,
+      "passed": 194,
+      "skipped": 4,
+      "failed": 0
+    },
+    "metal_api_and_shader_validation": "two-pass stable sort and quantized visibility GPU tests passed"
+  },
+  "caveats": [
+    "Sequential short orbit samples, not randomized or sustained results.",
+    "Arithmetic means of periodic snapshots; frame cadence inferred from rounded FPS.",
+    "GPU, visibility/radix and LOD command intervals overlap and include scheduling contention; do not sum or interpret as isolated pass costs.",
+    "Mac test has only two warm frames and severe raster timing outliers; not a throughput benchmark.",
+    "Quantized ties can reorder transparency and vary with parallel compaction; quality unapproved.",
+    "Phone captures are timed from session creation and do not have identical camera poses.",
+    "Memory is sampled at 2 Hz; guard cannot cancel work in flight.",
+    "Subsequent horizontal camera framing is a separate change and not included in these metrics."
+  ]
+}

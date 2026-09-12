@@ -1,0 +1,16 @@
+build*/
+.build/
+*.spz
+*.ply
+*.glb
+.DS_Store
+.idea/
+.gradle/
+local.properties
+node_modules/
+.cxx/
+*.apk
+apps/android-dev/app/src/debug/jniLibs/
+.kotlin/
+__pycache__/
+*.pyc

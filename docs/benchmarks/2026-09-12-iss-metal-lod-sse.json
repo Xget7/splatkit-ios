@@ -1,0 +1,143 @@
+{
+  "date": "2026-09-12",
+  "status": "experimental_quality_rejected",
+  "platform": "macOS / Apple M4 Pro / native Metal / Release",
+  "source_splats": 9999999,
+  "hierarchy_nodes": 11744642,
+  "interior_clusters": 1744643,
+  "file": "iss_10M-sse-depth10-sh1.lodsplat",
+  "file_version": 2,
+  "file_bytes": 1326121412,
+  "configuration": {
+    "sh_degree": 1,
+    "viewport": [
+      1206,
+      2622
+    ],
+    "camera_position": [
+      0,
+      -2,
+      43
+    ],
+    "camera_target": [
+      0,
+      -2,
+      -2
+    ],
+    "camera_up": [
+      1,
+      0,
+      0
+    ],
+    "fov_y_degrees": 65,
+    "capacity": 2200000,
+    "quality_pixels": 1,
+    "color_weight": 4,
+    "min_pixel_radius": 1,
+    "tile_raster": false
+  },
+  "baseline_1200000": {
+    "drawn": 711835,
+    "warm_lod_command_ms": [
+      7.99,
+      7.89
+    ],
+    "image_mean_absolute_rgb_error_255": 6.708297545242682
+  },
+  "capacity_only_2200000": {
+    "drawn": 1160960,
+    "warm_lod_command_ms": [
+      11.56,
+      11.62
+    ],
+    "image_mean_absolute_rgb_error_255": 5.76451520682881
+  },
+  "sse_serial_group_scan": {
+    "selected": 2199983,
+    "drawn": 1996050,
+    "warm_lod_command_ms": [
+      7.92,
+      7.86
+    ],
+    "image_mean_absolute_rgb_error_255": 5.471003529686089
+  },
+  "sse_parallel_group_scan": {
+    "selected": 2199983,
+    "drawn": 1996050,
+    "evaluated_interiors": 971936,
+    "denied_refinements": 469486,
+    "frames": [
+      {
+        "cold": true,
+        "lod_command_ms": 2.45,
+        "visibility_radix_command_ms": 30.43,
+        "render_command_ms": 32.68
+      },
+      {
+        "cold": false,
+        "lod_command_ms": 1.38,
+        "visibility_radix_command_ms": 4.18,
+        "render_command_ms": 15.03
+      },
+      {
+        "cold": false,
+        "lod_command_ms": 1.47,
+        "visibility_radix_command_ms": 4,
+        "render_command_ms": 15.36
+      }
+    ],
+    "image_diff": {
+      "mean_absolute_rgb_error_255": 5.471056552983873,
+      "max_rgb_error_255": 219,
+      "fraction_pixels_above_2": 0.37247464685218706
+    }
+  },
+  "caveats": [
+    "Two warm fixed-pose frames per configuration, not sustained FPS or A19 Pro proof.",
+    "Command intervals can overlap; do not sum or interpret visibility/radix as isolated radix.",
+    "SSE still exceeds available capacity; retained parents fail the requested quality threshold.",
+    "The 1/255 mean-error guard is diagnostic, not user-approved visual acceptance.",
+    "Thermal state and phone memory footprint were not measured."
+  ],
+  "build": {
+    "tool_reported_seconds": 19.24,
+    "wall_seconds": 19.55,
+    "mac_max_rss_bytes": 2501296128,
+    "mac_peak_footprint_bytes": 2785954264
+  },
+  "artifacts": {
+    "before_capture": "/tmp/iss-lod-refinement-before.png",
+    "capacity_only_capture": "/tmp/iss-lod-budget22-before.png",
+    "reference_capture": "/tmp/iss-reference-mac.png",
+    "final_capture": "/tmp/iss-lod-sse-parallel22.png",
+    "final_mac_log": "/tmp/splatkit-lod-sse-parallel22.log",
+    "offline_build_log": "/tmp/splatkit-lod-sse-offline-build.log"
+  },
+  "provenance": {
+    "head": "704dd1750969dcdccc1e81a650d3f0c0ec456405",
+    "dirty": true,
+    "metal_lod_mm_sha256": "b377b0b0be41d0df23037d7ed2f5a55ed9074c7e1f47def5130ff3c4e5078f6c",
+    "shader_sha256": "5815c9079ff0ffe2b0a19f8b93a6a45700a2597f8b4cbffa0ff8fce62b164073",
+    "local_ios_executable_sha256": "f598cd6cc4f7a6ba4f015c5ae07c9768ba66596cc89d3132822ed708728c3a58"
+  },
+  "phone": {
+    "status": "failed_short_run_signal_9_cause_unknown",
+    "device": "iPhone 17 Pro / Apple A19 Pro / iOS 26.6.1",
+    "log": "/tmp/splatkit-lod-sse-phone.Uf9Sfp/orbit.log",
+    "orbit_radius_m": 45,
+    "orbit_degrees_per_second": 4,
+    "sample_window_local": ["2026-09-12 01:52:21.774", "2026-09-12 01:52:32.370"],
+    "samples": [
+      {"fps": 20.9, "gpu_ms": 51.0, "visibility_radix_ms": 56.4, "lod_ms": 4.6, "drawn": 1994309},
+      {"fps": 9.0, "gpu_ms": 105.9, "visibility_radix_ms": 122.9, "lod_ms": 7.5, "drawn": 1993330},
+      {"fps": 7.4, "gpu_ms": 87.7, "visibility_radix_ms": 124.3, "lod_ms": 6.8, "drawn": 1968254},
+      {"fps": 8.5, "gpu_ms": 99.0, "visibility_radix_ms": 132.6, "lod_ms": 6.9, "drawn": 1980303}
+    ],
+    "caveats": [
+      "Only four loaded-scene samples, including initial warmup; not a complete orbit or sustained benchmark.",
+      "Termination signal alone does not distinguish Jetsam, user closure or an external kill.",
+      "No matching September 12 Jetsam or SplatKit report found in device systemCrashLogs at 02:38 local.",
+      "Memory and thermal state were not captured in this run."
+    ]
+  }
+}

@@ -1,0 +1,90 @@
+#pragma once
+#include <metal_stdlib>
+using namespace metal;
+
+// Metal buffer layouts. The host counterparts live in MetalShaderTypes.h.
+struct Camera {
+  float4x4 view;
+  float4x4 proj;
+  float2 focal;         // pixels: screenSize * proj[0][0] / 2, screenSize * proj[1][1] / 2
+  float2 tanHalfFov;   // 1 / proj[0][0], 1 / proj[1][1]
+  float2 screenSize;   // pixels
+  uint outputLinear;   // 1 when the target is sRGB and expects linear values
+  uint pad;
+  float4 cameraPosition;  // world space
+};
+
+// Spherical harmonics constants
+constant uint SH_DEGREE [[function_constant(0)]];
+constant uint SH_COEFFICIENTS = (SH_DEGREE + 1) * (SH_DEGREE + 1) - 1;
+constant uint SH_STRIDE = (SH_COEFFICIENTS * 3 + 1) / 2;
+
+// Core data layout for Splats
+struct Splat {
+  float px, py, pz;  // world position
+  uint rgba8;        // colour and alpha, 8 bits each
+  uint cov0;         // halves: xx, xy
+  uint cov1;         // halves: xz, yy
+  uint cov2;         // halves: yz, zz
+  uint lodAlpha;     // float bits of an opacity above 1, else 0
+};
+
+// Intermediate GPU-projected splat layout (32 bytes)
+struct Projected {
+  float2 center;
+  uint axis1;
+  uint axis2;
+  uint color0;
+  uint color1;
+  float radius;
+  uint index;
+};
+
+// Render Pipeline Vertex/Fragment Interfaces
+struct SplatVertex {
+  float4 position [[position]];
+  float2 relativePosition;
+  float4 color;
+};
+
+struct BlitVertex {
+  float4 position [[position]];
+  float2 uv;
+};
+
+struct MaskOut {
+  float depth [[depth(any)]];
+};
+
+struct Range {
+  uint offset;
+  uint count;
+};
+
+struct SortDispatch {
+  uint threadgroupsX, threadgroupsY, threadgroupsZ;
+  uint blocks;
+};
+
+struct DrawArguments {
+  uint vertexCount, instanceCount, vertexStart, baseInstance;
+};
+
+// Render Constants
+constant float kSplatDepth = 0.5;
+constant float kMaskDepth = 0.25;
+constant float kSaturated = 254.0 / 255.0;
+
+constant float kBoundsRadius = 3.0;
+constant float kLodBoundsRadius = 5.0;
+constant float kMinPixelRadius = 1.0;
+constant float2 kCorners[4] = {float2(-1, -1), float2(-1, 1), float2(1, -1), float2(1, 1)};
+
+// Helper unpacking functions
+inline float2 unpackHalf2(uint packed) {
+  return float2(as_type<half2>(packed));
+}
+
+inline float4 unpackUnorm4x8(uint packed) {
+  return float4(packed & 0xffu, (packed >> 8) & 0xffu, (packed >> 16) & 0xffu, packed >> 24) / 255.0;
+}
