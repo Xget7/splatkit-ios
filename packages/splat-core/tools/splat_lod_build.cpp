@@ -19,7 +19,8 @@ int run(int argc, char** argv) {
   build.octreeDepth = 6;
   splat::SplatDecodeOptions decode;
   for (int i = 3; i < argc; i += 2) {
-    const std::string key(argv[i]), text(argv[i + 1]);
+    const std::string key(argv[i]);
+    const std::string text(argv[i + 1]);
     int value = 0;
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
     if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) return 2;

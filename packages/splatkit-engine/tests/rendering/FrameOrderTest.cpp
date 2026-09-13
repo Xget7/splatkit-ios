@@ -148,5 +148,19 @@ TEST(FrameOrder, NativeLodRendererReceivesHierarchyAndUsesGpuOrder) {
   EXPECT_EQ(observed->frames, 1u);
 }
 
+TEST(FrameOrder, BenchmarkRecordsAnActualStallInsteadOfTheCameraTimeClamp) {
+  auto renderer = std::make_unique<RecordingRenderer>(true);
+  SplatEngine engine(std::move(renderer));
+  const auto bytes = worldBytes();
+  engine.loadWorld(bytes.data(), bytes.size());
+  engine.startBenchmark(5.0f);
+  engine.render(1);
+  testing::internal::CaptureStderr();
+  engine.render(5'000'000'001);
+  const auto log = testing::internal::GetCapturedStderr();
+  EXPECT_NE(log.find("benchmark: 1 frames, 0.2 fps mean, frame ms mean 5000.0"), std::string::npos)
+      << log;
+}
+
 }  // namespace
 }  // namespace splatkit

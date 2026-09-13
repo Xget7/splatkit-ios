@@ -243,7 +243,7 @@ void SplatEngine::streamTiles(const FrameCamera& camera, float pixelScale,
 void SplatEngine::takeSortResult() {
   if (gpuSort_) {
     lastSort_.sortMillis = renderer_->lastSortMillis();
-    lastSort_.cullMillis = 0;
+    lastSort_.cullMillis = renderer_->lastCullMillis();
     lastSort_.selectMillis = renderer_->lastSelectMillis();
     lastSort_.selected = streamer_ ? streamer_->drawnSplats() : sourceCount_;
     drawCount_ = renderer_->lastDrawCount();
@@ -272,7 +272,8 @@ void SplatEngine::takeSortResult() {
 
 void SplatEngine::startBenchmark(float seconds) {
   benchmark_.start(seconds);
-  renderer_->setVsync(false);  // so frame times are not vsync multiples
+  // Requests non-FIFO presentation; host callbacks can still be vsync-paced.
+  if (benchmark_.pending()) renderer_->setVsync(false);
 }
 
 void SplatEngine::driveBenchmark(float dt, const GpuWorldInfo& world) {
@@ -312,7 +313,7 @@ float SplatEngine::frameSeconds(int64_t frameTimeNanos) {
   const float dt =
       lastFrameNanos_ == 0 ? 0.0f : static_cast<float>(frameTimeNanos - lastFrameNanos_) * 1e-9f;
   lastFrameNanos_ = frameTimeNanos;
-  return std::min(dt, kMaxFrameSeconds);
+  return std::max(dt, 0.0f);
 }
 
 // Every vsync steps the camera and the sorter, but the GPU only draws when something
@@ -325,8 +326,9 @@ void SplatEngine::render(int64_t frameTimeNanos) {
   const std::optional<GpuWorldInfo> world = renderer_->world();
   std::optional<FrameCamera> camera;
   if (world) {
-    const float dt = frameSeconds(frameTimeNanos);
-    driveBenchmark(dt, *world);
+    const float wallSeconds = frameSeconds(frameTimeNanos);
+    driveBenchmark(wallSeconds, *world);
+    const float dt = std::min(wallSeconds, kMaxFrameSeconds);
     camera_.update(dt);
     camera = frameCamera(extent);
     publishPose();

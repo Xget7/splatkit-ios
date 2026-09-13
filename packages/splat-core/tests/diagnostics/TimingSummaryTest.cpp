@@ -12,6 +12,7 @@ TEST(TimingSummary, EmptyInputIsAllZero) {
   EXPECT_EQ(s.p50, 0.0);
   EXPECT_EQ(s.p95, 0.0);
   EXPECT_EQ(s.max, 0.0);
+  EXPECT_EQ(s.p99, 0.0);
 }
 
 TEST(TimingSummary, SortsBeforeTakingPercentiles) {
@@ -30,6 +31,7 @@ TEST(TimingSummary, OneSampleIsEveryStatistic) {
   EXPECT_FLOAT_EQ(static_cast<float>(s.p50), 16.7f);
   EXPECT_FLOAT_EQ(static_cast<float>(s.p95), 16.7f);
   EXPECT_FLOAT_EQ(static_cast<float>(s.max), 16.7f);
+  EXPECT_FLOAT_EQ(static_cast<float>(s.p99), 16.7f);
 }
 
 TEST(TimingSummary, P95LeavesOutTheTopFivePercent) {
@@ -39,6 +41,14 @@ TEST(TimingSummary, P95LeavesOutTheTopFivePercent) {
   EXPECT_FLOAT_EQ(static_cast<float>(s.p95), 96.0f);
   EXPECT_FLOAT_EQ(static_cast<float>(s.p50), 51.0f);
   EXPECT_FLOAT_EQ(static_cast<float>(s.max), 100.0f);
+}
+
+TEST(TimingSummary, P99PreservesRareStallsSeparatelyFromP95) {
+  std::vector<float> millis(1000, 16.0f);
+  for (std::size_t i = 0; i < 20; ++i) millis[i] = 500.0f;
+  const auto s = summarizeTimings(millis);
+  EXPECT_DOUBLE_EQ(s.p95, 16.0);
+  EXPECT_DOUBLE_EQ(s.p99, 500.0);
 }
 
 }  // namespace

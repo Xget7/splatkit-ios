@@ -1,5 +1,6 @@
 add_executable(splatkit_engine_tests
   camera/WalkCameraTest.cpp
+  diagnostics/BenchmarkTest.cpp
   rendering/GpuLayoutTest.cpp
   rendering/FrameOrderTest.cpp
 )

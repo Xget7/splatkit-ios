@@ -15,6 +15,7 @@ TimingSummary summarizeTimings(std::vector<float> millis) {
   summary.mean = total / static_cast<double>(n);
   summary.p50 = millis[n / 2];
   summary.p95 = millis[(n * 95) / 100];
+  summary.p99 = millis[(n * 99) / 100];
   summary.max = millis.back();
   return summary;
 }

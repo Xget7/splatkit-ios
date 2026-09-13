@@ -33,11 +33,11 @@ _Avoid_: URI (that is the wire format of a source), download
 One presented image. The engine draws a frame only when something changed.
 
 **Sort**:
-Ordering the splats back to front from the camera, on the CPU, so blending is correct.
+Ordering splats by camera depth in the direction required by compositing.
 _Avoid_: depth sort, z-order
 
 **Cull**:
-Dropping the sorted splats outside the camera's frustum, widened by a margin, before drawing.
+Rejecting splats outside the view or below the configured visibility threshold.
 
 **Render scale**:
 The size of the render target relative to the surface, 0.1 to 2. Below 1 the frame is upscaled, above 1 supersampled.
@@ -68,6 +68,9 @@ Covering cut; capacity≠quality.
 **Tile**:
 A cube of the world at one level, stored as its own spz file, with its splats in spatial order.
 _Avoid_: chunk, cell, block, node (a node is inside a cloud, a tile is a cloud)
+
+**Screen tile**:
+A rectangular group of image pixels composited together; unrelated to a world's streaming tiles.
 
 **Level**:
 How coarse a tile is: level 0 is the file's splats, each level up stands in for the eight tiles below it with fewer, larger splats. Made offline, never on the phone.

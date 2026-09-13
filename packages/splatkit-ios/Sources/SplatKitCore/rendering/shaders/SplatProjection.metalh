@@ -16,7 +16,7 @@ inline float3 projectCovariance(constant Camera& cam, float3 viewPos, float4 cov
                         float3(-cam.focal.x * viewPos.x * invZ2, -cam.focal.y * viewPos.y * invZ2, 0.0));
   float3x3 W = float3x3(cam.view[0].xyz, cam.view[1].xyz, cam.view[2].xyz);
   float3x3 T = J * W;
-  float3x3 Vrk = float3x3(float3(covA.x, covA.y, covA.z), 
+  float3x3 Vrk = float3x3(float3(covA.x, covA.y, covA.z),
                           float3(covA.y, covA.w, covB.x),
                           float3(covA.z, covB.x, covB.y));
   float3x3 cov = T * Vrk * transpose(T);
@@ -42,7 +42,7 @@ inline float shHalf(const device uint* shData, uint base, uint h) {
 }
 
 inline float3 shCoefficient(const device uint* shData, uint base, uint k) {
-  return float3(shHalf(shData, base, k * 3u), 
+  return float3(shHalf(shData, base, k * 3u),
                 shHalf(shData, base, k * 3u + 1u),
                 shHalf(shData, base, k * 3u + 2u));
 }

@@ -1,6 +1,8 @@
 #import <ImageIO/ImageIO.h>
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <set>
@@ -163,12 +165,25 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
                         : renderer->uploadLodWorld(tree.value(), 1, budget));
   WalkCamera camera;
   camera.setLookAt({0, -2, 43}, {0, -2, -2}, {1, 0, 0});
+  if (const char* pose = std::getenv("SPLAT_LOD_POSE")) {
+    float x = 0, y = 0, z = 0, yaw = 0, pitch = 0;
+    char extra = 0;
+    ASSERT_EQ(std::sscanf(pose, "%f,%f,%f,%f,%f%c", &x, &y, &z, &yaw, &pitch, &extra), 5);
+    for (const float value : {x, y, z, yaw, pitch}) ASSERT_TRUE(std::isfinite(value));
+    camera.setPosition({x, y, z});
+    camera.setOrientation(yaw, pitch);
+  }
   SplatRenderer::Frame frame;
   frame.orderSource = SplatRenderer::OrderSource::gpu;
   frame.view = camera.viewMatrix();
   frame.cameraPosition = camera.position();
   frame.proj = splat::Mat4::perspective(65.0f * 3.14159265f / 180, 1206.0f / 2622, 0.05f, 200);
   frame.shDegree = 1;
+  printf("[ LOD CAMERA ] {\"view\":[");
+  for (size_t i = 0; i < 16; ++i) printf("%s%.9g", i ? "," : "", frame.view.m[i]);
+  printf("],\"projection\":[");
+  for (size_t i = 0; i < 16; ++i) printf("%s%.9g", i ? "," : "", frame.proj.m[i]);
+  printf("],\"viewport\":[1206,2622]}\n");
   const SplatRenderer::Range range{0, renderer->world()->count};
   frame.ranges = &range;
   frame.rangeCount = 1;

@@ -1,0 +1,48 @@
+name: SplatKitDev
+options:
+  bundleIdPrefix: com.splatkit
+  deploymentTarget:
+    iOS: "17.0"
+  xcodeVersion: "26.0"
+  createIntermediateGroups: true
+targets:
+  SplatKitDev:
+    type: application
+    platform: iOS
+    sources:
+      - path: SplatKitDev
+        excludes:
+          - Resources/iss_10M.ply
+          - Resources/iss_10M.spz
+      - path: ../../packages/splatkit-ios/Sources/SplatKit
+    settings:
+      base:
+        DEVELOPMENT_TEAM: R2NGS9RVQ9
+        CODE_SIGN_STYLE: Automatic
+        PRODUCT_BUNDLE_IDENTIFIER: com.splatkit.devapp
+        SWIFT_VERSION: "5.0"
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_FILE: SplatKitDev/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SWIFT_OBJC_BRIDGING_HEADER: SplatKitDev/BridgingHeader.h
+        HEADER_SEARCH_PATHS:
+          - $(SRCROOT)/../../packages/splatkit-ios/Sources/SplatKitCore/include
+        LIBRARY_SEARCH_PATHS:
+          - $(SRCROOT)/../../build/ios/lib
+        OTHER_LDFLAGS:
+          - -lsplatkit_ios
+          - -lsplatkit_engine
+          - -lsplat_core
+          - -lspz
+          - -lzstd
+          - -lz
+          - -lc++
+        ENABLE_BITCODE: NO
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+    dependencies:
+      - sdk: Metal.framework
+      - sdk: QuartzCore.framework
+      - sdk: CoreMotion.framework
+      - sdk: ImageIO.framework
+      - sdk: CoreGraphics.framework
+      - sdk: UniformTypeIdentifiers.framework

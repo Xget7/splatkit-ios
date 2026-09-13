@@ -149,7 +149,7 @@ void MetalSplatRenderer::setLinearBlending(bool linear) {
 
 void MetalSplatRenderer::setVsync(bool vsync) {
   // Presentation is tied to the display link that drives the frames; a benchmark
-  // without vsync would need its own loop. Frame times are the GPU times either way.
+  // without vsync would need its own loop. Host frame intervals and GPU times differ.
   (void)vsync;
 }
 
