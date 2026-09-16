@@ -1,0 +1,628 @@
+{
+  "date": "2026-09-16",
+  "status": "render_policy_path_verified_short_phone_runs_below_30fps",
+  "device": {
+    "model": "iPhone 17 Pro",
+    "gpu": "Apple A19 Pro GPU, Metal",
+    "physical": true
+  },
+  "build": {
+    "commit": "6237bb8",
+    "note": "Release apps/ios-dev with a startup log of the applied policy and capabilities",
+    "executable_sha256": "7b94238a11c4491c19c4bb2072d241f54e6a3c27d57f4e03abe69da220ee75cf"
+  },
+  "configuration": {
+    "world": "iss_10M-sse-depth10-sh1.lodsplat",
+    "loaded_splats": 9999999,
+    "resident_nodes": 11744642,
+    "selected_capacity": 2200000,
+    "sh": 1,
+    "viewport": [
+      1206,
+      2622
+    ],
+    "render_scale": 1,
+    "metal_culling": true,
+    "tile_raster": true,
+    "orbit_axis": "X",
+    "orbit_horizontal": true,
+    "radius_m": 45,
+    "speed_degrees_s": 4,
+    "start_degrees": 90,
+    "duration_s": 30,
+    "order": "back to back as listed",
+    "launch": "--world iss_10M-sse-depth10-sh1.lodsplat --sh 1 --budget 2200000 --scale 1 --radius 45 --speed 4 --start 90 --metal-culling 1 --tile-raster 1 --keep-awake 1 --run-seconds 30 --depth-key-bits <16|32> --min-pixel-radius <px>"
+  },
+  "runs": [
+    {
+      "run": "a16-r1",
+      "policy": {
+        "sortDepth": 16,
+        "subpixelThreshold": 1.0
+      },
+      "renderer_log": "Metal policy: 16-bit sort keys, 1.000px sub-pixel radius",
+      "first_frame_ready_s": 3.693,
+      "run_stopped": "duration-complete",
+      "sample_count": 13,
+      "samples": [
+        {
+          "fps": 29.0,
+          "gpu_ms": 34.7,
+          "sort_ms": 23.7,
+          "select_ms": 9.6,
+          "drawn": 1958912,
+          "selected": 2199968
+        },
+        {
+          "fps": 26.7,
+          "gpu_ms": 62.5,
+          "sort_ms": 21.0,
+          "select_ms": 12.0,
+          "drawn": 1964479,
+          "selected": 2199992
+        },
+        {
+          "fps": 24.0,
+          "gpu_ms": 69.3,
+          "sort_ms": 22.0,
+          "select_ms": 14.0,
+          "drawn": 1970581,
+          "selected": 2199982
+        },
+        {
+          "fps": 22.3,
+          "gpu_ms": 75.6,
+          "sort_ms": 24.1,
+          "select_ms": 11.7,
+          "drawn": 1971030,
+          "selected": 2199992
+        },
+        {
+          "fps": 21.6,
+          "gpu_ms": 55.5,
+          "sort_ms": 21.4,
+          "select_ms": 12.3,
+          "drawn": 1973967,
+          "selected": 2199977
+        },
+        {
+          "fps": 20.8,
+          "gpu_ms": 57.3,
+          "sort_ms": 21.5,
+          "select_ms": 13.1,
+          "drawn": 1975538,
+          "selected": 2199999
+        },
+        {
+          "fps": 20.7,
+          "gpu_ms": 58.4,
+          "sort_ms": 21.7,
+          "select_ms": 12.6,
+          "drawn": 1964385,
+          "selected": 2199997
+        },
+        {
+          "fps": 21.0,
+          "gpu_ms": 57.6,
+          "sort_ms": 21.7,
+          "select_ms": 12.7,
+          "drawn": 1962834,
+          "selected": 2199993
+        },
+        {
+          "fps": 19.0,
+          "gpu_ms": 76.4,
+          "sort_ms": 31.5,
+          "select_ms": 12.5,
+          "drawn": 1919820,
+          "selected": 2199995
+        },
+        {
+          "fps": 21.4,
+          "gpu_ms": 77.7,
+          "sort_ms": 22.8,
+          "select_ms": 12.9,
+          "drawn": 1953003,
+          "selected": 2199982
+        },
+        {
+          "fps": 21.4,
+          "gpu_ms": 78.6,
+          "sort_ms": 23.9,
+          "select_ms": 13.0,
+          "drawn": 1952450,
+          "selected": 2199997
+        },
+        {
+          "fps": 20.9,
+          "gpu_ms": 80.5,
+          "sort_ms": 24.5,
+          "select_ms": 13.0,
+          "drawn": 1948103,
+          "selected": 2199998
+        },
+        {
+          "fps": 21.0,
+          "gpu_ms": 78.5,
+          "sort_ms": 22.7,
+          "select_ms": 14.8,
+          "drawn": 1942566,
+          "selected": 2199999
+        }
+      ],
+      "mean": {
+        "fps": 22.29,
+        "gpu_ms": 66.35,
+        "sort_ms": 23.27,
+        "select_ms": 12.63,
+        "drawn": 1958282.15,
+        "selected": 2199990.08
+      },
+      "min_fps": 19.0,
+      "max_fps": 29.0,
+      "sampled_peak_bytes": 2828110600,
+      "footprint_after_stop_bytes": 1076496128,
+      "metal_allocated_bytes": 1062797312,
+      "thermal_states": [
+        1
+      ],
+      "gpu_errors": 0,
+      "policy_rejections": 0
+    },
+    {
+      "run": "b32-r1",
+      "policy": {
+        "sortDepth": 32,
+        "subpixelThreshold": 1.0
+      },
+      "renderer_log": "Metal policy: 32-bit sort keys, 1.000px sub-pixel radius",
+      "first_frame_ready_s": 1.924,
+      "run_stopped": "duration-complete",
+      "sample_count": 14,
+      "samples": [
+        {
+          "fps": 25.3,
+          "gpu_ms": 68.7,
+          "sort_ms": 29.5,
+          "select_ms": 10.6,
+          "drawn": 1957792,
+          "selected": 2199951
+        },
+        {
+          "fps": 23.6,
+          "gpu_ms": 71.1,
+          "sort_ms": 32.7,
+          "select_ms": 10.4,
+          "drawn": 1962664,
+          "selected": 2199969
+        },
+        {
+          "fps": 20.9,
+          "gpu_ms": 81.1,
+          "sort_ms": 31.2,
+          "select_ms": 13.2,
+          "drawn": 1968954,
+          "selected": 2199978
+        },
+        {
+          "fps": 19.9,
+          "gpu_ms": 81.1,
+          "sort_ms": 39.4,
+          "select_ms": 12.4,
+          "drawn": 1971130,
+          "selected": 2199983
+        },
+        {
+          "fps": 19.1,
+          "gpu_ms": 84.2,
+          "sort_ms": 40.7,
+          "select_ms": 12.7,
+          "drawn": 1972817,
+          "selected": 2199983
+        },
+        {
+          "fps": 18.4,
+          "gpu_ms": 88.6,
+          "sort_ms": 41.0,
+          "select_ms": 13.0,
+          "drawn": 1973401,
+          "selected": 2200000
+        },
+        {
+          "fps": 18.0,
+          "gpu_ms": 89.7,
+          "sort_ms": 42.4,
+          "select_ms": 13.1,
+          "drawn": 1965351,
+          "selected": 2199849
+        },
+        {
+          "fps": 17.7,
+          "gpu_ms": 90.9,
+          "sort_ms": 42.6,
+          "select_ms": 14.1,
+          "drawn": 1967101,
+          "selected": 2200000
+        },
+        {
+          "fps": 17.6,
+          "gpu_ms": 91.9,
+          "sort_ms": 43.4,
+          "select_ms": 13.3,
+          "drawn": 1957272,
+          "selected": 2199983
+        },
+        {
+          "fps": 17.7,
+          "gpu_ms": 91.9,
+          "sort_ms": 42.2,
+          "select_ms": 14.4,
+          "drawn": 1951551,
+          "selected": 2199984
+        },
+        {
+          "fps": 17.6,
+          "gpu_ms": 91.9,
+          "sort_ms": 43.4,
+          "select_ms": 13.8,
+          "drawn": 1953979,
+          "selected": 2199976
+        },
+        {
+          "fps": 17.5,
+          "gpu_ms": 92.5,
+          "sort_ms": 42.6,
+          "select_ms": 14.2,
+          "drawn": 1948444,
+          "selected": 2199986
+        },
+        {
+          "fps": 17.6,
+          "gpu_ms": 91.8,
+          "sort_ms": 43.5,
+          "select_ms": 13.1,
+          "drawn": 1946000,
+          "selected": 2200000
+        },
+        {
+          "fps": 17.6,
+          "gpu_ms": 90.8,
+          "sort_ms": 42.5,
+          "select_ms": 13.5,
+          "drawn": 1938065,
+          "selected": 2200000
+        }
+      ],
+      "mean": {
+        "fps": 19.18,
+        "gpu_ms": 86.16,
+        "sort_ms": 39.79,
+        "select_ms": 12.99,
+        "drawn": 1959608.64,
+        "selected": 2199974.43
+      },
+      "min_fps": 17.5,
+      "max_fps": 25.3,
+      "sampled_peak_bytes": 2828651296,
+      "footprint_after_stop_bytes": 1348339432,
+      "metal_allocated_bytes": 1063256064,
+      "thermal_states": [
+        1
+      ],
+      "gpu_errors": 0,
+      "policy_rejections": 0
+    },
+    {
+      "run": "a16-r1-repeat",
+      "policy": {
+        "sortDepth": 16,
+        "subpixelThreshold": 1.0
+      },
+      "renderer_log": "Metal policy: 16-bit sort keys, 1.000px sub-pixel radius",
+      "first_frame_ready_s": 3.178,
+      "run_stopped": "duration-complete",
+      "sample_count": 13,
+      "samples": [
+        {
+          "fps": 30.8,
+          "gpu_ms": 32.4,
+          "sort_ms": 22.4,
+          "select_ms": 10.8,
+          "drawn": 1958805,
+          "selected": 2199999
+        },
+        {
+          "fps": 28.0,
+          "gpu_ms": 39.8,
+          "sort_ms": 20.7,
+          "select_ms": 9.9,
+          "drawn": 1964196,
+          "selected": 2199941
+        },
+        {
+          "fps": 24.8,
+          "gpu_ms": 67.7,
+          "sort_ms": 23.8,
+          "select_ms": 10.8,
+          "drawn": 1970638,
+          "selected": 2199964
+        },
+        {
+          "fps": 23.0,
+          "gpu_ms": 72.7,
+          "sort_ms": 24.0,
+          "select_ms": 11.1,
+          "drawn": 1970986,
+          "selected": 2199982
+        },
+        {
+          "fps": 22.4,
+          "gpu_ms": 74.6,
+          "sort_ms": 23.3,
+          "select_ms": 11.9,
+          "drawn": 1973661,
+          "selected": 2199933
+        },
+        {
+          "fps": 21.5,
+          "gpu_ms": 56.1,
+          "sort_ms": 21.6,
+          "select_ms": 12.5,
+          "drawn": 1975544,
+          "selected": 2199987
+        },
+        {
+          "fps": 21.3,
+          "gpu_ms": 55.6,
+          "sort_ms": 21.8,
+          "select_ms": 12.4,
+          "drawn": 1964451,
+          "selected": 2199933
+        },
+        {
+          "fps": 21.5,
+          "gpu_ms": 55.5,
+          "sort_ms": 21.3,
+          "select_ms": 12.2,
+          "drawn": 1963603,
+          "selected": 2199997
+        },
+        {
+          "fps": 22.1,
+          "gpu_ms": 72.9,
+          "sort_ms": 20.7,
+          "select_ms": 13.7,
+          "drawn": 1913020,
+          "selected": 2200000
+        },
+        {
+          "fps": 22.3,
+          "gpu_ms": 53.7,
+          "sort_ms": 21.2,
+          "select_ms": 12.3,
+          "drawn": 1953032,
+          "selected": 2199982
+        },
+        {
+          "fps": 22.1,
+          "gpu_ms": 53.8,
+          "sort_ms": 20.7,
+          "select_ms": 13.7,
+          "drawn": 1952250,
+          "selected": 2199991
+        },
+        {
+          "fps": 21.7,
+          "gpu_ms": 57.1,
+          "sort_ms": 20.2,
+          "select_ms": 13.9,
+          "drawn": 1948064,
+          "selected": 2199994
+        },
+        {
+          "fps": 21.6,
+          "gpu_ms": 55.1,
+          "sort_ms": 21.7,
+          "select_ms": 13.9,
+          "drawn": 1942730,
+          "selected": 2199972
+        }
+      ],
+      "mean": {
+        "fps": 23.32,
+        "gpu_ms": 57.46,
+        "sort_ms": 21.8,
+        "select_ms": 12.24,
+        "drawn": 1957767.69,
+        "selected": 2199975.0
+      },
+      "min_fps": 21.3,
+      "max_fps": 30.8,
+      "sampled_peak_bytes": 2827848480,
+      "footprint_after_stop_bytes": 1075627776,
+      "metal_allocated_bytes": 1062797312,
+      "thermal_states": [
+        1
+      ],
+      "gpu_errors": 0,
+      "policy_rejections": 0
+    },
+    {
+      "run": "c16-r05",
+      "policy": {
+        "sortDepth": 16,
+        "subpixelThreshold": 0.5
+      },
+      "renderer_log": "Metal policy: 16-bit sort keys, 0.500px sub-pixel radius",
+      "first_frame_ready_s": 1.929,
+      "run_stopped": "duration-complete",
+      "sample_count": 14,
+      "samples": [
+        {
+          "fps": 30.6,
+          "gpu_ms": 33.0,
+          "sort_ms": 23.3,
+          "select_ms": 8.7,
+          "drawn": 2024823,
+          "selected": 2199930
+        },
+        {
+          "fps": 28.8,
+          "gpu_ms": 58.2,
+          "sort_ms": 25.3,
+          "select_ms": 9.6,
+          "drawn": 2026170,
+          "selected": 2199987
+        },
+        {
+          "fps": 25.2,
+          "gpu_ms": 46.3,
+          "sort_ms": 21.2,
+          "select_ms": 10.7,
+          "drawn": 2027789,
+          "selected": 2199999
+        },
+        {
+          "fps": 23.2,
+          "gpu_ms": 72.5,
+          "sort_ms": 24.5,
+          "select_ms": 11.5,
+          "drawn": 2025156,
+          "selected": 2199999
+        },
+        {
+          "fps": 22.3,
+          "gpu_ms": 74.6,
+          "sort_ms": 23.8,
+          "select_ms": 11.9,
+          "drawn": 2024429,
+          "selected": 2199973
+        },
+        {
+          "fps": 21.4,
+          "gpu_ms": 78.0,
+          "sort_ms": 21.7,
+          "select_ms": 14.6,
+          "drawn": 2024177,
+          "selected": 2199995
+        },
+        {
+          "fps": 21.3,
+          "gpu_ms": 77.8,
+          "sort_ms": 22.6,
+          "select_ms": 14.4,
+          "drawn": 2016418,
+          "selected": 2199969
+        },
+        {
+          "fps": 21.3,
+          "gpu_ms": 77.1,
+          "sort_ms": 22.5,
+          "select_ms": 14.7,
+          "drawn": 2022083,
+          "selected": 2199933
+        },
+        {
+          "fps": 21.6,
+          "gpu_ms": 76.6,
+          "sort_ms": 23.8,
+          "select_ms": 12.0,
+          "drawn": 2017701,
+          "selected": 2199999
+        },
+        {
+          "fps": 22.1,
+          "gpu_ms": 75.8,
+          "sort_ms": 22.9,
+          "select_ms": 12.2,
+          "drawn": 2019029,
+          "selected": 2199983
+        },
+        {
+          "fps": 22.0,
+          "gpu_ms": 54.6,
+          "sort_ms": 21.2,
+          "select_ms": 12.1,
+          "drawn": 2023632,
+          "selected": 2199995
+        },
+        {
+          "fps": 21.7,
+          "gpu_ms": 57.0,
+          "sort_ms": 21.3,
+          "select_ms": 12.3,
+          "drawn": 2019811,
+          "selected": 2199997
+        },
+        {
+          "fps": 21.4,
+          "gpu_ms": 56.7,
+          "sort_ms": 21.6,
+          "select_ms": 13.5,
+          "drawn": 2018078,
+          "selected": 2199998
+        },
+        {
+          "fps": 21.5,
+          "gpu_ms": 54.9,
+          "sort_ms": 22.4,
+          "select_ms": 12.6,
+          "drawn": 2008530,
+          "selected": 2199999
+        }
+      ],
+      "mean": {
+        "fps": 23.17,
+        "gpu_ms": 63.79,
+        "sort_ms": 22.72,
+        "select_ms": 12.2,
+        "drawn": 2021273.29,
+        "selected": 2199982.57
+      },
+      "min_fps": 21.3,
+      "max_fps": 30.6,
+      "sampled_peak_bytes": 2828061520,
+      "footprint_after_stop_bytes": 1075676976,
+      "metal_allocated_bytes": 1062797312,
+      "thermal_states": [
+        1
+      ],
+      "gpu_errors": 0,
+      "policy_rejections": 0
+    }
+  ],
+  "comparison": {
+    "source": "2026-09-12-iss-radix16.json",
+    "env_variable_fps_32_to_16": [
+      18.92,
+      23.36
+    ],
+    "note": "2026-09-12 used a vertical 20 s orbit, so means are indicative, not an A/B"
+  },
+  "kitchen_policy_smoke": {
+    "world": "kitchen_500k.spz",
+    "pose": "default, orbit 0",
+    "capture_after_s": 8,
+    "drawn": {
+      "default": 96029,
+      "metal_culling_0.5px": 73906,
+      "1.2px": 73893,
+      "3px": 73648,
+      "8px": 70556
+    },
+    "psnr_db_vs_default": {
+      "repeat": 97.73,
+      "sortDepth16": 43.11
+    },
+    "psnr_db_vs_culling_0.5px": {
+      "1.2px": 65.19,
+      "3px": 63.96,
+      "8px": 42.11
+    }
+  },
+  "limitations": [
+    "Short runs, not sustained benchmarks.",
+    "Rejected and preparation-failed policy outcomes are covered by engine tests only.",
+    "The harness timeout ended each console session with signal 14 after the run had stopped."
+  ]
+}

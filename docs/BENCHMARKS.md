@@ -3,7 +3,7 @@
 Every optimisation starts with a measurement of the state before it, recorded here, and ends with the same measurement after.
 Rows are dated evidence for the build they name, not claims about current performance.
 
-## iPhone Metal: ISS experiments, 2026-09-11/12
+## iPhone Metal: ISS experiments, 2026-09-11 to 16
 
 Physical A19 Pro snapshot means below; Mac checks are separate.
 Command intervals overlap: HUD sort includes visibility/radix, not isolated sort.
@@ -18,8 +18,11 @@ Exact settings, hashes, memory samples and limitations remain in the linked arti
 | LOD hardware / hybrid | 23.11 / 18.92 | [JSON](benchmarks/2026-09-12-iss-lod-hybrid.json) |
 | 16-bit radix | 23.36 | [JSON](benchmarks/2026-09-12-iss-radix16.json) |
 | Horizontal framing, 10 seconds | 28.12 | [JSON](benchmarks/2026-09-12-iss-horizontal-smoke.json) |
+| `renderPolicy` 16-bit, 30 seconds, twice | 22.29 / 23.32 | [JSON](benchmarks/2026-09-16-iss-render-policy-phone.json) |
+| `renderPolicy` 32-bit, 30 seconds | 19.18 | same |
 
 Horizontal framing changes the visible set; it is not a radix A/B.
+The `renderPolicy` rows ran back to back on an iPhone 17 Pro with sort depth and sub-pixel radius set per view instead of by environment variables.
 [Prepared startup](benchmarks/2026-09-12-iss-prepared-start.json) waits for GPU completion, not quality.
 [Initial Mac LOD](benchmarks/2026-09-12-iss-metal-lod.json) and [interior traversal](benchmarks/2026-09-12-iss-metal-lod-sse.json) retain rejected image comparisons and the uninstrumented signal-9 phone failure.
 Guarded measurements observed a ~3.54 GB process limit, not a guaranteed 5 GB.

@@ -3,7 +3,7 @@
 Notable changes to the SplatKit iOS SDK and the shared C++ engine it ships.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alphas may break APIs.
 
-## Unreleased
+## [0.1.0-alpha.3] - 2026-09-16
 
 ### Added
 
@@ -35,5 +35,6 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 - Native Metal SDK for iOS 17 and A14/M1 or newer, distributed as a SwiftPM device and simulator XCFramework.
 - GPU visibility and radix sorting, experimental LOD and hybrid screen tiles, asynchronous loading and first-frame readiness.
 
+[0.1.0-alpha.3]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.1
