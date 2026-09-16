@@ -27,7 +27,7 @@ enum class TileState : std::uint8_t {
 };
 
 // Decides, per frame, which resident tiles to draw, which tiles to load next and which
-// to drop (CONTEXT.md "Streaming", ADR 0015). First it picks the cover: the visible tiles
+// to drop (CONTEXT.md "Streaming"). First it picks the cover: the visible tiles
 // to show, refined biggest on screen first for as long as the children fit the slab, so
 // a scene too dense for the residency budget is shown at the finest level that fits
 // rather than left with holes. Then it walks the tileset down to that cover: a cover

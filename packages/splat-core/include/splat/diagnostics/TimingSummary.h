@@ -12,6 +12,7 @@ struct TimingSummary {
   double p50 = 0;
   double p95 = 0;
   double max = 0;
+  double p99 = 0;
 };
 
 // Summarises `millis`; an empty input gives a zero summary.

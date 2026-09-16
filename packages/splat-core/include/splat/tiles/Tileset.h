@@ -24,7 +24,7 @@ struct Tile {
   std::vector<std::uint32_t> children;  // indices into Tileset::tiles
 };
 
-// The index of a tiled world (CONTEXT.md, "Tileset"; ADR 0015).
+// The index of a tiled world (CONTEXT.md, "Tileset").
 struct Tileset {
   int shDegree = 0;
   std::size_t splatCount = 0;  // splats at level 0, the file's

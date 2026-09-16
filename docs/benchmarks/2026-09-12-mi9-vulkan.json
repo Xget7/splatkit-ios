@@ -1,0 +1,128 @@
+{
+  "date": "2026-09-12",
+  "environment": "physical Xiaomi Mi 9",
+  "gpu": "Adreno 640",
+  "vulkan": "1.1.128",
+  "driver": "0x801f6000",
+  "android": "11 / MIUI 12.5.1",
+  "build": "minified Release, validation off",
+  "resolution": [
+    1080,
+    2261
+  ],
+  "render_scale": 1,
+  "sh_degree": 0,
+  "sort_bits": 32,
+  "source": "modern_house_with_lush_landscaping_2m.spz",
+  "source_splats": 2000000,
+  "source_sha256": "fe32a5a66b7f5caaad793ab90a7ff7d7948f52ba360044170b4da04c3950ebad",
+  "collider_sha256": "a9ab04ad30947f85000fad460f7bcf7488dfb4b995a449a4124342c4b53d5467",
+  "camera": [
+    0,
+    0.73,
+    0,
+    0,
+    0
+  ],
+  "benchmark": "30-second turn in place after world-ready; gyro off; mailbox presentation; Android host frame scheduling remains",
+  "lod": "load-time default hierarchy, 2970075 resident nodes, selection capacity 1200000; unchanged quality settings across tail-skip A/B",
+  "stage_timings": "Means of ~2-second completed-frame log samples, not per-frame averages; null means not instrumented",
+  "process_pss_kib": 579266,
+  "process_rss_kib": 686792,
+  "android_thermal_status": 0,
+  "acceptance": "No perceptual metric/reference-image acceptance or sustained thermal certification. LOD parents/subpixel rejection remain approximate; no universal FPS guarantee.",
+  "runs": [
+    {
+      "variant": "full_source",
+      "local_start": "09-12 18:06:16.349",
+      "frames": 578,
+      "fps_mean": 19.2,
+      "frame_mean_ms": 52,
+      "frame_p95_ms": 66.8,
+      "gpu_mean_ms": 51.9,
+      "gpu_p95_ms": 59.6,
+      "sort_sample_mean_ms": 3.147,
+      "cull_sample_mean_ms": null,
+      "select_sample_mean_ms": 0,
+      "sample_count": 15,
+      "drawn_sample_range": [
+        44983,
+        125217
+      ],
+      "selected_sample_range": [
+        2000000,
+        2000000
+      ],
+      "end_gpu_celsius": 58.3
+    },
+    {
+      "variant": "lod_before_tail_skip",
+      "local_start": "09-12 18:10:34.401",
+      "frames": 721,
+      "fps_mean": 24,
+      "frame_mean_ms": 41.7,
+      "frame_p95_ms": 50.1,
+      "gpu_mean_ms": 41.6,
+      "gpu_p95_ms": 50,
+      "sort_sample_mean_ms": 3.173,
+      "cull_sample_mean_ms": 19.147,
+      "select_sample_mean_ms": 3.64,
+      "sample_count": 15,
+      "drawn_sample_range": [
+        45310,
+        121828
+      ],
+      "selected_sample_range": [
+        50909,
+        132148
+      ],
+      "end_gpu_celsius": 58.7
+    },
+    {
+      "variant": "lod_after_tail_skip",
+      "local_start": "09-12 18:15:00.531",
+      "frames": 1243,
+      "fps_mean": 41.4,
+      "frame_mean_ms": 24.1,
+      "frame_p95_ms": 33.4,
+      "gpu_mean_ms": 23.9,
+      "gpu_p95_ms": 32.6,
+      "sort_sample_mean_ms": 3.18,
+      "cull_sample_mean_ms": 1.807,
+      "select_sample_mean_ms": 3.653,
+      "sample_count": 15,
+      "drawn_sample_range": [
+        44999,
+        124889
+      ],
+      "selected_sample_range": [
+        52411,
+        136761
+      ],
+      "end_gpu_celsius": 64.5
+    },
+    {
+      "variant": "lod_after_tail_skip",
+      "local_start": "09-12 18:16:05.115",
+      "frames": 1244,
+      "fps_mean": 41.4,
+      "frame_mean_ms": 24.1,
+      "frame_p95_ms": 33.4,
+      "gpu_mean_ms": 23.9,
+      "gpu_p95_ms": 32.5,
+      "sort_sample_mean_ms": 3.173,
+      "cull_sample_mean_ms": 1.813,
+      "select_sample_mean_ms": 3.64,
+      "sample_count": 15,
+      "drawn_sample_range": [
+        44920,
+        124804
+      ],
+      "selected_sample_range": [
+        50891,
+        135651
+      ],
+      "end_gpu_celsius": 63.3
+    }
+  ]
+}

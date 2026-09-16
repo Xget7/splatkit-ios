@@ -76,10 +76,13 @@ LodSelectionData buildLodSelectionData(const LodTree& tree) {
     auto& cluster = out.clusters[k];
     const float* parent = &cloud.positions[cluster.node * 3];
     const float* parentCov = &cloud.covariances[cluster.node * 6];
-    std::array<float, 3> lo, hi;
+    std::array<float, 3> lo;
+    std::array<float, 3> hi;
     lo.fill(std::numeric_limits<float>::max());
     hi.fill(std::numeric_limits<float>::lowest());
-    float weightedVariance = 0, weightSum = 0, coincidentTransmittance = 1;
+    float weightedVariance = 0;
+    float weightSum = 0;
+    float coincidentTransmittance = 1;
     cluster.opacity = std::clamp(cloud.alphas[cluster.node], 0.0f, 1.0f);
     auto include = [&](uint32_t index, const float* center, const float* extent, float error,
                        float variance, uint32_t leaves) {

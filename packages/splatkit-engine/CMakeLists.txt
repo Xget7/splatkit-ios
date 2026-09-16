@@ -21,6 +21,7 @@ endif()
 add_library(splatkit_engine STATIC
   src/Log.cpp
   src/rendering/GpuLayout.cpp
+  src/rendering/RenderPolicy.cpp
   src/camera/WalkCamera.cpp
   src/diagnostics/Benchmark.cpp
   src/diagnostics/StatsPublisher.cpp

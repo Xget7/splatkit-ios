@@ -39,7 +39,7 @@ void truncatePackedSh(spz::PackedGaussians& packed, int requestedDegree) {
   const int target = std::clamp(requestedDegree, 0, packed.shDegree);
   if (target >= packed.shDegree) return;
 
-  const std::size_t pointCount = static_cast<std::size_t>(packed.numPoints);
+  const auto pointCount = static_cast<std::size_t>(packed.numPoints);
   const std::size_t oldStride =
       static_cast<std::size_t>((packed.shDegree + 1) * (packed.shDegree + 1) - 1) * 3;
   const std::size_t newStride = static_cast<std::size_t>((target + 1) * (target + 1) - 1) * 3;
@@ -47,8 +47,7 @@ void truncatePackedSh(spz::PackedGaussians& packed, int requestedDegree) {
     std::vector<std::uint8_t>().swap(packed.sh);
   } else {
     for (std::size_t i = 0; i < pointCount; ++i) {
-      std::memmove(packed.sh.data() + i * newStride, packed.sh.data() + i * oldStride,
-                   newStride);
+      std::memmove(packed.sh.data() + i * newStride, packed.sh.data() + i * oldStride, newStride);
     }
     packed.sh.resize(pointCount * newStride);
     packed.sh.shrink_to_fit();

@@ -51,6 +51,23 @@ class HarnessTest(unittest.TestCase):
     def test_validation_error_fails(self):
         self.assertEqual(self.verdict(self.ready() + log("VUID-vkCmdDraw-None-02700"))["status"], "failed")
 
+    def test_lod_residency_is_not_original_source_count(self):
+        text = (log("Vulkan device: Adreno 640")
+                + log("uploaded 750000 splats in 10 ms, sh degree 0")
+                + log("world ready: 500000 splats")
+                + log("100 drawn of 150 selected of 750000"))
+        self.assertEqual(self.verdict(text)["status"], "passed")
+        self.assertEqual(self.verdict(text.replace("of 750000", "of 800000"))["status"], "failed")
+
+    def test_previous_world_draw_cannot_validate_new_load(self):
+        text = (log("Vulkan device: Adreno 640")
+                + log("100 drawn of 500000 selected of 500000")
+                + log("world ready: 500000 splats"))
+        self.assertEqual(self.verdict(text)["status"], "failed")
+
+    def test_gpu_rejection_fails_even_after_a_valid_draw(self):
+        self.assertEqual(self.verdict(self.ready() + log("Vulkan GPU frame rejected: diagnostic bits 0x1"))["status"], "failed")
+
     def test_plan_never_installs_or_launches(self):
         steps = harness.plan("android", 2)
         self.assertEqual(steps[0]["argv"], ["./gradlew", "--console=plain",

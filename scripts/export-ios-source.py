@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Export reviewed SDK paths into a new directory without touching the Git index."""
 import hashlib
+import argparse
 import json
 from pathlib import Path
 import re
@@ -17,13 +18,41 @@ FILES = (
     ".github/workflows/ios.yml", ".github/workflows/engine.yml", ".github/workflows/core.yml",
     "docs/BENCHMARKS.md", "docs/benchmarks",
 )
+# React Native publishes this package at its repository root, with distribution/ files beside it.
+RN_PACKAGE = "packages/react-native-splatkit"
+# iOS publishes these files at its repository root; they link from there.
+IOS_DISTRIBUTION = "packages/splatkit-ios/distribution/"
 FORBIDDEN = {".ply", ".spz", ".glb", ".lodsplat", ".a", ".so", ".dylib", ".pem", ".p12", ".key", ".keystore", ".mobileprovision"}
 SECRET = re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AKIA[A-Z0-9]{16}")
 
 
+def published(platform, name):
+    """The path a repository file takes in the platform's public repository."""
+    if platform == "ios" and name.startswith(IOS_DISTRIBUTION):
+        return name[len(IOS_DISTRIBUTION):]
+    prefix = RN_PACKAGE + "/"
+    if platform != "react-native" or not name.startswith(prefix):
+        return name
+    return name[len(prefix):].removeprefix("distribution/")
+
+
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--platform", choices=("ios", "android", "react-native"), default="ios")
+    platform = parser.parse_args().platform
+    packages, files = PACKAGES, FILES
+    if platform == "react-native":
+        packages, files = (RN_PACKAGE,), ("LICENSE",)
+    if platform == "android":
+        packages += ("packages/splatkit-android",)
+        files += ("README.md", "CONTRIBUTING.md", "AGENTS.md", "CHANGELOG.md", ".clang-tidy",
+                  "apps/android-dev", "scripts/lint-cpp.sh", "scripts/fetch-validation-layers.sh",
+                  "scripts/check_android_alignment.py", "scripts/benchmark_report.py",
+                  "scripts/compare_captures.py", "scripts/requirements-validation.txt", "scripts/tests",
+                  ".github/workflows/android.yml", ".github/workflows/lint.yml",
+                  "docs/AGENT_HARNESS.md", "docs/VALIDATION.md")
     names = subprocess.check_output(
-        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *PACKAGES, *FILES],
+        ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *packages, *files],
         cwd=ROOT).decode().split("\0")
     selected = {}
     for name in sorted(set(names) - {""}):
@@ -36,10 +65,11 @@ def main():
             raise ValueError(f"oversized export file: {name}")
         if SECRET.search(source.read_bytes()):
             raise ValueError(f"secret-pattern match, review required: {name}")
-        selected[name] = source
-    for name in ("README.md", "CONTRIBUTING.md", "AGENTS.md"):
-        selected[name] = ROOT / "packages/splatkit-ios/distribution" / name
-    destination = Path(tempfile.mkdtemp(prefix="splatkit-ios-public-"))
+        target = published(platform, name)
+        if target in selected:
+            raise ValueError(f"two files publish to {target}")
+        selected[target] = source
+    destination = Path(tempfile.mkdtemp(prefix=f"splatkit-{platform}-public-"))
     manifest = {}
     for name, source in selected.items():
         target = destination / name

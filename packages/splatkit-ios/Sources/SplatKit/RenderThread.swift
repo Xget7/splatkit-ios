@@ -186,6 +186,51 @@ final class RenderThread {
     func setShDegree(_ degree: Int) { post { [self] in engine?.setShDegree(Int32(degree)) } }
     func startBenchmark(_ seconds: Float) { post { [self] in engine?.startBenchmark(seconds) } }
 
+    // Policy and capabilities.
+
+    /// The policy applied to the engine, cached for cheap reads off the render thread.
+    private var appliedPolicy = RenderThread.defaultPolicy()
+    var renderPolicy: SKRenderPolicy { appliedPolicy }
+
+    /// Re-validates and applies a policy on the render thread. Keeps the previous policy
+    /// and returns false when the request is invalid or preparation fails.
+    @discardableResult
+    func applyRenderPolicy(_ policy: SKRenderPolicy) -> Bool {
+        var accepted = false
+        var reason: NSString?
+        var warnings: NSArray?
+        sync { [self] in
+            guard let engine else { return }
+            accepted = engine.applyRenderPolicy(policy, reason: &reason, warnings: &warnings) == .applied
+            if accepted { appliedPolicy = engine.renderPolicy }
+        }
+        if !accepted {
+            NSLog("SplatKit policy rejected: %@", reason ?? "unknown")
+        } else if let list = warnings as? [String] {
+            for message in list { NSLog("SplatKit policy: %@", message) }
+        }
+        return accepted
+    }
+
+    /// Read-only; the engine has no setters for these after creation.
+    var deviceCapabilities: SKDeviceCapabilities {
+        engine?.deviceCapabilities ?? SKDeviceCapabilities()
+    }
+
+    private static func defaultPolicy() -> SKRenderPolicy {
+        var policy = SKRenderPolicy()
+        policy.raster = 0
+        policy.tileSize = 16
+        policy.lodErrorPixels = 1
+        policy.alphaThreshold = 1 / 255
+        policy.subpixelThreshold = 0.5
+        policy.enableFrustumCulling = true
+        policy.enableHiZOcclusion = false
+        policy.enableEarlyTermination = true
+        policy.sortDepth = 32
+        return policy
+    }
+
     var gpuDescription: String { engine?.gpuDescription ?? "" }
     func stats() -> SKSplatStats? { engine?.stats }
 }

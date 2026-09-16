@@ -1,5 +1,5 @@
 // splat-tile: partitions a Gaussian splat scene into tiles with offline levels of detail,
-// the form the engine streams (ADR 0015).
+// the form the engine streams.
 //
 //   splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--coarsen merge|select]
 //              [--prune-alpha T]

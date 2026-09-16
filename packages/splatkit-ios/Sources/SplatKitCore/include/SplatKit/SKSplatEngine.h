@@ -36,6 +36,61 @@ typedef struct {
   uint32_t hardwareTileCount;
 } SKSplatStats;
 
+/// The renderer-applicable policy. Mirror of the host contract: raster 0 hardware,
+/// 1 computeTile, 2 hybrid; tileSize 8/16/32; sortDepth 16/32.
+typedef struct {
+  uint32_t raster;
+  uint32_t tileSize;
+  float lodErrorPixels;
+  float alphaThreshold;
+  float subpixelThreshold;
+  BOOL enableFrustumCulling;
+  BOOL enableHiZOcclusion;
+  BOOL enableEarlyTermination;
+  uint32_t sortDepth;
+} SKRenderPolicy;
+
+/// Which policy fields this backend can apply. A false field resolves to `fallback`.
+typedef struct {
+  BOOL raster;
+  BOOL tileSize;
+  BOOL lodErrorPixels;
+  BOOL alphaThreshold;
+  BOOL subpixelThreshold;
+  BOOL enableFrustumCulling;
+  BOOL enableHiZOcclusion;
+  BOOL enableEarlyTermination;
+  BOOL sortDepth;
+  uint32_t tileSizeMask;
+  float minLodErrorPixels;
+  float maxLodErrorPixels;
+  float minSubpixelThreshold;
+  float maxSubpixelThreshold;
+} SKRenderPolicySupport;
+
+/// Resource ceilings and device features. Values come from the native adapter.
+typedef struct {
+  uint32_t maxLodCapacitySplats;
+  uint32_t minResidencyCapacitySplats;
+  uint32_t maxResidencyCapacitySplats;
+  BOOL supportsComputeTiles;
+  BOOL supportsHiZOcclusion;
+  BOOL supportsSubgroups;
+  uint32_t maxTextureDimension;
+  SKRenderPolicySupport policy;
+  SKRenderPolicy fallback;
+} SKDeviceCapabilities;
+
+/// How `applyRenderPolicy:` ended. Anything but applied keeps the previous policy.
+typedef NS_ENUM(NSInteger, SKRenderPolicyOutcome) {
+  /// Applied; `warnings` lists each unsupported choice that fell back.
+  SKRenderPolicyOutcomeApplied = 0,
+  /// The request was invalid.
+  SKRenderPolicyOutcomeInvalid = 1,
+  /// The request was valid but the backend could not prepare it.
+  SKRenderPolicyOutcomePreparationFailed = 2,
+};
+
 typedef NS_ENUM(NSInteger, SKSplatEvent) {
   SKSplatEventWorldReady = 0,
   SKSplatEventWorldFailed = 1,
@@ -74,6 +129,18 @@ typedef NS_ENUM(NSInteger, SKSplatEvent) {
 @property(nonatomic) SKCameraPose cameraPose;
 @property(nonatomic, readonly) SKSplatStats stats;
 @property(nonatomic, readonly) NSString* gpuDescription;
+
+/// The policy currently applied to this instance.
+@property(nonatomic, readonly) SKRenderPolicy renderPolicy;
+/// One capability query for this adapter: limits, features and accepted policy.
+@property(nonatomic, readonly) SKDeviceCapabilities deviceCapabilities;
+
+/// Re-validates and applies a policy to this instance only. An invalid request, or one
+/// the backend cannot prepare, keeps the previous policy and sets `reason`; otherwise
+/// `warnings` lists any unsupported choice that fell back. Render thread.
+- (SKRenderPolicyOutcome)applyRenderPolicy:(SKRenderPolicy)policy
+                                    reason:(NSString* _Nullable* _Nullable)reason
+                                  warnings:(NSArray<NSString*>* _Nullable* _Nullable)warnings;
 
 - (void)lookWithDeltaYaw:(float)deltaYaw deltaPitch:(float)deltaPitch;
 /// Scripted camera: from `position` looking at `target` with `up` at the top of the frame.

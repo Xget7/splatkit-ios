@@ -22,11 +22,18 @@ class MetalVisibility {
   bool create(id<MTLDevice> device, id<MTLLibrary> library, bool experiment = false,
               float minPixelRadius = 0.5f,
               MetalRadixSort::KeyBits depthBits = MetalRadixSort::KeyBits::Full32);
+  // Rebuilds the visibility pipelines for a new sub-pixel radius and/or key width,
+  // keeping every reserved buffer and the radix scratch. The key width and the shader's
+  // quantized flag must agree, so both move together. Render thread, while idle. On
+  // failure the previous radius and key width are restored.
+  bool reconfigure(float minPixelRadius, MetalRadixSort::KeyBits depthBits);
   // Space for every source splat, or an explicitly bounded GPU index list when
   // activeCapacity is nonzero. The latter must only be used with indexed encode.
   // Failure preserves the previous allocation.
   bool reserve(uint32_t capacity, uint32_t activeCapacity = 0);
   uint32_t capacity() const { return capacity_; }
+  MetalRadixSort::KeyBits depthBits() const { return depthBits_; }
+  bool tightCulling() const { return tightCulling_; }
 
   // Invalid ranges fail before encoding any work. Empty ranges produce an empty draw.
   // Caller owns uniforms/source buffers and must keep slot inputs unchanged until
@@ -59,8 +66,13 @@ class MetalVisibility {
   static constexpr uint32_t kMaxRanges = 65536;
   static constexpr int kShDegrees = 4;
 
+  bool createPipelines();
+
   id<MTLDevice> device_ = nil;
+  id<MTLLibrary> library_ = nil;
   MTLResourceOptions storage_ = MTLResourceStorageModeShared;
+  bool tightCulling_ = false;
+  float minPixelRadius_ = 0.5f;
   std::array<id<MTLComputePipelineState>, kShDegrees> visibility_{};
   std::array<id<MTLComputePipelineState>, kShDegrees> indexedVisibility_{};
   id<MTLComputePipelineState> prepareDraw_ = nil;
