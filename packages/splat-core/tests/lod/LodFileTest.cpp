@@ -24,11 +24,11 @@ LodTree fixture() {
 }
 class LodFileTest : public testing::Test {
  protected:
-  std::string path = testing::TempDir() + "/lod-file-" +
-                     std::to_string(reinterpret_cast<uintptr_t>(this)) + ".lodsplat";
-  void TearDown() override { std::remove(path.c_str()); }
+  std::string path_ = testing::TempDir() + "/lod-file-" +
+                      std::to_string(reinterpret_cast<uintptr_t>(this)) + ".lodsplat";
+  void TearDown() override { std::remove(path_.c_str()); }
   std::vector<uint8_t> bytes() {
-    auto file = MappedFile::open(path);
+    auto file = MappedFile::open(path_);
     if (!file) return {};
     return {file.value().data(), file.value().data() + file.value().size()};
   }
@@ -51,7 +51,7 @@ TEST_F(LodFileTest, OctreeMomentMatchRetainsLeavesAndBetweenMeanCovariance) {
 
 TEST_F(LodFileTest, BinaryRoundTripPreservesAllAttributesAndCanCapSH) {
   const auto t = fixture();
-  ASSERT_TRUE(writeLodSplat(t, path));
+  ASSERT_TRUE(writeLodSplat(t, path_));
   auto data = bytes();
   ASSERT_EQ(data.size(), 64u + t.nodeCount() * 100);
   auto loaded = decodeLodSplat(data.data(), data.size());
@@ -65,15 +65,15 @@ TEST_F(LodFileTest, BinaryRoundTripPreservesAllAttributesAndCanCapSH) {
   ASSERT_TRUE(dc);
   EXPECT_EQ(dc.value().nodes.shDegree, 0);
   EXPECT_TRUE(dc.value().nodes.sh.empty());
-  EXPECT_FALSE(writeLodSplat(t, path));
+  EXPECT_FALSE(writeLodSplat(t, path_));
   EXPECT_EQ(bytes(), data);  // an existing asset is never overwritten
 }
 
 TEST_F(LodFileTest, LoaderRecognizesHierarchyWithoutBuildingOrReorderingIt) {
-  ASSERT_TRUE(writeLodSplat(fixture(), path));
+  ASSERT_TRUE(writeLodSplat(fixture(), path_));
   SplatWorldLoader loader;
   loader.setBudget(123);
-  auto report = loader.loadWorldFile(path);
+  auto report = loader.loadWorldFile(path_);
   ASSERT_TRUE(report);
   EXPECT_EQ(report.value().splatCount, 2u);
   EXPECT_EQ(report.value().nodeCount, 3u);
@@ -112,7 +112,7 @@ TEST_F(LodFileTest, VersionTwoStoresInteriorBoundsErrorsAndLeafPackets) {
   EXPECT_GT(tree.selection.clusters[0].colorVariance, 0);
   EXPECT_EQ(tree.selection.clusters[0].subtreeLeaves, 2u);
   ASSERT_TRUE(validateLodTree(tree));
-  ASSERT_TRUE(writeLodSplat(tree, path));
+  ASSERT_TRUE(writeLodSplat(tree, path_));
   auto data = bytes();
   EXPECT_EQ(data[8], 2);
   EXPECT_EQ(data.size(), 64u + tree.nodeCount() * 100 + 64 + 8);
@@ -134,12 +134,12 @@ TEST_F(LodFileTest, VersionTwoStoresInteriorBoundsErrorsAndLeafPackets) {
 }
 
 TEST_F(LodFileTest, RejectsTruncationCyclesVersionAndInvalidCovarianceBeforeUse) {
-  ASSERT_TRUE(writeLodSplat(fixture(), path));
+  ASSERT_TRUE(writeLodSplat(fixture(), path_));
   const auto original = bytes();
-  for (size_t length : {size_t{0}, size_t{8}, size_t{63}, original.size() - 1})
+  for (const size_t length : {size_t{0}, size_t{8}, size_t{63}, original.size() - 1})
     EXPECT_FALSE(decodeLodSplat(original.data(), length));
-  for (size_t offset : {size_t{8}, size_t{12}, size_t{16}, size_t{24}, size_t{28}, size_t{64 + 16},
-                        size_t{64 + 20}}) {
+  for (const size_t offset : {size_t{8}, size_t{12}, size_t{16}, size_t{24}, size_t{28},
+                              size_t{64 + 16}, size_t{64 + 20}}) {
     auto data = original;
     data[offset] = 255;
     EXPECT_FALSE(decodeLodSplat(data.data(), data.size())) << offset;

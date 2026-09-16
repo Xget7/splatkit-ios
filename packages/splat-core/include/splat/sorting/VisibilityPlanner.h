@@ -8,7 +8,7 @@
 namespace splat {
 
 // Decides, frame by frame, whether the renderer asks the sorter for a new visible set
-// and how much wider than the view the cull keeps it (ADR 0009). The distance order does
+// and how much wider than the view the cull keeps it. The distance order does
 // not depend on where the camera looks, so moving asks for a sort and turning only for a
 // cull of the order the sorter has; the frames in between draw whatever order they have.
 //

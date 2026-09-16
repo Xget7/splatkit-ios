@@ -23,7 +23,7 @@ uint32_t u32(const uint8_t* p) {
 }
 float f32(const uint8_t* p) {
   const uint32_t bits = u32(p);
-  float f;
+  float f = 0;
   std::memcpy(&f, &bits, 4);
   return f;
 }
@@ -31,7 +31,7 @@ void putU32(uint8_t* p, uint32_t v) {
   for (int j = 0; j < 4; ++j) p[j] = static_cast<uint8_t>(v >> (8 * j));
 }
 void putF32(uint8_t* p, float f) {
-  uint32_t bits;
+  uint32_t bits = 0;
   std::memcpy(&bits, &f, 4);
   putU32(p, bits);
 }
@@ -57,7 +57,8 @@ Result<uint32_t> validateLodTree(const LodTree& tree) {
       return corrupt("LOD bounds invalid");
   std::vector<uint8_t> depths(n, 0);
   uint32_t deepest = 0;
-  size_t next = 1, leaves = 0;
+  size_t next = 1;
+  size_t leaves = 0;
   for (size_t i = 0; i < n; ++i) {
     if (i >= next) return corrupt("LOD has unreachable nodes");
     const LodNode& node = tree.layout[i];
@@ -87,14 +88,15 @@ Result<uint32_t> validateLodTree(const LodTree& tree) {
     }
   }
   if (next != n || leaves != tree.leafCount) return corrupt("LOD topology or leaf count invalid");
-  for (float value : c.sh)
+  for (const float value : c.sh)
     if (!std::isfinite(value)) return corrupt("LOD SH is non-finite");
   const auto& selection = tree.selection;
   if (!selection.clusters.empty()) {
     if (selection.clusters.size() != std::max(size_t{1}, n - leaves) ||
         selection.leaves.size() != leaves || selection.clusters[0].node != 0)
       return corrupt("LOD selection dimensions invalid");
-    size_t nextCluster = 1, nextLeaf = 0;
+    size_t nextCluster = 1;
+    size_t nextLeaf = 0;
     for (size_t k = 0; k < selection.clusters.size(); ++k) {
       const auto& cluster = selection.clusters[k];
       if (k >= nextCluster || cluster.node >= n || cluster.childStart != nextCluster ||
@@ -115,7 +117,9 @@ Result<uint32_t> validateLodTree(const LodTree& tree) {
       if (cluster.radius + 1e-5f * std::max(cluster.radius, 1.0f) < std::sqrt(radius2))
         return corrupt("LOD sphere does not enclose its bounds");
       const auto& original = tree.layout[cluster.node];
-      uint32_t ci = 0, li = 0, subtree = 0;
+      uint32_t ci = 0;
+      uint32_t li = 0;
+      uint32_t subtree = 0;
       for (uint32_t j = 0; j < std::max(original.childCount, 1u); ++j) {
         const uint32_t index = original.childCount ? original.childStart + j : cluster.node;
         const bool interior = tree.layout[index].childCount > 0;
@@ -126,8 +130,9 @@ Result<uint32_t> validateLodTree(const LodTree& tree) {
           if (child->node != index) return corrupt("LOD selection interior mapping invalid");
           subtree += child->subtreeLeaves;
         } else {
-          if (li >= cluster.leafCount || selection.leaves[cluster.leafStart + li++] != index)
+          if (li >= cluster.leafCount || selection.leaves[cluster.leafStart + li] != index)
             return corrupt("LOD selection leaf mapping invalid");
+          ++li;
           ++subtree;
         }
         const float reach = std::sqrt(2 * std::log(std::max(255.0f * c.alphas[index], 1.0f)));
@@ -162,8 +167,10 @@ Result<LodTree> decodeLodSplat(const uint8_t* data, size_t size, int maxShDegree
   if (version != 1 && version != 2)
     return Error{ErrorCode::unsupportedFormat, "unsupported LODSPLAT version"};
   const size_t n = u32(data + 12);
-  const uint32_t degree = u32(data + 20), depth = u32(data + 24);
-  const size_t clusters = u32(data + 28), leafRefs = u32(data + 56);
+  const uint32_t degree = u32(data + 20);
+  const uint32_t depth = u32(data + 24);
+  const size_t clusters = u32(data + 28);
+  const size_t leafRefs = u32(data + 56);
   if (n == 0 || n > kMaxNodes || degree > 3 || depth > kMaxDepth || clusters > n || leafRefs > n ||
       (version == 1 && (clusters || leafRefs || u32(data + 60))) ||
       (version == 2 && (!clusters || leafRefs != u32(data + 16) || u32(data + 60) != 64)))
@@ -241,7 +248,8 @@ Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path) {
     putF32(header.data() + 44 + j * 4, c.bounds.max[j]);
   }
   bool ok = std::fwrite(header.data(), 1, header.size(), file.get()) == header.size();
-  const size_t sh = shStride(c.shDegree), stride = 64 + sh * 4;
+  const size_t sh = shStride(c.shDegree);
+  const size_t stride = 64 + sh * 4;
   std::vector<uint8_t> block(stride * 4096);
   for (size_t start = 0; start < tree.nodeCount() && ok; start += 4096) {
     const size_t count = std::min(size_t{4096}, tree.nodeCount() - start);
@@ -264,7 +272,7 @@ Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path) {
     const size_t count = std::min(size_t{4096}, selection.clusters.size() - start);
     for (size_t k = 0; k < count; ++k)
       for (size_t j = 0; j < 16; ++j) {
-        uint32_t word;
+        uint32_t word = 0;
         std::memcpy(&word, reinterpret_cast<const uint8_t*>(&selection.clusters[start + k]) + j * 4,
                     4);
         putU32(block.data() + k * 64 + j * 4, word);

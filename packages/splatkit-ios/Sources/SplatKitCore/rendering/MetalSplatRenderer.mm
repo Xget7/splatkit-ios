@@ -46,34 +46,21 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
     uniform = metal::buffer(r->device_, sizeof(CameraUniform));
     if (uniform == nil) return nullptr;
   }
-  // Temporary internal opt-in, set before renderer creation by the dev app.
-  // Not a public SDK setting until device performance and quality are accepted.
+  // Temporary internal opt-in, set before renderer creation by the dev app. Not a public
+  // SDK setting until device performance and quality are accepted. The sub-pixel radius
+  // and the sort key width are per-instance policy applied through applyRenderPolicy.
   const char* experimentValue = std::getenv("SPLATKIT_METAL_CULLING_EXPERIMENT");
   const bool experiment = experimentValue != nullptr && std::strcmp(experimentValue, "1") == 0;
-  float minPixelRadius = 0.5f;
-  const char* radiusValue = std::getenv("SPLATKIT_METAL_MIN_PIXEL_RADIUS");
-  if (radiusValue != nullptr) {
-    char* end = nullptr;
-    const float value = std::strtof(radiusValue, &end);
-    if (end != radiusValue && *end == '\0' && std::isfinite(value) && value >= 0.0f)
-      minPixelRadius = value;
-    else
-      LOGW("invalid experimental pixel radius; using 0.5px");
-  }
-  const char* depthBits = std::getenv("SPLATKIT_METAL_DEPTH_KEY_BITS");
-  if (depthBits != nullptr && std::strcmp(depthBits, "16") == 0)
-    r->depthBits_ = MetalRadixSort::KeyBits::Low16;
-  else if (depthBits != nullptr && std::strcmp(depthBits, "32") != 0)
-    LOGW("invalid experimental depth key width; using 32 bits");
+  r->minPixelRadius_ = 0.5f;
+  r->depthBits_ = MetalRadixSort::KeyBits::Full32;
   r->gpuSort_ =
-      r->visibility_.create(r->device_, r->library_, experiment, minPixelRadius, r->depthBits_);
+      r->visibility_.create(r->device_, r->library_, experiment, r->minPixelRadius_, r->depthBits_);
   LOGI("Metal depth keys: %u bits, %u radix passes (uint32 scratch)",
        static_cast<uint32_t>(r->depthBits_), static_cast<uint32_t>(r->depthBits_) / 8);
-  r->minPixelRadius_ = minPixelRadius;
   if (experiment)
     LOGI("Metal culling experiment: opacity < 1/255, footprint bounds, %.2fpx, view depth, private "
          "scratch",
-         minPixelRadius);
+         r->minPixelRadius_);
   if (!r->gpuSort_) LOGW("GPU sort unavailable, sorting on the CPU");
   const char* tileValue = std::getenv("SPLATKIT_METAL_TILE_RASTER");
   if (r->gpuSort_ && tileValue != nullptr && std::strcmp(tileValue, "1") == 0) {
@@ -149,8 +136,62 @@ void MetalSplatRenderer::setLinearBlending(bool linear) {
 
 void MetalSplatRenderer::setVsync(bool vsync) {
   // Presentation is tied to the display link that drives the frames; a benchmark
-  // without vsync would need its own loop. Frame times are the GPU times either way.
+  // without vsync would need its own loop. Host frame intervals and GPU times differ.
   (void)vsync;
+}
+
+DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
+  DeviceCapabilities caps;
+  // MetalLOD caps a hierarchy at 2.2M nodes; the engine's residency window is [100k, 32M].
+  caps.limits.maxLodCapacitySplats = 2'200'000;
+  caps.limits.minResidencyCapacitySplats = 100'000;
+  caps.limits.maxResidencyCapacitySplats = 32'000'000;
+  // Hybrid screen tiles are the experimental tile raster, reported as it stands.
+  caps.supportsComputeTiles = computeRaster_;
+  caps.supportsHiZOcclusion = false;
+  caps.supportsSubgroups = gpuSort_;
+  // Metal exposes no texture-dimension query; Apple family 7, the minimum this renderer
+  // accepts, supports 16384x16384.
+  caps.maxTextureDimension = device_ != nil ? 16384u : 0u;
+  RenderPolicySupport& policy = caps.policy;
+  policy.fallback.raster = computeRaster_ ? RasterStrategy::hybrid : RasterStrategy::hardware;
+  policy.fallback.tileSize = 16;
+  policy.fallback.lodErrorPixels = 1.0f;
+  policy.fallback.alphaThreshold = 1.0f / 255.0f;
+  policy.fallback.subpixelThreshold = minPixelRadius_;
+  policy.fallback.sortDepth =
+      depthBits_ == MetalRadixSort::KeyBits::Low16 ? SortKeyBits::low16 : SortKeyBits::full32;
+  policy.fallback.enableFrustumCulling = true;
+  policy.fallback.enableEarlyTermination = true;
+  // Only the key width is a public per-instance control today. The sub-pixel radius is
+  // meaningful only under the internal tight-culling experiment; alpha, tiles and
+  // occlusion stay fixed shader/rasterization choices.
+  policy.sortDepth = gpuSort_;
+  policy.subpixelThreshold = visibility_.tightCulling();
+  return caps;
+}
+
+bool MetalSplatRenderer::applyRenderPolicy(const RenderPolicy& policy, std::string* reason) {
+  const MetalRadixSort::KeyBits bits = policy.sortDepth == SortKeyBits::low16
+                                           ? MetalRadixSort::KeyBits::Low16
+                                           : MetalRadixSort::KeyBits::Full32;
+  if (bits == depthBits_ && policy.subpixelThreshold == minPixelRadius_) return true;
+  if (!gpuSort_) {
+    // No GPU ordering pipelines exist; nothing the policy can reach.
+    if (reason != nullptr) *reason = "Metal GPU ordering is unavailable";
+    return false;
+  }
+  // Rebuilding pipelines while frames may still encode against them is unsafe.
+  waitIdle();
+  if (!visibility_.reconfigure(policy.subpixelThreshold, bits)) {
+    if (reason != nullptr) *reason = "Metal visibility pipeline rebuild failed";
+    return false;
+  }
+  minPixelRadius_ = policy.subpixelThreshold;
+  depthBits_ = bits;
+  LOGI("Metal policy: %u-bit sort keys, %.3fpx sub-pixel radius", static_cast<uint32_t>(bits),
+       minPixelRadius_);
+  return true;
 }
 
 MTLPixelFormat MetalSplatRenderer::pixelFormat() const {

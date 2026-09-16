@@ -16,8 +16,8 @@ namespace splat {
 // The sorter of a tiled world: a DistanceSorter over the slab every resident tile lives
 // in, run on its own thread. Tiles place their positions as they land; each request names
 // the ranges to draw and the frustum, and the thread sorts those ranges back to front
-// when the camera moved or the ranges changed, and otherwise only culls the order it has
-// (ADR 0009). Indices in a result are slab indices, what the draw order buffer holds.
+// when the camera moved or the ranges changed, and otherwise only culls the order it has.
+// Indices in a result are slab indices, what the draw order buffer holds.
 class SlabSorter {
  public:
   struct Range {

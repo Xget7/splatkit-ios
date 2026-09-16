@@ -8,6 +8,7 @@
 #include "splat/lod/LodTree.h"
 #include "splat/math/Mat4.h"
 #include "splat/math/Vec3.h"
+#include "splatkit/rendering/RenderPolicy.h"
 
 namespace splatkit {
 
@@ -48,8 +49,22 @@ class SplatRenderer {
   // Blend in linear light instead of the encoded space.
   virtual void setLinearBlending(bool linear) = 0;
   virtual bool linearBlending() const = 0;
-  // Off, frame times stop being multiples of the vsync, which benchmarks need.
+  // Requests a presentation policy; the host can still schedule frames at vsync.
   virtual void setVsync(bool vsync) = 0;
+
+  // One capability query per backend: limits, feature flags and the policy it accepts.
+  // Must report honestly; a false here is what makes a policy request fall back.
+  virtual DeviceCapabilities deviceCapabilities() const { return {}; }
+
+  // Applies an already-resolved policy to this instance only, never a process global.
+  // Only fields this backend's capabilities marked supported are honoured. Returns false
+  // and leaves the previous policy in place when preparation fails; the reason is set.
+  // Render thread only, and before any decode that follows.
+  virtual bool applyRenderPolicy(const RenderPolicy& policy, std::string* reason) {
+    (void)policy;
+    if (reason != nullptr) reason->clear();
+    return true;
+  }
 
   // True when a surface is up: frames can be drawn and worlds uploaded.
   virtual bool ready() const = 0;
@@ -105,8 +120,9 @@ class SplatRenderer {
   // GPU time of the most recently completed frame, from timestamps at both ends of it.
   // Zero until the first frame completes or if unsupported.
   virtual double lastGpuMillis() const = 0;
-  // GPU time of the last visibility pass, when the renderer sorts on the GPU.
+  // GPU times of completed sort and visibility passes; zero when unavailable.
   virtual double lastSortMillis() const { return 0; }
+  virtual double lastCullMillis() const { return 0; }
   // Splats the last frame drew, when the renderer sorts on the GPU.
   virtual uint32_t lastDrawCount() const { return 0; }
   virtual uint32_t lastSelectedCount() const { return 0; }

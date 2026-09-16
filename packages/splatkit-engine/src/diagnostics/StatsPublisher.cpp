@@ -22,15 +22,7 @@ void StatsPublisher::onFrame(int64_t frameTimeNanos, bool rendered,
   const auto fps = static_cast<float>(windowFrames_ * 1e9 / static_cast<double>(elapsed));
   fps_.store(fps, kRelaxed);
   frameMillis_.store(fps > 0.0f ? 1000.0f / fps : 0.0f, kRelaxed);
-  gpuMillis_.store(static_cast<float>(s.gpuMillis), kRelaxed);
-  sortMillis_.store(static_cast<float>(s.sortMillis), kRelaxed);
-  splats_.store(s.sourceSplats, kRelaxed);
-  drawnSplats_.store(s.drawn, kRelaxed);
-  computeTiles_.store(s.computeTiles, kRelaxed);
-  nonemptyComputeTiles_.store(s.nonemptyComputeTiles, kRelaxed);
-  hardwareTiles_.store(s.hardwareTiles, kRelaxed);
-  walking_.store(s.walking, kRelaxed);
-  motion_.store(s.motion, kRelaxed);
+  publish(s);
 
   // An idle scene logs once, not every two seconds.
   const bool idle = windowFrames_ == 0;
@@ -46,6 +38,18 @@ void StatsPublisher::onFrame(int64_t frameTimeNanos, bool rendered,
       fps, s.gpuMillis, s.sortMillis, s.cullMillis, s.selectMillis, s.drawn, s.selected,
       s.gpuSplats, p.x, p.y, p.z, p.yaw, p.pitch, s.walking ? "walk" : "fly",
       s.motion ? ", gyro" : "");
+}
+
+void StatsPublisher::publish(const Sample& s) {
+  gpuMillis_.store(static_cast<float>(s.gpuMillis), kRelaxed);
+  sortMillis_.store(static_cast<float>(s.sortMillis), kRelaxed);
+  splats_.store(s.sourceSplats, kRelaxed);
+  drawnSplats_.store(s.drawn, kRelaxed);
+  computeTiles_.store(s.computeTiles, kRelaxed);
+  nonemptyComputeTiles_.store(s.nonemptyComputeTiles, kRelaxed);
+  hardwareTiles_.store(s.hardwareTiles, kRelaxed);
+  walking_.store(s.walking, kRelaxed);
+  motion_.store(s.motion, kRelaxed);
 }
 
 void StatsPublisher::publishPose(splat::Vec3 position, float yaw, float pitch) {

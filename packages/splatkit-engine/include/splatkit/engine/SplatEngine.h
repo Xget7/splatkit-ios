@@ -44,6 +44,18 @@ class SplatEngine {
   // The platform's renderer, for the calls only its view makes: attaching a surface.
   SplatRenderer& renderer() { return *renderer_; }
 
+  // One capability query for the whole engine: limits, features and accepted policy.
+  DeviceCapabilities deviceCapabilities() const { return renderer_->deviceCapabilities(); }
+
+  // The renderer policy currently applied to this instance.
+  RenderPolicy renderPolicy() const { return policy_; }
+
+  // Re-validates and applies a requested render policy to this instance only. Invalid
+  // input or a failed preparation keeps the previous policy and returns accepted=false
+  // with that policy as `effective`. Unsupported choices fall back with one warning each.
+  // Render thread, before a decode.
+  RenderPolicyResolution setRenderPolicy(const RenderPolicy& requested);
+
   void render(int64_t frameTimeNanos);
 
   // Decodes an SPZ world. Thread safe. Errors are reported and leave the current world.
@@ -87,7 +99,7 @@ class SplatEngine {
 
   // Blend splats in linear light instead of the encoded space the training used. Richer
   // contrast at the cost of 40% of the frame on Adreno 640, and not what the reference
-  // rasterizer produces; off by default (ADR 0011). Render thread.
+  // rasterizer produces; off by default. Render thread.
   void setLinearBlending(bool linear) { renderer_->setLinearBlending(linear); }
   bool linearBlending() const { return renderer_->linearBlending(); }
 
@@ -123,8 +135,12 @@ class SplatEngine {
   // to do with it, such as a capture.
   void requestRedraw() { redrawNeeded_ = true; }
 
-  // Readable from any thread. Refreshed twice a second by the render loop.
+  // Readable from any thread. Refreshed twice a second by the render loop, and by
+  // publishStats.
   Stats stats() const { return stats_.stats(); }
+  // Render thread: publishes the newest finished frame's counts and times now, for a host
+  // event that promises stats read after it describe that frame.
+  void publishStats();
 
   // Runs a reproducible capture: gyroscope off, a fixed pose, one full yaw turn over
   // `seconds`, then logs the frame time distribution. Waits for a world if none is up.
@@ -161,6 +177,8 @@ class SplatEngine {
 
   EventSink events_;
   std::unique_ptr<SplatRenderer> renderer_;
+  // The applied render policy; the backend's fallback until the host sets one.
+  RenderPolicy policy_;
   splat::SplatWorldLoader loader_;
   WalkCamera camera_;
   splat::VisibilityPlanner planner_;

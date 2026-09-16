@@ -1,0 +1,80 @@
+{
+  "status": "partial_adb_usb_connection_lost",
+  "environment": "physical",
+  "device": "Xiaomi Mi 9",
+  "android": "11",
+  "gpu": "Adreno 640",
+  "vulkan_api": "1.1.128",
+  "driver": "0x801f6000",
+  "page_bytes": 4096,
+  "charging": true,
+  "render_extent": [1080, 2261],
+  "apk_sha256": "cc0861fface7d0b1235b63825c49d02bff5cbac96156ac51acba0818278c15a4",
+  "build": "minified Release, dev lifecycle and first-frame logging added",
+  "validation_layers": false,
+  "render_scale": 1,
+  "draw_sh": 0,
+  "depth_key_bits": 32,
+  "runs": [
+    {
+      "world": "bundled kitchen_500k.spz",
+      "source_splats": 500000,
+      "lod_capacity_splats": 0,
+      "seconds": 30,
+      "frames": 1279,
+      "fps_mean": 42.6,
+      "frame_mean_ms": 23.5,
+      "frame_p99_ms": 33.5,
+      "gpu_mean_ms": 22.6,
+      "sort_periodic_sample_mean_ms": 1.5067,
+      "drawn_periodic_sample_range": [8966, 90991],
+      "world_ready_to_frame_ready_ms": 46
+    },
+    {
+      "world": "house_2m.spz",
+      "source_sha256": "fe32a5a66b7f5caaad793ab90a7ff7d7948f52ba360044170b4da04c3950ebad",
+      "source_splats": 2000000,
+      "resident_hierarchy_records": 2970075,
+      "lod_capacity_splats": 1200000,
+      "hierarchy": "load-time, not offline depth6",
+      "seconds": 30,
+      "frames": 1177,
+      "fps_mean": 39.2,
+      "frame_mean_ms": 25.5,
+      "frame_p99_ms": 50.1,
+      "gpu_mean_ms": 24.9,
+      "sort_periodic_sample_mean_ms": 3.16,
+      "drawn_periodic_sample_range": [44938, 125465],
+      "request_to_frame_ready_ms": 5439,
+      "world_ready_to_frame_ready_ms": 54
+    }
+  ],
+  "observed": [
+    "Data-preserving APK update succeeded",
+    "Uploaded and GPU-frame-ready callbacks appeared in order, once each per loaded world",
+    "Kitchen and house visibly rendered in inspected screenshots; no reference-image acceptance performed",
+    "Landscape and portrait swapchain recreation logged",
+    "Home/foreground round trip logged pause/resume without process restart",
+    "Screen lock logged pause; initial continuation required user unlock",
+    "Later USB connection confirmed unlocked Mi 9, world-frame-ready event and resumed draw statistics, PID 9350; USB screenshot was incomplete",
+    "USB transport failed before first automated background cycle; macOS retained the ADB USB interface, but adb devices became empty; one host server restart did not recover it"
+  ],
+  "pending": [
+    "Rapid replacement and invalid-world recovery",
+    "Repeated destruction/recreation",
+    "Ten-minute sustained memory and thermal run",
+    "Debug build with Vulkan validation layers",
+    "16 KB runtime on a suitable device or emulator",
+    "React Native adapters and consumer app"
+  ],
+  "limitations": [
+    "GPU timings are completed-query samples that may lag or repeat",
+    "Stage means and draw ranges are periodic samples, not all-frame statistics",
+    "This is not a matched thermal comparison against historical FPS",
+    "Argent UI inspection failed; an auxiliary-install prompt was not authorized; subsequent lifecycle commands used ADB",
+    "Gyro button text remains stale after intent changes; logs/settings, not that label, identify input mode"
+  ],
+  "local_evidence": "build/qa-mi9-20260914/",
+  "cleanup_pending": "Temporary stay-on-while-plugged-in was enabled for USB testing (previous value 0); connection loss prevented restoring it",
+  "publication_accepted": false
+}

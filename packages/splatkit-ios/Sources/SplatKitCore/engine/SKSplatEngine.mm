@@ -50,6 +50,58 @@ bool writePng(NSString* path, const std::vector<uint8_t>& bgra, uint32_t width, 
 
 }  // namespace
 
+// Bridge between the C++ policy types and their C mirror imported by Swift.
+namespace {
+
+SKRenderPolicy fromCppPolicy(const splatkit::RenderPolicy& p) {
+  SKRenderPolicy out{};
+  out.raster = static_cast<uint32_t>(p.raster);
+  out.tileSize = p.tileSize;
+  out.lodErrorPixels = p.lodErrorPixels;
+  out.alphaThreshold = p.alphaThreshold;
+  out.subpixelThreshold = p.subpixelThreshold;
+  out.enableFrustumCulling = p.enableFrustumCulling;
+  out.enableHiZOcclusion = p.enableHiZOcclusion;
+  out.enableEarlyTermination = p.enableEarlyTermination;
+  out.sortDepth = static_cast<uint32_t>(p.sortDepth);
+  return out;
+}
+
+bool toCppPolicy(SKRenderPolicy p, splatkit::RenderPolicy* out) {
+  if (p.sortDepth != 16 && p.sortDepth != 32) return false;
+  out->raster = static_cast<splatkit::RasterStrategy>(p.raster);
+  out->tileSize = p.tileSize;
+  out->lodErrorPixels = p.lodErrorPixels;
+  out->alphaThreshold = p.alphaThreshold;
+  out->subpixelThreshold = p.subpixelThreshold;
+  out->enableFrustumCulling = p.enableFrustumCulling == YES;
+  out->enableHiZOcclusion = p.enableHiZOcclusion == YES;
+  out->enableEarlyTermination = p.enableEarlyTermination == YES;
+  out->sortDepth = p.sortDepth == 16 ? splatkit::SortKeyBits::low16 : splatkit::SortKeyBits::full32;
+  return true;
+}
+
+SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
+  SKRenderPolicySupport out{};
+  out.raster = s.raster;
+  out.tileSize = s.tileSize;
+  out.lodErrorPixels = s.lodErrorPixels;
+  out.alphaThreshold = s.alphaThreshold;
+  out.subpixelThreshold = s.subpixelThreshold;
+  out.enableFrustumCulling = s.enableFrustumCulling;
+  out.enableHiZOcclusion = s.enableHiZOcclusion;
+  out.enableEarlyTermination = s.enableEarlyTermination;
+  out.sortDepth = s.sortDepth;
+  out.tileSizeMask = s.tileSizeMask;
+  out.minLodErrorPixels = s.minLodErrorPixels;
+  out.maxLodErrorPixels = s.maxLodErrorPixels;
+  out.minSubpixelThreshold = s.minSubpixelThreshold;
+  out.maxSubpixelThreshold = s.maxSubpixelThreshold;
+  return out;
+}
+
+}  // namespace
+
 @implementation SKSplatEngine {
   splatkit::MetalSplatRenderer* _renderer;  // owned by the engine
   std::unique_ptr<splatkit::SplatEngine> _engine;
@@ -145,6 +197,49 @@ bool writePng(NSString* path, const std::vector<uint8_t>& bgra, uint32_t width, 
 
 - (NSString*)gpuDescription {
   return @(_engine->gpuDescription().c_str());
+}
+
+- (SKRenderPolicy)renderPolicy {
+  return fromCppPolicy(_engine->renderPolicy());
+}
+
+- (SKDeviceCapabilities)deviceCapabilities {
+  const splatkit::DeviceCapabilities caps = _engine->deviceCapabilities();
+  SKDeviceCapabilities out{};
+  out.maxLodCapacitySplats = caps.limits.maxLodCapacitySplats;
+  out.minResidencyCapacitySplats = caps.limits.minResidencyCapacitySplats;
+  out.maxResidencyCapacitySplats = caps.limits.maxResidencyCapacitySplats;
+  out.supportsComputeTiles = caps.supportsComputeTiles;
+  out.supportsHiZOcclusion = caps.supportsHiZOcclusion;
+  out.supportsSubgroups = caps.supportsSubgroups;
+  out.maxTextureDimension = caps.maxTextureDimension;
+  out.policy = fromCppSupport(caps.policy);
+  out.fallback = fromCppPolicy(caps.policy.fallback);
+  return out;
+}
+
+- (SKRenderPolicyOutcome)applyRenderPolicy:(SKRenderPolicy)policy
+                                    reason:(NSString**)reason
+                                  warnings:(NSArray<NSString*>**)warnings {
+  splatkit::RenderPolicy requested;
+  if (!toCppPolicy(policy, &requested)) {
+    if (reason != nullptr) *reason = @"sortDepth must be 16 or 32";
+    return SKRenderPolicyOutcomeInvalid;
+  }
+  const splatkit::RenderPolicyResolution resolution = _engine->setRenderPolicy(requested);
+  if (!resolution.accepted) {
+    if (reason != nullptr) *reason = @(resolution.error.c_str());
+    return resolution.preparationFailed ? SKRenderPolicyOutcomePreparationFailed
+                                        : SKRenderPolicyOutcomeInvalid;
+  }
+  if (warnings != nullptr) {
+    NSMutableArray<NSString*>* list = [NSMutableArray arrayWithCapacity:resolution.warnings.size()];
+    for (const splatkit::RenderPolicyWarning& warning : resolution.warnings) {
+      [list addObject:@(warning.message.c_str())];
+    }
+    *warnings = list;
+  }
+  return SKRenderPolicyOutcomeApplied;
 }
 
 - (void)lookWithDeltaYaw:(float)deltaYaw deltaPitch:(float)deltaPitch {

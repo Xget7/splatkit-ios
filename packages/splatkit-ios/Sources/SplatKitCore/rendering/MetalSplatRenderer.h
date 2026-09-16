@@ -46,6 +46,9 @@ class MetalSplatRenderer final : public SplatRenderer {
   bool linearBlending() const override { return linearBlending_; }
   void setVsync(bool vsync) override;
 
+  DeviceCapabilities deviceCapabilities() const override;
+  bool applyRenderPolicy(const RenderPolicy& policy, std::string* reason) override;
+
   bool ready() const override { return layer_ != nil && width_ > 0 && height_ > 0; }
   Extent drawExtent() const override;
   uint32_t generation() const override { return generation_; }

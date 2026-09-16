@@ -6,10 +6,9 @@ Requires iOS 17+ and Apple GPU family 7+ (A14/M1+); unsupported GPUs report unav
 ## Use it
 
 Swift Package Manager: add `https://github.com/Xget7/splatkit-ios`, product `SplatKit`, then `import SplatKit`.
-Choose exact version `0.1.0-alpha.2`.
-For source builds:
+Choose exact version `0.1.0-alpha.2`; `renderPolicy` and `deviceCapabilities` are unreleased source.
 
-Build the static libraries with `scripts/build-ios.sh` from the repository root, then add to your target:
+For source builds, build the static libraries with `scripts/build-ios.sh` from the repository root, then add to your target:
 
 - the Swift sources in `Sources/SplatKit`,
 - a bridging header importing `SplatKit/SKSplatEngine.h`, with `Sources/SplatKitCore/include` in the header search paths,
@@ -35,10 +34,11 @@ Forward `resume()`, `pause()` and `release()` from the host's lifecycle; the lay
 
 | Member | What it does |
 | --- | --- |
-| `loadWorld(file:)` | Decodes and shows a `.spz`, `.ply` or `.lodsplat` world; the file is mapped, not copied |
+| `loadWorld(file:)` | Decodes and shows a `.spz` or `.lodsplat` world; the file is mapped, not copied |
 | `loadTiledWorld(tileset:)` | Streams a tiled world made by `splat-tile` within `residencyBudget` |
 | `loadCollider(file:)` | Decodes a GLB mesh and enables walk mode |
 | `cameraPose` | Position, yaw and pitch; set it to teleport |
+| `lookAt(from:target:up:)` | Scripted camera: teleports facing a target with an explicit up vector; the next touch or motion update takes over |
 | `renderScale` | Fraction of the view's resolution the splats are drawn at, 0.1 to 2 |
 | `cullMarginDegrees` | Angular margin kept drawn around the view |
 | `linearBlending` | Blend in linear light instead of the encoded colour space |
@@ -48,6 +48,7 @@ Forward `resume()`, `pause()` and `release()` from the host's lifecycle; the lay
 | `setMotionEnabled(_:)`, `isMotionEnabled` | Gyroscope driven camera |
 | `startBenchmark(seconds:)` | A reproducible turn with the frame time distribution logged |
 | `captureFrame(to:completion:)` | The next frame as a PNG |
+| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth applies with GPU sort, the sub-pixel threshold only under the tight-culling experiment |
 | `readStats()`, `gpuDescription` | Frame, GPU and sort times, splats drawn, device name |
 | `delegate` | World and collider outcomes, on the main thread |
 
@@ -67,7 +68,7 @@ The shader is compiled at run time from the embedded source, so the library is a
 The renderer keeps two frames in flight and reads GPU time from the command buffer.
 GPU path: visibility → radix → indirect draw; compatibility frames may use CPU order.
 `sortMillis` includes visibility/radix.
-That path draws front to back and stops shading a pixel once it is opaque (ADR 0018), so the frame costs what the visible layers cost.
+That path draws front to back and stops shading a pixel once it is opaque, so the frame costs what the visible layers cost.
 The sort has unit tests that run on a Mac: `cmake -S packages/splatkit-ios -B build/ios-mac && cmake --build build/ios-mac && ctest --test-dir build/ios-mac`.
 Colours blend in the encoded space by default, on a `bgra8Unorm` layer; `linearBlending` switches the layer to `bgra8Unorm_srgb`.
 
@@ -76,7 +77,7 @@ Colours blend in the encoded space by default, on a `bgra8Unorm` layer; `linearB
 Start motion after `splatView(_:worldFrameReady:)`, not upload-only `worldReady`.
 Keep the view attached/resumed while loading; readiness means GPU completion, not visual acceptance.
 
-Dev-only switches, applied before renderer creation:
+Dev-only switches; `--min-pixel-radius` and `--depth-key-bits` set the view's `renderPolicy`, the rest apply before renderer creation:
 
 | Switch | Effect |
 |---|---|

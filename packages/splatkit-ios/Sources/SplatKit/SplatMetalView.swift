@@ -244,6 +244,16 @@ public final class SplatMetalView: UIView {
     /// GPU name and API reported by Metal.
     public var gpuDescription: String { renderThread.gpuDescription }
 
+    /// The renderer policy for this view. Setting it re-validates on the render thread
+    /// and keeps the previous policy when the request is invalid or preparation fails.
+    public var renderPolicy: SKRenderPolicy {
+        get { renderThread.renderPolicy }
+        set { renderThread.applyRenderPolicy(newValue) }
+    }
+
+    /// Native limits, feature flags and the policy fields this device accepts.
+    public var deviceCapabilities: SKDeviceCapabilities { renderThread.deviceCapabilities }
+
     /// True while the gyroscope drives the camera.
     public var isMotionEnabled: Bool { motionEnabled }
 

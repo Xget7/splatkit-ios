@@ -1,9 +1,11 @@
 build*/
 .build/
+DerivedData/
 *.spz
 *.ply
 *.glb
 .DS_Store
+.argent/
 .idea/
 .gradle/
 local.properties

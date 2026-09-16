@@ -6,7 +6,7 @@ MIT-licensed sources include the shared C++ engine/core.
 ## Install
 
 Add `https://github.com/Xget7/splatkit-ios` in Xcode Package Dependencies and select product `SplatKit`.
-Choose exact version `0.1.0-alpha.2`.
+Choose exact version `0.1.0-alpha.2`; `main` may be ahead of that release, as the [changelog](CHANGELOG.md) lists.
 The package downloads the release XCFramework for arm64 devices and arm64/x86_64 simulators.
 
 ```swift
@@ -33,4 +33,4 @@ Requires Xcode, CMake and Python 3.9+; builds fetch pinned dependencies.
 No signing credentials or scene downloads are needed for synthetic native tests.
 LOD, hybrid tiles and 16-bit sorting remain experimental; quality acceptance and sustained 30/60 FPS are not guaranteed.
 Simulator/Mac checks are not phone benchmarks.
-RN GPU controls remain pending.
+[react-native-splatkit](https://github.com/Xget7/react-native-splatkit) drives `renderPolicy` from its `policy` prop; iOS device validation is pending.

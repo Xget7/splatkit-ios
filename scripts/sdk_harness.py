@@ -116,11 +116,24 @@ def android_log(contents, pid, expected, environment):
                 if (match := line_pattern.match(line)) and int(match[1]) == pid]
     text = "\n".join(messages)
     errors = [line for line in messages if re.search(
-        r"Fatal signal|FATAL EXCEPTION|VUID-|Validation Error|World failed:|VK_ERROR_", line)]
+        r"Fatal signal|FATAL EXCEPTION|VUID-|Validation Error|World failed:|VK_ERROR_|Vulkan GPU frame rejected:", line)]
     device = re.search(r"Vulkan device: (.+)", text)
-    draws = re.findall(r"(\d+) drawn of (\d+) selected of (\d+)", text)
-    valid_draw = any(0 < int(drawn) <= int(selected) <= int(loaded) == expected
-                     for drawn, selected, loaded in draws)
+    # Source readiness identifies the world; an uploaded LOD hierarchy has more
+    # resident records than original splats. Require a draw after its ready event.
+    resident = expected
+    ready = False
+    valid_draw = False
+    for message in messages:
+        upload = re.search(r"uploaded (\d+) splats", message)
+        if upload:
+            resident, ready = int(upload[1]), False
+        world = re.fullmatch(r"world ready: (\d+) splats", message)
+        if world:
+            ready = int(world[1]) == expected
+        draw = re.search(r"(\d+) drawn of (\d+) selected of (\d+)", message)
+        if ready and draw:
+            drawn, selected, records = map(int, draw.groups())
+            valid_draw |= 0 < drawn <= selected <= records == resident
     checks = {"vulkan_initialized": device is not None,
               "world_ready": f"world ready: {expected} splats" in messages,
               "nonempty_draw": valid_draw, "no_logged_errors": not errors}

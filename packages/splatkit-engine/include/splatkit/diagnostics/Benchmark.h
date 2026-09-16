@@ -7,11 +7,11 @@ namespace splatkit {
 
 // A reproducible capture: one full yaw turn over a fixed time from a fixed pose with the
 // gyroscope off, then the frame and GPU time distributions in the log. The GPU
-// temperature is logged with them because Adreno throttles when hot, and every number
-// taken above roughly 60 degrees is a number about the throttling. Render thread.
+// temperature is context, not proof of throttling. Render thread.
 class Benchmark {
  public:
-  // Queues a capture of `seconds`. It begins once a world is up.
+  // Queues a capture of (0, 3600] finite seconds. Invalid requests cancel the capture.
+  // It begins once a world is up. Long captures also log 30-second windows.
   void start(float seconds);
   bool pending() const { return pending_; }
   bool running() const { return running_; }
@@ -25,13 +25,17 @@ class Benchmark {
 
  private:
   void finish();
+  void reportWindow();
 
   bool pending_ = false;
   bool running_ = false;
   float seconds_ = 0;
-  float elapsed_ = 0;
+  double elapsed_ = 0;
+  double windowStart_ = 0;
   std::vector<float> frameMillis_;
   std::vector<float> gpuMillis_;
+  std::vector<float> windowFrameMillis_;
+  std::vector<float> windowGpuMillis_;
 };
 
 }  // namespace splatkit

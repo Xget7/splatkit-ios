@@ -12,32 +12,13 @@ bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library, bool 
                              float minPixelRadius, MetalRadixSort::KeyBits depthBits) {
   if (!std::isfinite(minPixelRadius) || minPixelRadius < 0.0f) return false;
   device_ = device;
+  library_ = library;
+  tightCulling_ = experiment;
+  minPixelRadius_ = minPixelRadius;
   depthBits_ = depthBits;
-  const bool quantized = depthBits_ == MetalRadixSort::KeyBits::Low16;
   storage_ = experiment ? MTLResourceStorageModePrivate : MTLResourceStorageModeShared;
+  if (!createPipelines()) return false;
   bool ok = true;
-  for (int degree = 0; degree < kShDegrees; ++degree) {
-    MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
-    uint32_t value = static_cast<uint32_t>(degree);
-    [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:0];
-    [constants setConstantValue:&experiment type:MTLDataTypeBool atIndex:1];
-    [constants setConstantValue:&minPixelRadius type:MTLDataTypeFloat atIndex:2];
-    [constants setConstantValue:&quantized type:MTLDataTypeBool atIndex:4];
-    bool indexed = false;
-    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:3];
-    visibility_[static_cast<size_t>(degree)] =
-        metal::pipeline(device, library, "visibility", constants);
-    indexed = true;
-    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:3];
-    indexedVisibility_[static_cast<size_t>(degree)] =
-        metal::pipeline(device, library, "visibility", constants);
-    ok = ok && indexedVisibility_[static_cast<size_t>(degree)] != nil;
-    ok = ok && visibility_[static_cast<size_t>(degree)] != nil;
-    const auto pipeline = visibility_[static_cast<size_t>(degree)];
-    ok = ok && pipeline.threadExecutionWidth == 32 &&
-         pipeline.maxTotalThreadsPerThreadgroup >= kThreads;
-  }
-  prepareDraw_ = metal::pipeline(device, library, "prepareDrawArguments");
   for (uint32_t slot = 0; slot < kSlots; ++slot) {
     count_[slot] = metal::buffer(device, sizeof(uint32_t), storage_);
     countReadback_[slot] = experiment ? metal::buffer(device, sizeof(uint32_t)) : count_[slot];
@@ -47,7 +28,52 @@ bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library, bool 
     ok = ok && count_[slot] != nil && countReadback_[slot] != nil && drawArguments_[slot] != nil &&
          ranges_[slot] != nil && rangeStarts_[slot] != nil;
   }
-  return ok && prepareDraw_ != nil && sort_.create(device, library, storage_);
+  return ok && sort_.create(device, library, storage_);
+}
+
+// Only the pipelines depend on the radius and the key width; the buffers and the radix
+// scratch are reused. `tightCulling_` and the storage mode stay as the experiment set them.
+bool MetalVisibility::reconfigure(float minPixelRadius, MetalRadixSort::KeyBits depthBits) {
+  if (device_ == nil || library_ == nil) return false;
+  if (!std::isfinite(minPixelRadius) || minPixelRadius < 0.0f) return false;
+  const float previousRadius = minPixelRadius_;
+  const MetalRadixSort::KeyBits previousBits = depthBits_;
+  minPixelRadius_ = minPixelRadius;
+  depthBits_ = depthBits;
+  if (!createPipelines()) {
+    minPixelRadius_ = previousRadius;
+    depthBits_ = previousBits;
+    return false;
+  }
+  return true;
+}
+
+bool MetalVisibility::createPipelines() {
+  const bool quantized = depthBits_ == MetalRadixSort::KeyBits::Low16;
+  bool ok = true;
+  for (int degree = 0; degree < kShDegrees; ++degree) {
+    MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
+    uint32_t value = static_cast<uint32_t>(degree);
+    [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:0];
+    [constants setConstantValue:&tightCulling_ type:MTLDataTypeBool atIndex:1];
+    [constants setConstantValue:&minPixelRadius_ type:MTLDataTypeFloat atIndex:2];
+    [constants setConstantValue:&quantized type:MTLDataTypeBool atIndex:4];
+    bool indexed = false;
+    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:3];
+    visibility_[static_cast<size_t>(degree)] =
+        metal::pipeline(device_, library_, "visibility", constants);
+    indexed = true;
+    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:3];
+    indexedVisibility_[static_cast<size_t>(degree)] =
+        metal::pipeline(device_, library_, "visibility", constants);
+    ok = ok && indexedVisibility_[static_cast<size_t>(degree)] != nil;
+    ok = ok && visibility_[static_cast<size_t>(degree)] != nil;
+    const auto pipeline = visibility_[static_cast<size_t>(degree)];
+    ok = ok && pipeline.threadExecutionWidth == 32 &&
+         pipeline.maxTotalThreadsPerThreadgroup >= kThreads;
+  }
+  prepareDraw_ = metal::pipeline(device_, library_, "prepareDrawArguments");
+  return ok && prepareDraw_ != nil;
 }
 
 bool MetalVisibility::reserve(uint32_t capacity, uint32_t activeCapacity) {

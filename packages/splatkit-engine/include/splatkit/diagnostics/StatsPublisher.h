@@ -59,6 +59,9 @@ class StatsPublisher {
 
   // Once per vsync, drawn or not. `sample` is called when the window closes.
   void onFrame(int64_t frameTimeNanos, bool rendered, const std::function<Sample()>& sample);
+  // Publishes everything but the frame rate now, leaving the window open: stats read after
+  // a host event then describe the frame that raised it.
+  void publish(const Sample& sample);
   void publishPose(splat::Vec3 position, float yaw, float pitch);
 
   Stats stats() const;

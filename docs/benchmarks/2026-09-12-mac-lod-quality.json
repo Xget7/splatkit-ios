@@ -1,0 +1,38 @@
+{
+  "environment": "macOS Apple M4 Pro, native Metal integration test; not iPhone or Android",
+  "world": "modern_house_with_lush_landscaping_2m.spz",
+  "source_splats": 2000000,
+  "world_sha256": "fe32a5a66b7f5caaad793ab90a7ff7d7948f52ba360044170b4da04c3950ebad",
+  "hierarchy_sha256": "21755aaafce938066cd95d90a107f8f1d6b5ec71799cc11e933336babfde9236",
+  "hierarchy": "offline depth6, 2020889 nodes; NOT the Mi 9 default load-time hierarchy",
+  "viewport": [1206, 2622],
+  "settings": {"render_scale": 1, "source_sh": 0, "requested_sh": 1, "depth_bits": 32, "min_pixel_radius": 0.5, "quality_pixels": 1, "linear_blending": false, "compute_tiles": false},
+  "method": "Third completed capture per configuration; exact view/projection equality verified by compare_captures.py; no resize, HUD or image alignment",
+  "captures": "build/sdk-harness/mac-quality-o3Skwu/ contains PNGs, hash manifests and native logs",
+  "comparisons": [
+    {
+      "pose": [0, 0.73, 0, 0, 0], "requested_budget": 1200000,
+      "reference_drawn": 53288, "lod_selected": 509152, "lod_drawn": 53288,
+      "denied_refinements": 0, "mae_255": 0.0198048869, "psnr_db": 59.5994527,
+      "p99_channel_error_255": 1, "max_channel_error_255": 43,
+      "worst_32px_mae_255": 2.53092448
+    },
+    {
+      "pose": [0, 0.73, 15, 0, 0], "requested_budget": 1200000,
+      "reference_drawn": 1501545, "lod_selected": 1130753, "lod_drawn": 1008414,
+      "denied_refinements": 311, "mae_255": 9.13584052, "psnr_db": 23.1387970,
+      "p99_channel_error_255": 68, "max_channel_error_255": 189,
+      "worst_32px_mae_255": 93.29296875
+    },
+    {
+      "pose": [0, 0.73, 15, 0, 0], "requested_budget": 2200000, "effective_capacity": 2000000,
+      "reference_drawn": 1501545, "lod_selected": 1697773, "lod_drawn": 1501543,
+      "denied_refinements": 0, "mae_255": 0.00185423421, "psnr_db": 71.7928733,
+      "p99_channel_error_255": 0, "max_channel_error_255": 28,
+      "worst_32px_mae_255": 0.311523438
+    }
+  ],
+  "finding": "Changing only capacity removes denied refinements and nearly restores the reference in this distant view. Budget-forced coarse parents visibly blotch; a covering cut is not an image-quality guarantee.",
+  "limits": "The distant view is outside the intended navigation region and the source itself has incomplete geometry there. No temporal acceptance, sustained timings, device memory validation or default quality changes follow. Concurrent Mac work invalidates timing comparisons.",
+  "release_gate": "blocked: distant 1.2M quality rejected internally; higher-capacity phone cost and human visual acceptance pending"
+}

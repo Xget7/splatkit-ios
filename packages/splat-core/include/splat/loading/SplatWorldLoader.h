@@ -17,8 +17,8 @@ namespace splat {
 
 // Prepares worlds and colliders for a renderer. Decoding runs on whatever thread calls
 // `load`, the result waits until the render thread takes it, and a newer load replaces
-// one still waiting. A world is decoded, reordered spatially (ADR 0006) and, when a
-// budget is set, turned into a level of detail tree (ADR 0010). Loads may run
+// one still waiting. A world is decoded, reordered spatially and, when a
+// budget is set, turned into a level of detail tree. Loads may run
 // concurrently; the last one to finish is the one taken.
 class SplatWorldLoader {
  public:
@@ -27,7 +27,7 @@ class SplatWorldLoader {
   struct World {
     std::unique_ptr<SplatCloud> cloud;
     std::shared_ptr<const LodTree> tree;
-    std::unique_ptr<TiledWorld> tiles;  // a tiled world: neither cloud nor tree (ADR 0015)
+    std::unique_ptr<TiledWorld> tiles;  // a tiled world: neither cloud nor tree
     int budget = 0;
     std::size_t sourceCount = 0;  // splats in the file, what hosts count
 
