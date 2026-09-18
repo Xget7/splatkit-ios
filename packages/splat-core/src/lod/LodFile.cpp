@@ -14,7 +14,11 @@ namespace {
 constexpr std::array<uint8_t, 8> kMagic{'L', 'O', 'D', 'S', 'P', 'L', 'A', 'T'};
 constexpr size_t kHeader = 64;
 constexpr size_t kMaxNodes = 20000000;
-constexpr uint32_t kMaxDepth = 32;
+// The grid builder's finest level is floored at a 2^20 fraction of the extent, so at the
+// default base of 1.5 it spans about 35 levels and a real world reaches the mid thirties.
+// The cap only bounds a corrupt file: the BFS order checks below already forbid cycles, and
+// no renderer descends the tree recursively. It stays inside the byte depths are counted in.
+constexpr uint32_t kMaxDepth = 64;
 Error corrupt(const char* message) {
   return {ErrorCode::corrupt, message};
 }

@@ -200,6 +200,24 @@ void SplatEngine::setCameraLookAt(splat::Vec3 position, splat::Vec3 target, spla
   publishPose();
 }
 
+bool SplatEngine::setCharacter(const splat::CharacterSettings& settings) {
+  const float values[] = {settings.eyeHeight,     settings.bodyRadius,     settings.hipHeight,
+                          settings.floorProbeUp,  settings.floorProbeDown, settings.stepHeight,
+                          settings.stepLookAhead, settings.stepOverHeight, settings.stepOverWidth,
+                          settings.snapRate};
+  for (const float value : values) {
+    if (!std::isfinite(value) || value < 0) return false;
+  }
+  // A walker needs an eye over its hips, a floor ray that reaches and an eye that settles.
+  if (settings.eyeHeight <= 0 || settings.hipHeight >= settings.eyeHeight ||
+      settings.floorProbeDown <= 0 || settings.snapRate <= 0) {
+    return false;
+  }
+  camera_.setCharacter(settings);
+  redrawNeeded_ = true;
+  return true;
+}
+
 void SplatEngine::publishPose() {
   stats_.publishPose(camera_.position(), camera_.yaw(), camera_.pitch());
 }
@@ -370,6 +388,10 @@ void SplatEngine::render(int64_t frameTimeNanos) {
   }
   const uint32_t generation = renderer_->generation();
   if (generation != lastDrawnGeneration_) redrawNeeded_ = true;
+  if (renderer_->reportsPresentTimes()) {
+    const uint32_t dropped = renderer_->takePresentTimes(&presentTimes_);
+    stats_.onPresented(presentTimes_, dropped);
+  }
   const auto sampler = [this] { return sample(); };
   if (!redrawNeeded_) {
     stats_.onFrame(frameTimeNanos, false, sampler);

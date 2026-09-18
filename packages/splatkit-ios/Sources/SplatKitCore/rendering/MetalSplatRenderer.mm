@@ -1,9 +1,12 @@
 #include "rendering/MetalSplatRenderer.h"
 
+#include <TargetConditionals.h>
+
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
+#include <utility>
 #include <vector>
 
 #include "SplatShaderSource.h"
@@ -62,14 +65,6 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
          "scratch",
          r->minPixelRadius_);
   if (!r->gpuSort_) LOGW("GPU sort unavailable, sorting on the CPU");
-  const char* tileValue = std::getenv("SPLATKIT_METAL_TILE_RASTER");
-  if (r->gpuSort_ && tileValue != nullptr && std::strcmp(tileValue, "1") == 0) {
-    r->computeRaster_ = r->tileRaster_.create(r->device_, r->library_);
-    LOGI("Experimental tile raster: %s",
-         r->computeRaster_
-             ? "bounded hybrid enabled (512 candidates / local large-footprint fallback)"
-             : "unavailable; using hardware");
-  }
   r->inFlight_ = dispatch_semaphore_create(kFramesInFlight);
   r->description_ = std::string(r->device_.name.UTF8String) + ", Metal";
   LOGI("%s", r->description_.c_str());
@@ -142,19 +137,19 @@ void MetalSplatRenderer::setVsync(bool vsync) {
 
 DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   DeviceCapabilities caps;
-  // MetalLOD caps a hierarchy at 2.2M nodes; the engine's residency window is [100k, 32M].
-  caps.limits.maxLodCapacitySplats = 2'200'000;
+  // MetalLOD caps a selected cut at 4M nodes; the engine's residency window is [100k, 32M].
+  caps.limits.maxLodCapacitySplats = MetalLOD::kMaxBudget;
   caps.limits.minResidencyCapacitySplats = 100'000;
   caps.limits.maxResidencyCapacitySplats = 32'000'000;
-  // Hybrid screen tiles are the experimental tile raster, reported as it stands.
-  caps.supportsComputeTiles = computeRaster_;
+  // Hybrid screen tiles need GPU ordering; their pipelines are built on first request.
+  caps.supportsComputeTiles = gpuSort_;
   caps.supportsHiZOcclusion = false;
   caps.supportsSubgroups = gpuSort_;
   // Metal exposes no texture-dimension query; Apple family 7, the minimum this renderer
   // accepts, supports 16384x16384.
   caps.maxTextureDimension = device_ != nil ? 16384u : 0u;
   RenderPolicySupport& policy = caps.policy;
-  policy.fallback.raster = computeRaster_ ? RasterStrategy::hybrid : RasterStrategy::hardware;
+  policy.fallback.raster = RasterStrategy::hardware;
   policy.fallback.tileSize = 16;
   policy.fallback.lodErrorPixels = 1.0f;
   policy.fallback.alphaThreshold = 1.0f / 255.0f;
@@ -163,9 +158,17 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
       depthBits_ == MetalRadixSort::KeyBits::Low16 ? SortKeyBits::low16 : SortKeyBits::full32;
   policy.fallback.enableFrustumCulling = true;
   policy.fallback.enableEarlyTermination = true;
-  // Only the key width is a public per-instance control today. The sub-pixel radius is
-  // meaningful only under the internal tight-culling experiment; alpha, tiles and
-  // occlusion stay fixed shader/rasterization choices.
+  // The key width and hybrid tiles are public per-instance controls. The sub-pixel radius is
+  // meaningful only under the internal tight-culling experiment; alpha, tile size and
+  // occlusion stay fixed shader/rasterization choices. Pure compute tiles are not built.
+  // The LOD error threshold applies live to a hierarchy world and at its next upload.
+  policy.lodErrorPixels = gpuSort_;
+  policy.minLodErrorPixels = 0.1f;
+  policy.maxLodErrorPixels = 16.0f;
+  policy.lodSplatLimit = gpuSort_;
+  policy.raster = gpuSort_;
+  policy.rasterMask = 1u << static_cast<uint32_t>(RasterStrategy::hardware) |
+                      1u << static_cast<uint32_t>(RasterStrategy::hybrid);
   policy.sortDepth = gpuSort_;
   policy.subpixelThreshold = visibility_.tightCulling();
   return caps;
@@ -175,22 +178,59 @@ bool MetalSplatRenderer::applyRenderPolicy(const RenderPolicy& policy, std::stri
   const MetalRadixSort::KeyBits bits = policy.sortDepth == SortKeyBits::low16
                                            ? MetalRadixSort::KeyBits::Low16
                                            : MetalRadixSort::KeyBits::Full32;
-  if (bits == depthBits_ && policy.subpixelThreshold == minPixelRadius_) return true;
+  const bool tiles = policy.raster == RasterStrategy::hybrid;
+  const bool visibilityChanged = bits != depthBits_ || policy.subpixelThreshold != minPixelRadius_;
+  const bool lodChanged =
+      policy.lodErrorPixels != lodErrorPixels_ || policy.lodSplatLimit != lodSplatLimit_;
+  if (!visibilityChanged && tiles == computeRaster_ && !lodChanged) return true;
   if (!gpuSort_) {
     // No GPU ordering pipelines exist; nothing the policy can reach.
     if (reason != nullptr) *reason = "Metal GPU ordering is unavailable";
     return false;
   }
-  // Rebuilding pipelines while frames may still encode against them is unsafe.
+  // Rebuilding pipelines or the target while frames may still encode against them is unsafe.
   waitIdle();
-  if (!visibility_.reconfigure(policy.subpixelThreshold, bits)) {
+  // Each step that fails reverts the earlier ones, so a failure keeps the previous policy.
+  if (tiles && !tileRasterReady_) {
+    tileRasterReady_ = tileRaster_.create(device_, library_);
+    if (!tileRasterReady_) {
+      if (reason != nullptr) *reason = "Metal tile raster pipelines are unavailable";
+      return false;
+    }
+  }
+  const auto setTiles = [this](bool enabled) {
+    computeRaster_ = enabled;
+    // The compute compositor writes into the target, which needs shader-write usage.
+    return createTarget();
+  };
+  const bool tilesChanged = tiles != computeRaster_;
+  if (tilesChanged && !setTiles(tiles)) {
+    setTiles(!tiles);
+    if (reason != nullptr) *reason = "Metal render target rebuild failed";
+    return false;
+  }
+  if (visibilityChanged && !visibility_.reconfigure(policy.subpixelThreshold, bits)) {
+    if (tilesChanged) setTiles(!tiles);
     if (reason != nullptr) *reason = "Metal visibility pipeline rebuild failed";
     return false;
   }
   minPixelRadius_ = policy.subpixelThreshold;
   depthBits_ = bits;
-  LOGI("Metal policy: %u-bit sort keys, %.3fpx sub-pixel radius", static_cast<uint32_t>(bits),
-       minPixelRadius_);
+  if (tilesChanged && !tiles) tileRaster_.releaseScratch();
+  // Plain configuration read by the next selection encode; it cannot fail, so it goes last.
+  lodErrorPixels_ = policy.lodErrorPixels;
+  lodSplatLimit_ = policy.lodSplatLimit;
+  lodPixels_ = lodErrorPixels_;
+  // Frames are idle here, so every readback so far describes the previous policy.
+  lodAdaptedReadback_ = lodReadbacks_.load();
+  if (lod_) {
+    lod_->setPixelLimit(lodPixels_);
+    lod_->setSplatLimit(lodSplatLimit_);
+  }
+  LOGI("Metal policy: %u-bit sort keys, %.3fpx sub-pixel radius, %.2fpx LOD error, %u LOD "
+       "splat limit, %s raster",
+       static_cast<uint32_t>(bits), minPixelRadius_, lodErrorPixels_, lodSplatLimit_,
+       computeRaster_ ? "hybrid" : "hardware");
   return true;
 }
 
@@ -361,18 +401,9 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
   if (!gpuSort_) return false;
   waitIdle();
   auto lod = std::make_unique<MetalLOD>();
-  float qualityPixels = 1.0f;
-  if (const char* text = std::getenv("SPLATKIT_METAL_LOD_QUALITY_PIXELS")) {
-    char* end = nullptr;
-    const float value = std::strtof(text, &end);
-    if (end == text || *end != '\0' || !std::isfinite(value) || value < 0) {
-      LOGE("invalid experimental LOD quality threshold");
-      return false;
-    }
-    qualityPixels = value;
-  }
-  if (!lod->create(device_, library_) || !lod->upload(queue_, tree, budget, qualityPixels))
+  if (!lod->create(device_, library_) || !lod->upload(queue_, tree, budget, lodErrorPixels_))
     return false;
+  lod->setSplatLimit(lodSplatLimit_);
   // Compact projections and radix scratch scale with the cut, not all resident nodes.
   MetalVisibility visibility;
   if (!visibility.create(device_, library_, true, minPixelRadius_, depthBits_) ||
@@ -388,6 +419,8 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
   visibility_ = std::move(visibility);
   lod_ = std::move(lod);
   lodReadback_ = readback;
+  lodPixels_ = lodErrorPixels_;
+  lodAdaptedReadback_ = lodReadbacks_.load();
   lastLodLimitedCount_.store(0);
   lastLodEvaluatedCount_.store(0);
   world_ = std::move(world);
@@ -419,6 +452,30 @@ std::optional<GpuWorldInfo> MetalSplatRenderer::world() const {
 }
 
 // The frame.
+
+// Selection counts arrive a frame or two late, so the threshold climbs fast while refinements
+// are denied and relaxes slowly, holding inside a 10% band below the limit.
+void MetalSplatRenderer::adaptLodThreshold() {
+  constexpr float kRaise = 1.1f;
+  constexpr float kRelax = 1.03f;
+  constexpr float kMaxPixels = 64.0f;
+  const uint32_t readbacks = lodReadbacks_.load();
+  if (readbacks == lodAdaptedReadback_) return;
+  lodAdaptedReadback_ = readbacks;
+  if (lastLodLimitedCount_.load() > 0) {
+    lodPixels_ = std::min(lodPixels_ * kRaise, std::max(kMaxPixels, lodErrorPixels_));
+  } else if (lastSelectedCount_.load() < lod_->limit() / 10 * 9) {
+    lodPixels_ = std::max(lodPixels_ / kRelax, lodErrorPixels_);
+  }
+  lod_->setPixelLimit(lodPixels_);
+}
+
+uint32_t MetalSplatRenderer::takePresentTimes(std::vector<int64_t>* times) {
+  times->clear();
+  const std::lock_guard<std::mutex> lock(presents_->mutex);
+  times->swap(presents_->times);
+  return std::exchange(presents_->dropped, 0);
+}
 
 bool MetalSplatRenderer::draw(const Frame& frame) {
   if (gpuFailed_.load()) return false;
@@ -473,6 +530,7 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
     const int degree =
         std::clamp(std::min(frame.shDegree, world_->info().shDegree), 0, kMaxShDegree);
     if (lod_) {
+      adaptLodThreshold();
       auto selection = [queue_ commandBuffer];
       selection.label = @"GPU LOD selection";
       lod_->encode(selection, uniforms_[slot]);
@@ -489,6 +547,8 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
       std::atomic<uint32_t>* limited = &lastLodLimitedCount_;
       std::atomic<uint32_t>* evaluated = &lastLodEvaluatedCount_;
       const bool logLod = frame_ % 120 == 0;
+      std::atomic<uint32_t>* readbacks = &lodReadbacks_;
+      const float pixels = lodPixels_;
       std::atomic<bool>* failed = &gpuFailed_;
       [selection addCompletedHandler:^(id<MTLCommandBuffer> done) {
         if (done.status == MTLCommandBufferStatusError) {
@@ -500,9 +560,11 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
         const auto* counters = static_cast<const uint32_t*>(selectedCount.contents);
         limited->store(counters[4]);
         evaluated->store(counters[5]);
+        readbacks->fetch_add(1);
         if (logLod)
-          LOGI("LOD SSE: %u selected, %u evaluated interiors, %u quality-limited refinements",
-               counters[0], counters[5], counters[4]);
+          LOGI("LOD SSE: %u selected, %u evaluated interiors, %u quality-limited refinements, "
+               "%.2f px",
+               counters[0], counters[5], counters[4], pixels);
         milliseconds->store((done.GPUEndTime - done.GPUStartTime) * 1000.0);
       }];
       [selection commit];
@@ -635,6 +697,20 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
     }
   }
 
+  // presentedTime is when the frame reached the display, zero when it was never shown.
+  // The simulator's Metal has no presentation handler, so it reports no present timing.
+#if !TARGET_OS_SIMULATOR
+  std::shared_ptr<PresentLog> presents = presents_;
+  [drawable addPresentedHandler:^(id<MTLDrawable> shown) {
+    const CFTimeInterval time = shown.presentedTime;
+    const std::lock_guard<std::mutex> lock(presents->mutex);
+    if (time <= 0) {
+      ++presents->dropped;
+    } else if (presents->times.size() < 1024) {
+      presents->times.push_back(static_cast<int64_t>(time * 1e9));
+    }
+  }];
+#endif
   [cmd presentDrawable:drawable];
   dispatch_semaphore_t inFlight = inFlight_;
   std::atomic<double>* gpuMillis = &lastGpuMillis_;

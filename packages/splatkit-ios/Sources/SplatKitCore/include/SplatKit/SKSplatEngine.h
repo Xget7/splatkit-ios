@@ -21,8 +21,18 @@ typedef struct {
   float z;
 } SKVec3;
 
+/// The walker in walk mode, in meters. Defaults: 1.5 m eye, 0.35 m body, 0.35 m step,
+/// which climbs stairs and doorsteps but not chairs or counters.
+typedef struct {
+  float eyeHeight;
+  float bodyRadius;
+  /// The highest rise walked onto. Above it the step is refused and the walker slides.
+  float stepHeight;
+} SKCharacterSettings;
+
 /// A snapshot of what the engine is doing, refreshed twice a second.
 typedef struct {
+  /// Frames per second over the last half second.
   float fps;
   float frameMillis;
   float gpuMillis;
@@ -34,10 +44,21 @@ typedef struct {
   uint32_t computeTileCount;
   uint32_t nonemptyComputeTileCount;
   uint32_t hardwareTileCount;
+  /// fps counts frames the display showed; without it, frames submitted.
+  BOOL presentTiming;
+  /// 95th percentile display interval over the last 5 seconds; zero without presentTiming.
+  float frameMillisP95;
+  /// 1% low frame rate over the last 5 seconds; zero without presentTiming.
+  float lowFps;
+  /// Submitted frames never shown in the last half second.
+  uint32_t droppedFrames;
 } SKSplatStats;
 
 /// The renderer-applicable policy. Mirror of the host contract: raster 0 hardware,
 /// 1 computeTile, 2 hybrid; tileSize 8/16/32; sortDepth 16/32.
+/// Hardware is the default and the fastest choice for most scenes. Hybrid screen tiles are
+/// an opt-in for scenes where many large translucent splats overlap each pixel, such as
+/// close-up interiors; on distant or sparse scenes they add GPU work and lower the frame rate.
 typedef struct {
   uint32_t raster;
   uint32_t tileSize;
@@ -48,6 +69,9 @@ typedef struct {
   BOOL enableHiZOcclusion;
   BOOL enableEarlyTermination;
   uint32_t sortDepth;
+  /// Most hierarchy splats one frame selects, 0 for the loaded capacity. Changes live; when
+  /// the error threshold would select more, detail thins evenly across the view.
+  uint32_t lodSplatLimit;
 } SKRenderPolicy;
 
 /// Which policy fields this backend can apply. A false field resolves to `fallback`.
@@ -61,11 +85,14 @@ typedef struct {
   BOOL enableHiZOcclusion;
   BOOL enableEarlyTermination;
   BOOL sortDepth;
+  /// Accepted raster strategies: bit 0 hardware, bit 1 computeTile, bit 2 hybrid; 0 means all.
+  uint32_t rasterMask;
   uint32_t tileSizeMask;
   float minLodErrorPixels;
   float maxLodErrorPixels;
   float minSubpixelThreshold;
   float maxSubpixelThreshold;
+  BOOL lodSplatLimit;
 } SKRenderPolicySupport;
 
 /// Resource ceilings and device features. Values come from the native adapter.
@@ -147,6 +174,10 @@ typedef NS_ENUM(NSInteger, SKSplatEvent) {
 - (void)lookAtFrom:(SKVec3)position target:(SKVec3)target up:(SKVec3)up;
 - (void)walkForward:(float)forward right:(float)right;
 - (void)setVelocityForward:(float)forward right:(float)right;
+/// The walker's shape, applied at once in walk mode and to a collider loaded later.
+/// NO when a value is not a walkable one; the previous settings stay. Render thread.
+- (BOOL)setCharacter:(SKCharacterSettings)settings;
+@property(nonatomic, readonly) SKCharacterSettings character;
 /// Device to reference rotation, row major 3x3, device axes x right, y up, z out of the
 /// screen, reference z up.
 - (void)setAttitude:(const float*)rowMajor;

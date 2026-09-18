@@ -3,7 +3,9 @@
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
+#include <deque>
 #include <functional>
+#include <vector>
 
 #include "splat/math/Vec3.h"
 
@@ -11,10 +13,17 @@ namespace splatkit {
 
 // What a HUD shows. Readable from any thread, refreshed twice a second by the render loop.
 struct Stats {
+  // Frames per second over the last half second. With presentTiming, frames the display
+  // showed; without, frames the renderer submitted, which can exceed what reached the screen.
   float fps = 0;
-  float frameMillis = 0;  // wall time between vsyncs, averaged over the window
-  float gpuMillis = 0;    // GPU time of the last frame, from timestamp queries
-  float sortMillis = 0;   // last completed sort
+  float frameMillis = 0;  // 1000 / fps
+  // The fields below are zero unless the renderer reports when frames reached the display.
+  bool presentTiming = false;
+  float frameMillisP95 = 0;    // 95th percentile display interval over the last 5 seconds
+  float lowFps = 0;            // 1% low: the slowest 1% of those intervals, as a frame rate
+  uint32_t droppedFrames = 0;  // submitted but never shown, in the last window
+  float gpuMillis = 0;         // GPU time of the last frame, from timestamp queries
+  float sortMillis = 0;        // last completed sort
   uint32_t splatCount = 0;
   bool walking = false;
   bool motion = false;
@@ -57,6 +66,10 @@ class StatsPublisher {
     uint32_t hardwareTiles = 0;
   };
 
+  // Display times, in nanoseconds on any one clock, of frames the display showed since the
+  // last call, oldest first, and how many submitted frames it never showed. Calling it, even
+  // empty, switches the frame rate to presented frames. Render thread, before `onFrame`.
+  void onPresented(const std::vector<int64_t>& times, uint32_t dropped);
   // Once per vsync, drawn or not. `sample` is called when the window closes.
   void onFrame(int64_t frameTimeNanos, bool rendered, const std::function<Sample()>& sample);
   // Publishes everything but the frame rate now, leaving the window open: stats read after
@@ -72,9 +85,22 @@ class StatsPublisher {
   uint32_t windowFrames_ = 0;
   uint32_t windowsSinceLog_ = 0;
   bool lastLoggedIdle_ = false;
+  bool presentTiming_ = false;
+  uint32_t windowPresented_ = 0;
+  uint32_t windowDropped_ = 0;
+  int64_t lastPresent_ = 0;
+  struct Interval {
+    int64_t end = 0;
+    float millis = 0;
+  };
+  std::deque<Interval> intervals_;  // display intervals of the last five seconds
 
   std::atomic<float> fps_{0};
   std::atomic<float> frameMillis_{0};
+  std::atomic<bool> presentTimingPublished_{false};
+  std::atomic<float> frameMillisP95_{0};
+  std::atomic<float> lowFps_{0};
+  std::atomic<uint32_t> droppedFrames_{0};
   std::atomic<float> gpuMillis_{0};
   std::atomic<float> sortMillis_{0};
   std::atomic<uint32_t> splats_{0};

@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <vector>
+
 #include "splatkit/diagnostics/StatsPublisher.h"
 
 namespace splatkit {
@@ -41,6 +43,49 @@ TEST(StatsPublisher, PublishRefreshesCountsWithoutClosingTheWindow) {
   now = stats.stats();
   EXPECT_EQ(now.drawnSplatCount, 8u);
   EXPECT_FLOAT_EQ(now.fps, 4.0f);
+}
+
+// Submitting a frame is not showing it: once the renderer reports display times, the frame
+// rate counts only frames that reached the screen.
+TEST(StatsPublisher, PresentedFramesReplaceSubmittedOnesInTheFrameRate) {
+  StatsPublisher stats;
+  constexpr int64_t kFrame = 33'333'333LL;
+  stats.onFrame(kHalfSecond, true, [] { return counts(1, 1, 1); });
+  EXPECT_FALSE(stats.stats().presentTiming);
+
+  // Thirty submissions, but the display showed only every other one.
+  std::vector<int64_t> shown;
+  for (int i = 1; i <= 15; ++i) shown.push_back(kHalfSecond + 2 * i * kFrame);
+  for (int i = 1; i < 30; ++i) {
+    stats.onFrame(kHalfSecond + i * (kHalfSecond / 30), true, [] { return counts(1, 1, 1); });
+  }
+  stats.onPresented(shown, 15);
+  stats.onFrame(2 * kHalfSecond, true, [] { return counts(1, 1, 1); });
+  const Stats now = stats.stats();
+  EXPECT_TRUE(now.presentTiming);
+  EXPECT_FLOAT_EQ(now.fps, 30.0f);
+  EXPECT_EQ(now.droppedFrames, 15u);
+  EXPECT_NEAR(now.frameMillisP95, 66.67f, 0.01f);
+  EXPECT_NEAR(now.lowFps, 15.0f, 0.01f);
+}
+
+// The 1% low and p95 see a single hitch among steady frames; an idle gap is not a hitch.
+TEST(StatsPublisher, TailsCatchAHitchButNotAStillScene) {
+  StatsPublisher stats;
+  constexpr int64_t kFrame = 16'666'667LL;
+  std::vector<int64_t> shown;
+  shown.reserve(201);
+  int64_t time = kHalfSecond;
+  for (int i = 0; i < 199; ++i) shown.push_back(time += kFrame);
+  shown.push_back(time += 100'000'000LL);    // one 100 ms hitch
+  shown.push_back(time += 2'000'000'000LL);  // two still seconds, then one frame
+  stats.onPresented(shown, 0);
+  stats.onFrame(kHalfSecond, false, [] { return counts(1, 1, 1); });
+  stats.onFrame(time, false, [] { return counts(1, 1, 1); });
+  const Stats now = stats.stats();
+  EXPECT_NEAR(now.frameMillisP95, 16.67f, 0.01f);
+  // Fewer than 200 intervals: the slowest one is the 1%.
+  EXPECT_NEAR(now.lowFps, 10.0f, 0.01f);
 }
 
 }  // namespace

@@ -2,7 +2,9 @@ add_executable(splat_core_tests
   formats/SplatDecoderTest.cpp
   formats/SpzDecoderTest.cpp
   formats/GlbDecoderTest.cpp
+  formats/GlbEncoderTest.cpp
   navigation/ColliderTest.cpp
+  navigation/ColliderBuilderTest.cpp
   math/Mat4Test.cpp
   math/HalfTest.cpp
   math/SymmetricEigenTest.cpp

@@ -23,10 +23,35 @@ public struct CameraPose: Equatable {
     }
 }
 
+/// The walker in walk mode, in meters. The defaults are a standing adult: the eye 1.5 m over
+/// the floor, 0.35 m kept from walls, and a 0.35 m rise walked onto, which climbs stairs and
+/// doorsteps but not chairs or counters. A step onto anything higher is refused and the
+/// walker slides along it instead.
+public struct CharacterSettings: Equatable {
+    public var eyeHeight: Float
+    public var bodyRadius: Float
+    public var stepHeight: Float
+
+    public init(eyeHeight: Float = 1.5, bodyRadius: Float = 0.35, stepHeight: Float = 0.35) {
+        self.eyeHeight = eyeHeight
+        self.bodyRadius = bodyRadius
+        self.stepHeight = stepHeight
+    }
+}
+
 /// A snapshot of what the engine is doing, refreshed twice a second.
 public struct SplatStats {
+    /// Frames per second over the last half second: frames the display showed when
+    /// `presentTiming` is true, otherwise frames submitted.
     public var fps: Float = 0
     public var frameMillis: Float = 0
+    public var presentTiming = false
+    /// 95th percentile display interval over the last 5 seconds; zero without present timing.
+    public var frameMillisP95: Float = 0
+    /// Frame rate of the slowest 1% of display intervals over the last 5 seconds.
+    public var lowFps: Float = 0
+    /// Submitted frames never shown in the last half second.
+    public var droppedFrames: Int = 0
     /// GPU time of the last frame; zero until one completes.
     public var gpuMillis: Float = 0
     public var sortMillis: Float = 0
@@ -61,6 +86,9 @@ public protocol SplatViewDelegate: AnyObject {
     /// Walk mode is on.
     func splatViewColliderReady(_ view: SplatMetalView)
     func splatView(_ view: SplatMetalView, colliderFailed message: String)
+    /// Where the camera ended up, at most once per `cameraPoseInterval` and only while it
+    /// moves. Off until that interval is set.
+    func splatView(_ view: SplatMetalView, cameraPoseChanged pose: CameraPose)
 }
 
 public extension SplatViewDelegate {
@@ -69,6 +97,7 @@ public extension SplatViewDelegate {
     func splatView(_ view: SplatMetalView, worldFailed message: String) {}
     func splatViewColliderReady(_ view: SplatMetalView) {}
     func splatView(_ view: SplatMetalView, colliderFailed message: String) {}
+    func splatView(_ view: SplatMetalView, cameraPoseChanged pose: CameraPose) {}
 }
 
 /// A view that renders with SplatKit, on a CAMetalLayer of its own.
@@ -77,8 +106,9 @@ public extension SplatViewDelegate {
 /// lifecycle: the engine gets the layer when the view is in a window and gives it back,
 /// synchronously, before the view leaves it.
 ///
-/// Gestures: one finger drags the view (yaw, and pitch when the gyroscope is off);
-/// two fingers walk (up is forward, sideways strafes); a double tap toggles the gyroscope.
+/// Touch: a drag looks around (yaw, and pitch when the gyroscope is off) and a double tap
+/// toggles the gyroscope; both can be turned off. The view ships no walking control: the
+/// host draws its own, wherever it likes, and drives `setWalkVelocity` or `walk` from it.
 public final class SplatMetalView: UIView {
     public override class var layerClass: AnyClass { CAMetalLayer.self }
 
@@ -89,14 +119,38 @@ public final class SplatMetalView: UIView {
     private var attached = false
     private var lastDrawableSize = CGSize.zero
 
-    /// Radians per point dragged.
-    public var lookSensitivity: Float = 0.004
-    /// Meters per point dragged with two fingers.
-    public var walkSensitivity: Float = 0.01
-    /// Whether a one-finger drag is allowed to move the camera. Scripted tours can disable it.
-    public var touchLookEnabled = true
+    private lazy var touchLook = TouchLook(view: self) { [weak self] yaw, pitch in
+        self?.renderThread.look(yaw, pitch)
+    }
+    private var poseTimer: Timer?
+    private var lastPose: CameraPose?
+
+    /// Radians per point dragged to look.
+    public var lookSensitivity: Float {
+        get { touchLook.sensitivity }
+        set { touchLook.sensitivity = newValue }
+    }
+    /// Whether a drag on the view is allowed to turn the camera. A host that drives looking
+    /// from its own control, and scripted tours, turn it off.
+    public var touchLookEnabled: Bool {
+        get { touchLook.isEnabled }
+        set {
+            touchLook.isEnabled = newValue
+            if !newValue { touchLook.letGo() }
+        }
+    }
     /// Whether the double-tap gesture can toggle motion input.
     public var motionToggleEnabled = true
+
+    /// How often the delegate hears where the camera is, in seconds; 0, the default, never.
+    /// A pose is delivered only when it differs from the last one delivered.
+    public var cameraPoseInterval: TimeInterval = 0 {
+        didSet {
+            cameraPoseInterval = max(cameraPoseInterval, 0)
+            guard cameraPoseInterval != oldValue else { return }
+            startPoseTimer()
+        }
+    }
 
     public weak var delegate: SplatViewDelegate?
 
@@ -124,15 +178,14 @@ public final class SplatMetalView: UIView {
             @unknown default: break
             }
         }
-        let look = UIPanGestureRecognizer(target: self, action: #selector(onLook(_:)))
-        look.maximumNumberOfTouches = 1
-        addGestureRecognizer(look)
-        let walk = UIPanGestureRecognizer(target: self, action: #selector(onWalk(_:)))
-        walk.minimumNumberOfTouches = 2
-        walk.maximumNumberOfTouches = 2
-        addGestureRecognizer(walk)
-        let tap = UITapGestureRecognizer(target: self, action: #selector(onDoubleTap))
+        isMultipleTouchEnabled = true
+        _ = touchLook
+        let tap = UITapGestureRecognizer(target: self, action: #selector(onDoubleTap(_:)))
         tap.numberOfTapsRequired = 2
+        // The look drag keeps its touches while the tap is being recognized.
+        tap.cancelsTouchesInView = false
+        tap.delaysTouchesEnded = false
+        tap.delegate = touchLook
         addGestureRecognizer(tap)
     }
 
@@ -229,10 +282,38 @@ public final class SplatMetalView: UIView {
         }
     }
 
-    /// Walks continuously at the given speed in meters per second until called again with zeros.
+    /// Walks continuously at the given speed in meters per second until called again with
+    /// zeros: what a joystick or a keyboard drives. Forward is where the camera looks,
+    /// flattened onto the floor while walking; right strafes.
     public func setWalkVelocity(forward: Float, right: Float) {
         renderThread.setVelocity(forward, right)
     }
+
+    /// One step, in meters, for a host that integrates movement itself. The collider stops
+    /// it at walls and the floor carries it, exactly as a velocity would.
+    public func walk(forward: Float, right: Float) {
+        renderThread.walk(forward, right)
+    }
+
+    /// Turns the camera by these radians: what a look pad or a mouse drives. Pitch is
+    /// clamped, and ignored while the gyroscope drives the view.
+    public func look(deltaYaw: Float, deltaPitch: Float) {
+        renderThread.look(deltaYaw, deltaPitch)
+    }
+
+    /// The walker's shape in walk mode, applied at once and to a collider loaded later.
+    /// False when a value is not a walkable one, and then the previous settings stay.
+    @discardableResult
+    public func setCharacter(_ settings: CharacterSettings) -> Bool {
+        let accepted = renderThread.setCharacter(SKCharacterSettings(
+            eyeHeight: settings.eyeHeight, bodyRadius: settings.bodyRadius,
+            stepHeight: settings.stepHeight))
+        if accepted { character = settings }
+        return accepted
+    }
+
+    /// The walker's shape in effect.
+    public private(set) var character = CharacterSettings()
 
     /// Runs a reproducible capture: the gyroscope goes off, the camera takes a fixed pose
     /// and turns once over `seconds`, then the frame time distribution is logged.
@@ -263,6 +344,10 @@ public final class SplatMetalView: UIView {
         guard let s = renderThread.stats() else { return stats }
         stats.fps = s.fps
         stats.frameMillis = s.frameMillis
+        stats.presentTiming = s.presentTiming.boolValue
+        stats.frameMillisP95 = s.frameMillisP95
+        stats.lowFps = s.lowFps
+        stats.droppedFrames = Int(s.droppedFrames)
         stats.gpuMillis = s.gpuMillis
         stats.sortMillis = s.sortMillis
         stats.splatCount = Int(s.splatCount)
@@ -289,18 +374,47 @@ public final class SplatMetalView: UIView {
         motion.interfaceOrientation = interfaceOrientation
         renderThread.resume()
         if motionEnabled { motion.start() }
+        startPoseTimer()
     }
 
     public func pause() {
         resumed = false
         motion.stop()
         renderThread.pause()
+        stopPoseTimer()
     }
 
     public func release() {
         motion.stop()
+        stopPoseTimer()
         detach()
         renderThread.release()
+    }
+
+    // Camera pose reporting.
+
+    private func startPoseTimer() {
+        stopPoseTimer()
+        guard resumed, cameraPoseInterval > 0 else { return }
+        let timer = Timer(timeInterval: cameraPoseInterval, repeats: true) { [weak self] _ in
+            self?.reportPose()
+        }
+        // Common modes: a pose keeps arriving while a host's own control is being dragged.
+        RunLoop.main.add(timer, forMode: .common)
+        poseTimer = timer
+    }
+
+    private func stopPoseTimer() {
+        poseTimer?.invalidate()
+        poseTimer = nil
+    }
+
+    private func reportPose() {
+        guard let delegate else { return }
+        let pose = cameraPose
+        guard pose != lastPose else { return }
+        lastPose = pose
+        delegate.splatView(self, cameraPoseChanged: pose)
     }
 
     // Layer lifecycle.
@@ -351,6 +465,7 @@ public final class SplatMetalView: UIView {
     }
 
     private func detach() {
+        touchLook.letGo()
         guard attached else { return }
         attached = false
         renderThread.layerDetached()
@@ -358,23 +473,7 @@ public final class SplatMetalView: UIView {
 
     // Gestures.
 
-    @objc private func onLook(_ g: UIPanGestureRecognizer) {
-        guard touchLookEnabled else {
-            g.setTranslation(.zero, in: self)
-            return
-        }
-        let d = g.translation(in: self)
-        renderThread.look(-Float(d.x) * lookSensitivity, -Float(d.y) * lookSensitivity)
-        g.setTranslation(.zero, in: self)
-    }
-
-    @objc private func onWalk(_ g: UIPanGestureRecognizer) {
-        let d = g.translation(in: self)
-        renderThread.walk(-Float(d.y) * walkSensitivity, Float(d.x) * walkSensitivity)
-        g.setTranslation(.zero, in: self)
-    }
-
-    @objc private func onDoubleTap() {
+    @objc private func onDoubleTap(_ g: UITapGestureRecognizer) {
         guard motionToggleEnabled else { return }
         setMotionEnabled(!motionEnabled)
     }

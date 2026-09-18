@@ -6,7 +6,7 @@ Requires iOS 17+ and Apple GPU family 7+ (A14/M1+); unsupported GPUs report unav
 ## Use it
 
 Swift Package Manager: add `https://github.com/Xget7/splatkit-ios`, product `SplatKit`, then `import SplatKit`.
-Choose exact version `0.1.0-alpha.3`.
+Choose exact version `0.1.0-alpha.4`.
 
 For source builds, build the static libraries with `scripts/build-ios.sh` from the repository root, then add to your target:
 
@@ -44,15 +44,38 @@ Forward `resume()`, `pause()` and `release()` from the host's lifecycle; the lay
 | `linearBlending` | Blend in linear light instead of the encoded colour space |
 | `splatBudget`, `residencyBudget` | Most splats drawn per frame, most splats resident on the GPU; a tiled scene that fits the residency whole is fetched whole, so turning never meets a coarse stand-in |
 | `shDegree`, `maxShDegree` | Harmonics drawn, harmonics kept from the file |
-| `setWalkVelocity(forward:right:)` | Continuous walking in meters per second |
+| `setWalkVelocity(forward:right:)`, `walk(forward:right:)` | Continuous walking in meters per second, or a single step in meters; the host draws its own control and drives these |
+| `look(deltaYaw:deltaPitch:)` | Turns the camera by radians, for a look pad or mouse |
+| `setCharacter(_:)`, `character` | The walker's shape in walk mode: `CharacterSettings(eyeHeight:bodyRadius:stepHeight:)` |
+| `touchLookEnabled`, `lookSensitivity` | Whether a one-finger drag turns the camera, and radians per point dragged |
+| `motionToggleEnabled` | Whether a double tap anywhere in the view toggles the gyroscope |
 | `setMotionEnabled(_:)`, `isMotionEnabled` | Gyroscope driven camera |
+| `cameraPoseInterval` | Seconds between `cameraPoseChanged` delegate calls; 0, the default, never |
 | `startBenchmark(seconds:)` | A reproducible turn with the frame time distribution logged |
 | `captureFrame(to:completion:)` | The next frame as a PNG |
-| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth applies with GPU sort, the sub-pixel threshold only under the tight-culling experiment |
+| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth, the raster strategy, the LOD error threshold and the LOD splat limit apply with GPU sort, the sub-pixel threshold only under the tight-culling experiment |
 | `readStats()`, `gpuDescription` | Frame, GPU and sort times, splats drawn, device name |
-| `delegate` | World and collider outcomes, on the main thread |
+| `delegate` | World, collider and camera pose outcomes, on the main thread |
 
-Gestures: one finger looks, two fingers walk, a double tap toggles the gyroscope; `lookSensitivity` and `walkSensitivity` scale them.
+## Raster strategy
+
+Hardware rasterization is the default and the fastest choice for most scenes.
+Hybrid screen tiles are an experimental opt-in for scenes where many large translucent splats overlap each pixel, such as close-up interiors:
+
+```swift
+var policy = splatView.renderPolicy
+policy.raster = 2  // hybrid; 0 restores hardware
+splatView.renderPolicy = policy
+```
+
+They composite 16×16 tiles in compute on top of the GPU's own tiling, so on distant or sparse scenes they only add work.
+ISS at a 45 m orbit on an iPhone 17 Pro drew the same 1.96M splats at 22-23 FPS with tiles and 31 FPS without.
+The first request builds the tile pipelines; switching back to hardware frees the tile scratch.
+`computeTile` is not built and falls back to hardware with a warning.
+
+Touch: a one-finger drag looks around, and a double tap anywhere in the view toggles the gyroscope.
+The view ships no walking control; the host draws its own, wherever it likes, and drives it with `setWalkVelocity` or `walk`.
+`lookSensitivity` tunes the drag, and `touchLookEnabled` and `motionToggleEnabled` turn the two gestures off.
 
 ## Layout
 
@@ -77,18 +100,19 @@ Colours blend in the encoded space by default, on a `bgra8Unorm` layer; `linearB
 Start motion after `splatView(_:worldFrameReady:)`, not upload-only `worldReady`.
 Keep the view attached/resumed while loading; readiness means GPU completion, not visual acceptance.
 
-Dev-only switches; `--min-pixel-radius` and `--depth-key-bits` set the view's `renderPolicy`, the rest apply before renderer creation:
+Dev-only switches; `--quality`, `--min-pixel-radius`, `--depth-key-bits`, `--lod-error-pixels`, `--lod-splat-limit` and `--tile-raster` set the view's `renderPolicy`, the rest apply before renderer creation:
 
 | Switch | Effect |
 |---|---|
 | `--metal-culling 1 --min-pixel-radius 1` | Covariance bounds, opacity/subpixel rejection |
 | `--depth-key-bits 16` | Two radix passes; uint32 storage unchanged; ties may shimmer |
-| `--tile-raster 1` | 16×16 tiles; compute ≤512 candidates, dense/large-footprint tiles use hardware |
-| `--budget 2200000` | LOD capacity, not guaranteed quality |
-| `--orbit-horizontal 0` | Previous vertical framing for benchmark reproduction |
+| `--tile-raster 1` | Hybrid raster: 16×16 tiles, compute ≤512 candidates, dense/large-footprint tiles use hardware |
+| `--budget 4000000` | LOD capacity, at most 4M; not guaranteed quality |
+| `--quality ultra` | Starting level of the on-screen picker: `ultra`, `high` (default), `balanced`, `fast` |
+| `--shot tour` | ISS camera, +Y up: `overview`, `orbit` (default), `detail`, `flyby`, `tour` |
 | `--run-seconds 20` | Bounded run with resource monitoring |
 
-Defaults: 32-bit sorting, tiles disabled.
+Defaults: 32-bit sorting, hardware raster.
 Culling, LOD and depth quantization are approximations pending visual acceptance.
 Tile termination uses transmittance ≤0.0001; hardware geometry submission remains.
 Private allocations still consume unified memory.

@@ -65,6 +65,10 @@ def main():
             raise ValueError(f"oversized export file: {name}")
         if SECRET.search(source.read_bytes()):
             raise ValueError(f"secret-pattern match, review required: {name}")
+        if platform == "react-native" and name == f"{RN_PACKAGE}/.gitignore":
+            # This package's own .gitignore is for building it inside this monorepo;
+            # distribution/.gitignore, unwrapped by published(), is the public repo's.
+            continue
         target = published(platform, name)
         if target in selected:
             raise ValueError(f"two files publish to {target}")

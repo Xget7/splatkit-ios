@@ -64,6 +64,7 @@ SKRenderPolicy fromCppPolicy(const splatkit::RenderPolicy& p) {
   out.enableHiZOcclusion = p.enableHiZOcclusion;
   out.enableEarlyTermination = p.enableEarlyTermination;
   out.sortDepth = static_cast<uint32_t>(p.sortDepth);
+  out.lodSplatLimit = p.lodSplatLimit;
   return out;
 }
 
@@ -78,6 +79,7 @@ bool toCppPolicy(SKRenderPolicy p, splatkit::RenderPolicy* out) {
   out->enableHiZOcclusion = p.enableHiZOcclusion == YES;
   out->enableEarlyTermination = p.enableEarlyTermination == YES;
   out->sortDepth = p.sortDepth == 16 ? splatkit::SortKeyBits::low16 : splatkit::SortKeyBits::full32;
+  out->lodSplatLimit = p.lodSplatLimit;
   return true;
 }
 
@@ -92,11 +94,13 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
   out.enableHiZOcclusion = s.enableHiZOcclusion;
   out.enableEarlyTermination = s.enableEarlyTermination;
   out.sortDepth = s.sortDepth;
+  out.rasterMask = s.rasterMask;
   out.tileSizeMask = s.tileSizeMask;
   out.minLodErrorPixels = s.minLodErrorPixels;
   out.maxLodErrorPixels = s.maxLodErrorPixels;
   out.minSubpixelThreshold = s.minSubpixelThreshold;
   out.maxSubpixelThreshold = s.maxSubpixelThreshold;
+  out.lodSplatLimit = s.lodSplatLimit;
   return out;
 }
 
@@ -192,7 +196,11 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
           s.drawnSplatCount,
           s.computeTileCount,
           s.nonemptyComputeTileCount,
-          s.hardwareTileCount};
+          s.hardwareTileCount,
+          s.presentTiming,
+          s.frameMillisP95,
+          s.lowFps,
+          s.droppedFrames};
 }
 
 - (NSString*)gpuDescription {
@@ -252,6 +260,19 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
 
 - (void)setVelocityForward:(float)forward right:(float)right {
   _engine->setVelocity(forward, right);
+}
+
+- (BOOL)setCharacter:(SKCharacterSettings)settings {
+  splat::CharacterSettings character = _engine->character();
+  character.eyeHeight = settings.eyeHeight;
+  character.bodyRadius = settings.bodyRadius;
+  character.stepHeight = settings.stepHeight;
+  return _engine->setCharacter(character) ? YES : NO;
+}
+
+- (SKCharacterSettings)character {
+  const splat::CharacterSettings& character = _engine->character();
+  return SKCharacterSettings{character.eyeHeight, character.bodyRadius, character.stepHeight};
 }
 
 - (void)setAttitude:(const float*)rowMajor {

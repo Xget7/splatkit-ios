@@ -21,6 +21,13 @@ bool MetalTileRaster::create(id<MTLDevice> device, id<MTLLibrary> library) {
          raster_.staticThreadgroupMemoryLength <= device.maxThreadgroupMemoryLength;
 }
 
+void MetalTileRaster::releaseScratch() {
+  bins_ = nil;
+  counts_ = nil;
+  fallback_ = nil;
+  rectangles_ = nil;
+}
+
 bool MetalTileRaster::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> uniforms,
                              id<MTLBuffer> projected, id<MTLBuffer> order, id<MTLBuffer> count,
                              uint32_t capacity, id<MTLTexture> target, uint32_t slot) {

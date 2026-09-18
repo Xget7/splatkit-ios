@@ -7,7 +7,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 option(SPLAT_CORE_BUILD_TESTS "Build splat_core unit tests" ${PROJECT_IS_TOP_LEVEL})
-option(SPLAT_CORE_BUILD_TOOLS "Build ply2spz, splat-tile and splat_lod_build" ${PROJECT_IS_TOP_LEVEL})
+option(SPLAT_CORE_BUILD_TOOLS "Build ply2spz, splat-tile, splat_lod_build and splat_collider" ${PROJECT_IS_TOP_LEVEL})
 # "thread" or "address" (address implies undefined). Off by default; CI runs both.
 set(SPLAT_CORE_SANITIZE "" CACHE STRING "Sanitizer for splat_core and its tests")
 
@@ -27,8 +27,10 @@ add_library(splat_core STATIC
   src/formats/SplatDecoder.cpp
   src/formats/SpzDecoder.cpp
   src/formats/GlbDecoder.cpp
+  src/formats/GlbEncoder.cpp
   src/navigation/Collider.cpp
   src/navigation/CharacterController.cpp
+  src/navigation/ColliderBuilder.cpp
   src/sorting/DistanceSorter.cpp
   src/sorting/AsyncSorter.cpp
   src/sorting/SpatialOrder.cpp

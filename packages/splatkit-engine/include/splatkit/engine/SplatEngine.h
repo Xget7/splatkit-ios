@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "splat/core/Result.h"
 #include "splat/loading/SplatWorldLoader.h"
@@ -130,6 +131,9 @@ class SplatEngine {
   void setAttitude(const float rowMajor[9]) { camera_.setAttitude(rowMajor); }
   void setMotionEnabled(bool enabled) { camera_.setMotionEnabled(enabled); }
   void setVelocity(float forward, float right) { camera_.setVelocity(forward, right); }
+  // The walker's shape in walk mode. Unwalkable values are refused as a whole.
+  bool setCharacter(const splat::CharacterSettings& settings);
+  const splat::CharacterSettings& character() const { return camera_.character(); }
 
   // Draws the next frame even when nothing changed, for a renderer that has something
   // to do with it, such as a capture.
@@ -184,6 +188,7 @@ class SplatEngine {
   splat::VisibilityPlanner planner_;
   Benchmark benchmark_;
   StatsPublisher stats_;
+  std::vector<int64_t> presentTimes_;
 
   std::atomic<int> maxShDegree_{kMaxShDegree};
   std::atomic<uint32_t> residency_{2000000};

@@ -7,13 +7,13 @@ No graphics, no platform APIs, no React Native.
 
 | Domain | Responsibility | Public headers |
 |---|---|---|
-| Formats | Decode `.spz` worlds and `.glb` colliders into library-owned types in the internal frame | `splat/formats/*.h`, `splat/core/*.h` |
+| Formats | Decode `.spz` worlds and `.glb` colliders into library-owned types in the internal frame, and encode `.glb` colliders | `splat/formats/*.h`, `splat/core/*.h` |
 | Loading | Map files, decode and prepare worlds for a render thread | `splat/io/*.h`, `splat/loading/*.h` |
 | Level of detail | Load-time trees, offline `.lodsplat` files and budgeted selection | `splat/lod/*.h` |
 | Tiles | Tilesets, tile loading and residency-bounded streaming | `splat/tiles/*.h` |
 | Sorting | Distance order on a background thread, spatial reorder and visibility planning | `splat/sorting/*.h` |
 | Math | Column major matrices, vectors and frusta shared by every renderer | `splat/math/*.h` |
-| Navigation | Collider grid, raycast, character controller | `splat/navigation/*.h` |
+| Navigation | Collider grid, raycast, character controller, colliders built from splats | `splat/navigation/*.h` |
 | Diagnostics | Timing summaries with percentiles | `splat/diagnostics/*.h` |
 
 ## Build and test
@@ -41,3 +41,19 @@ Neither tool prunes unless asked; the default output is the whole scene.
 `tools/splat-tile` takes the same `--sh` and `--prune-alpha` before partitioning a scene into streamed tiles.
 `tools/splat_lod_build` writes an offline `.lodsplat` hierarchy; the [iOS README](../splatkit-ios/README.md) shows its options.
 The coordinates are written as they are; the reference 3DGS frame is what the decoder assumes for a file without a frame tag, so the scene stands upright.
+
+## Generating a collider
+
+Walk mode needs a collider.
+For a world shipped without one, `buildCollider` (`splat/navigation/ColliderBuilder.h`) makes it from the splats: a C++ port of the voxel collision passes of [PlayCanvas splat-transform](https://github.com/playcanvas/splat-transform).
+Splat opacity is summed into 5 cm voxels, the space outside an enclosed scene is filled, and a 1.6 m walker box is flood-filled from the origin; what it cannot reach becomes solid, so floaters and the far side of walls are gone.
+A surface net meshes the result, with vertices moved to where the splats are.
+`tools/splat_collider` writes it as a `.glb` in the World Labs frame:
+
+```
+build/tools/splat_collider kitchen.spz kitchen_collider.glb
+```
+
+`--voxel`, `--solid-opacity`, `--exterior-fill`, `--floor-fill` (outdoor ground), `--capsule-height`, `--capsule-radius` and `--seed x,y,z` match the options in the header; `--capsule-height 0` keeps every surface.
+`--compare reference.glb` reports floor, wall and walk-reach differences against another collider.
+The World Labs kitchen (500k splats) builds in about a second on an M-series Mac: its floor is within 1 cm of the collider shipped with it, and the walker reaches no space that collider does not have.

@@ -1,7 +1,6 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <cstdlib>
-#include <optional>
 #include <string>
 
 #include "rendering/MetalSplatRenderer.h"
@@ -13,22 +12,13 @@
 namespace splatkit {
 namespace {
 
-class TileMode {
- public:
-  explicit TileMode(bool enabled) {
-    if (const char* value = std::getenv("SPLATKIT_METAL_TILE_RASTER")) previous_ = value;
-    setenv("SPLATKIT_METAL_TILE_RASTER", enabled ? "1" : "0", 1);
-  }
-  ~TileMode() {
-    if (previous_)
-      setenv("SPLATKIT_METAL_TILE_RASTER", previous_->c_str(), 1);
-    else
-      unsetenv("SPLATKIT_METAL_TILE_RASTER");
-  }
-
- private:
-  std::optional<std::string> previous_;
-};
+// Hybrid screen tiles are per-view policy; hardware is every renderer's default.
+void useHybridTiles(MetalSplatRenderer& renderer) {
+  RenderPolicy policy = renderer.deviceCapabilities().policy.fallback;
+  policy.raster = RasterStrategy::hybrid;
+  std::string reason;
+  ASSERT_TRUE(renderer.applyRenderPolicy(policy, &reason)) << reason;
+}
 
 class MetalRasterTest : public testing::Test {
  protected:
@@ -40,7 +30,6 @@ class MetalRasterTest : public testing::Test {
 };
 
 TEST_F(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacement) {
-  TileMode option(false);
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   auto layer = [CAMetalLayer layer];
@@ -80,12 +69,59 @@ TEST_F(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacemen
   EXPECT_FALSE(renderer->hasCompletedWorldFrame());
 }
 
+TEST_F(MetalRasterTest, HybridTilesAreAPerViewOptInThatTurnsBackOff) {
+  auto renderer = MetalSplatRenderer::create();
+  ASSERT_NE(renderer, nullptr);
+  const DeviceCapabilities caps = renderer->deviceCapabilities();
+  EXPECT_TRUE(caps.supportsComputeTiles);
+  EXPECT_EQ(caps.policy.fallback.raster, RasterStrategy::hardware);
+  RenderPolicy computeOnly = caps.policy.fallback;
+  computeOnly.raster = RasterStrategy::computeTile;
+  const RenderPolicyResolution resolution = resolveRenderPolicy(computeOnly, caps.policy);
+  EXPECT_EQ(resolution.effective.raster, RasterStrategy::hardware);
+  ASSERT_EQ(resolution.warnings.size(), 1u);
+
+  auto layer = [CAMetalLayer layer];
+  layer.drawableSize = CGSizeMake(64, 64);
+  renderer->setLayer(layer);
+  renderer->setDrawableSize(64, 64);
+  splat::SplatCloud cloud;
+  cloud.positions = {0, 0, -2};
+  cloud.colors = {1, 0, 0};
+  cloud.alphas = {1};
+  cloud.covariances = {0.04f, 0, 0, 0.04f, 0, 0.04f};
+  ASSERT_TRUE(renderer->uploadWorld(cloud, 0));
+  SplatRenderer::Frame frame;
+  frame.orderSource = SplatRenderer::OrderSource::gpu;
+  const SplatRenderer::Range range{0, 1};
+  frame.ranges = &range;
+  frame.rangeCount = 1;
+  frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
+  auto completed = dispatch_semaphore_create(0);
+  auto tilesAfterFrame = [&] {
+    renderer->captureNextFrame(
+        [&](std::vector<uint8_t>, uint32_t, uint32_t) { dispatch_semaphore_signal(completed); });
+    EXPECT_TRUE(renderer->draw(frame));
+    EXPECT_EQ(
+        dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
+    const auto tiles = renderer->lastScreenTileStats();
+    return tiles.compute + tiles.hardware;
+  };
+  EXPECT_EQ(tilesAfterFrame(), 0u);
+  useHybridTiles(*renderer);
+  EXPECT_EQ(tilesAfterFrame(), 16u);
+  RenderPolicy hardware = caps.policy.fallback;
+  std::string reason;
+  ASSERT_TRUE(renderer->applyRenderPolicy(hardware, &reason)) << reason;
+  EXPECT_EQ(tilesAfterFrame(), 0u);
+}
+
 TEST_F(MetalRasterTest, HybridCompletesOverflowTilesWithTheFullHardwareImage) {
   std::vector<uint8_t> images[2];
   for (int mode = 0; mode < 2; ++mode) {
-    TileMode option(mode != 0);
     auto renderer = MetalSplatRenderer::create();
     ASSERT_NE(renderer, nullptr);
+    if (mode != 0) useHybridTiles(*renderer);
     auto layer = [CAMetalLayer layer];
     layer.drawableSize = CGSizeMake(64, 64);
     renderer->setLayer(layer);
@@ -125,9 +161,9 @@ TEST_F(MetalRasterTest, HybridCompletesOverflowTilesWithTheFullHardwareImage) {
 TEST_F(MetalRasterTest, LargeFootprintAndCrossTileBoundaryMatchHardwareImage) {
   std::vector<uint8_t> images[2];
   for (int mode = 0; mode < 2; ++mode) {
-    TileMode option(mode != 0);
     auto renderer = MetalSplatRenderer::create();
     ASSERT_NE(renderer, nullptr);
+    if (mode != 0) useHybridTiles(*renderer);
     auto layer = [CAMetalLayer layer];
     layer.drawableSize = CGSizeMake(128, 128);
     renderer->setLayer(layer);
@@ -193,9 +229,9 @@ TEST_F(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
   }
   std::vector<uint8_t> images[2];
   for (int mode = 0; mode < 2; ++mode) {
-    TileMode option(mode != 0);
     auto renderer = MetalSplatRenderer::create();
     ASSERT_NE(renderer, nullptr);
+    if (mode != 0) useHybridTiles(*renderer);
     auto layer = [CAMetalLayer layer];
     layer.drawableSize = CGSizeMake(64, 64);
     renderer->setLayer(layer);
@@ -228,6 +264,70 @@ TEST_F(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
   EXPECT_LE(maxDifference, 2);
   EXPECT_GT(images[1][(32 * 64 + 32) * 4 + 2], 200);
   EXPECT_GT(images[1][(32 * 64 + 56) * 4 + 1], 80);
+}
+
+TEST_F(MetalRasterTest, LodErrorPolicyRefinesALoadedHierarchyLive) {
+  splat::LodTree tree;
+  tree.leafCount = 64;
+  tree.nodes.positions = {0, 0, -8};
+  tree.nodes.colors = {1, 1, 1};
+  tree.nodes.alphas = {1};
+  tree.nodes.covariances = {0.04f, 0, 0, 0.04f, 0, 0.04f};
+  tree.layout.push_back({{0, 0, -8}, 0.4f, 1, 64});
+  for (uint32_t i = 0; i < 64; ++i) {
+    const float x = (static_cast<float>(i % 8) - 3.5f) * 0.1f;
+    const float y = (static_cast<float>(i / 8) - 3.5f) * 0.1f;
+    tree.nodes.positions.insert(tree.nodes.positions.end(), {x, y, -8});
+    tree.nodes.colors.insert(tree.nodes.colors.end(), {1, 1, 1});
+    tree.nodes.alphas.push_back(1);
+    tree.nodes.covariances.insert(tree.nodes.covariances.end(), {0.001f, 0, 0, 0.001f, 0, 0.001f});
+    tree.layout.push_back({{x, y, -8}, 0, 0, 0});
+  }
+  auto renderer = MetalSplatRenderer::create();
+  ASSERT_NE(renderer, nullptr);
+  const DeviceCapabilities caps = renderer->deviceCapabilities();
+  EXPECT_TRUE(caps.policy.lodErrorPixels);
+  EXPECT_EQ(caps.limits.maxLodCapacitySplats, 4'000'000u);
+  auto layer = [CAMetalLayer layer];
+  layer.drawableSize = CGSizeMake(64, 64);
+  renderer->setLayer(layer);
+  renderer->setDrawableSize(64, 64);
+  ASSERT_TRUE(renderer->uploadLodWorld(tree, 0, 64));
+  SplatRenderer::Frame frame;
+  frame.orderSource = SplatRenderer::OrderSource::gpu;
+  frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
+  auto completed = dispatch_semaphore_create(0);
+  auto selectedAt = [&](float pixels, uint32_t limit = 0) {
+    RenderPolicy policy = caps.policy.fallback;
+    policy.lodErrorPixels = pixels;
+    policy.lodSplatLimit = limit;
+    std::string reason;
+    EXPECT_TRUE(renderer->applyRenderPolicy(policy, &reason)) << reason;
+    // Selection readback trails submission, so settle over a few frames.
+    for (int i = 0; i < 4; ++i) {
+      renderer->captureNextFrame(
+          [&](std::vector<uint8_t>, uint32_t, uint32_t) { dispatch_semaphore_signal(completed); });
+      EXPECT_TRUE(renderer->draw(frame));
+      EXPECT_EQ(
+          dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)),
+          0);
+    }
+    return renderer->lastSelectedCount();
+  };
+  const uint32_t coarse = selectedAt(16);
+  const uint32_t fine = selectedAt(0.1f);
+  printf("[ LOD ] selected %u at 16 px, %u at 0.1 px\n", coarse, fine);
+  EXPECT_EQ(coarse, 1u);
+  EXPECT_EQ(fine, 64u);
+  EXPECT_EQ(selectedAt(16), 1u);
+
+  // A limit below the refined cut denies the split and raises the threshold instead; lifting
+  // the limit restores the policy's threshold at once.
+  EXPECT_TRUE(caps.policy.lodSplatLimit);
+  EXPECT_EQ(selectedAt(0.1f, 32), 1u);
+  EXPECT_GT(renderer->lodPixels(), 0.1f);
+  EXPECT_EQ(selectedAt(0.1f), 64u);
+  EXPECT_FLOAT_EQ(renderer->lodPixels(), 0.1f);
 }
 
 TEST_F(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -84,12 +85,16 @@ class MetalSplatRenderer final : public SplatRenderer {
   double lastSelectMillis() const override {
     return gpuFailed_.load() ? 0 : lastSelectMillis_.load();
   }
+  // The threshold the next selection runs at, at least the policy's. Render thread.
+  float lodPixels() const { return lodPixels_; }
   uint32_t lastLodLimitedCount() const { return lod_ ? lastLodLimitedCount_.load() : 0; }
   uint32_t lastLodEvaluatedCount() const { return lod_ ? lastLodEvaluatedCount_.load() : 0; }
   ScreenTileStats lastScreenTileStats() const override {
     if (gpuFailed_.load()) return {};
     return {lastComputeTiles_.load(), lastNonemptyComputeTiles_.load(), lastHardwareTiles_.load()};
   }
+  bool reportsPresentTimes() const override { return true; }
+  uint32_t takePresentTimes(std::vector<int64_t>* times) override;
   const std::string& deviceDescription() const override { return description_; }
 
   static constexpr int kMaxShDegree = 3;
@@ -133,6 +138,13 @@ class MetalSplatRenderer final : public SplatRenderer {
   uint32_t generation_ = 0;
   uint64_t frame_ = 0;
   std::atomic<double> lastGpuMillis_{0};
+  // Filled by drawable presented handlers, which can outlive a frame's other state.
+  struct PresentLog {
+    std::mutex mutex;
+    std::vector<int64_t> times;  // display times in nanoseconds, capped while nobody drains
+    uint32_t dropped = 0;
+  };
+  std::shared_ptr<PresentLog> presents_ = std::make_shared<PresentLog>();
   std::atomic<bool> completedWorldFrame_{false};
   MetalVisibility visibility_;
   std::unique_ptr<MetalLOD> lod_;
@@ -141,8 +153,18 @@ class MetalSplatRenderer final : public SplatRenderer {
   std::atomic<uint32_t> lastLodLimitedCount_{0}, lastLodEvaluatedCount_{0};
   std::atomic<double> lastSelectMillis_{0};
   float minPixelRadius_ = 0.5f;
+  float lodErrorPixels_ = 1.0f;
+  uint32_t lodSplatLimit_ = 0;
+  // The threshold selection runs at: the policy's, raised while a cut would exceed the splat
+  // limit so detail thins evenly instead of stopping wherever traversal ran out of room.
+  float lodPixels_ = 1.0f;
+  std::atomic<uint32_t> lodReadbacks_{0};  // completed selections, so each adapts once
+  uint32_t lodAdaptedReadback_ = 0;
+  void adaptLodThreshold();
   MetalRadixSort::KeyBits depthBits_ = MetalRadixSort::KeyBits::Full32;
   MetalTileRaster tileRaster_;
+  // Pipelines exist once a view first asks for hybrid tiles; computeRaster_ is the policy.
+  bool tileRasterReady_ = false;
   bool computeRaster_ = false;
   // A GPU error latches this renderer off. Never repeatedly resubmit failed work.
   std::atomic<bool> gpuFailed_{false};

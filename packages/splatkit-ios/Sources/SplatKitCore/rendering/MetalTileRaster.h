@@ -20,6 +20,8 @@ class MetalTileRaster {
   // [compute tiles, hardware tiles, invalid input, nonempty compute tiles].
   // Read after slot completion. Compute tiles include background-only tiles.
   id<MTLBuffer> diagnostics(uint32_t slot) const { return diagnostics_[slot]; }
+  // Frees the candidate scratch; the next encode allocates it again.
+  void releaseScratch();
 
  private:
   id<MTLDevice> device_ = nil;

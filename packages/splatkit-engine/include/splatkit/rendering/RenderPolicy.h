@@ -28,6 +28,10 @@ struct RenderPolicy {
   uint32_t tileSize = 16;
   // Screen-space error a hierarchy node may cover before it is refined; > 0.
   float lodErrorPixels = 1.0f;
+  // Most hierarchy splats one frame may select, 0 for the capacity the world loaded with.
+  // Changes live. When the error threshold would select more, the backend raises the
+  // threshold evenly until the cut fits instead of truncating it in traversal order.
+  uint32_t lodSplatLimit = 0;
   // Opacity below which a splat contributes nothing; [0, 1]. Fixed at 1/255 today.
   float alphaThreshold = 1.0f / 255.0f;
   // Smallest source footprint, in pixels, kept for drawing; >= 0.
@@ -45,12 +49,16 @@ struct RenderPolicySupport {
   bool raster = false;
   bool tileSize = false;
   bool lodErrorPixels = false;
+  bool lodSplatLimit = false;
   bool alphaThreshold = false;
   bool subpixelThreshold = false;
   bool enableFrustumCulling = false;
   bool enableHiZOcclusion = false;
   bool enableEarlyTermination = false;
   bool sortDepth = false;
+  // Accepted raster strategies as a bitmask over the enum values: bit 0 = hardware,
+  // bit 1 = computeTile, bit 2 = hybrid. Zero means all three.
+  uint32_t rasterMask = 0;
   // Accepted tile sizes as a bitmask over {8,16,32}: bit 0 = 8, bit 1 = 16, bit 2 = 32.
   // Zero means all three.
   uint32_t tileSizeMask = 0;
@@ -71,7 +79,7 @@ struct SplatLimits {
 
 struct DeviceCapabilities {
   SplatLimits limits;
-  // Experimental hybrid screen tiles. False when the backend has no tile path.
+  // Experimental hybrid screen tiles can be requested. False when the backend has no tile path.
   bool supportsComputeTiles = false;
   // Conservative occlusion is not implemented anywhere yet.
   bool supportsHiZOcclusion = false;

@@ -1,6 +1,7 @@
 #include "splatkit/camera/WalkCamera.h"
 
 #include <cmath>
+#include <memory>
 
 #include <gtest/gtest.h>
 
@@ -80,6 +81,44 @@ TEST(WalkCamera, VelocityMovesEveryUpdate) {
   camera.setVelocity(0.0f, 0.0f);
   camera.update(1.0f);
   EXPECT_NEAR(camera.position().z, -1.0f, 1e-5f);
+}
+
+// A 10 x 10 m floor at y = 0, as two triangles.
+splat::TriangleMesh floor() {
+  splat::TriangleMesh mesh;
+  mesh.positions = {-5, 0, -5, 5, 0, -5, 5, 0, 5, -5, 0, 5};
+  mesh.indices = {0, 1, 2, 0, 2, 3};
+  return mesh;
+}
+
+// Settling: the eye eases toward the floor, so give it a second of updates.
+void settle(WalkCamera& camera) {
+  for (int i = 0; i < 60; ++i) camera.update(1.0f / 60);
+}
+
+TEST(WalkCamera, TheCharacterSetsTheEyeHeightOfTheWalkerThatFollows) {
+  WalkCamera camera;
+  splat::CharacterSettings settings;
+  settings.eyeHeight = 1.2f;
+  camera.setCharacter(settings);
+  camera.setPosition({0, 1.6f, 0});
+  camera.setCollider(std::make_unique<splat::Collider>(floor()));
+  settle(camera);
+  EXPECT_NEAR(camera.position().y, 1.2f, 1e-3f);
+}
+
+TEST(WalkCamera, TheCharacterChangesTheWalkerAlreadyOnItsFeet) {
+  WalkCamera camera;
+  camera.setPosition({0, 1.6f, 0});
+  camera.setCollider(std::make_unique<splat::Collider>(floor()));
+  settle(camera);
+  EXPECT_NEAR(camera.position().y, 1.5f, 1e-3f);
+  splat::CharacterSettings settings;
+  settings.eyeHeight = 1.8f;
+  camera.setCharacter(settings);
+  EXPECT_NEAR(camera.position().x, 0.0f, 1e-5f);
+  settle(camera);
+  EXPECT_NEAR(camera.position().y, 1.8f, 1e-3f);
 }
 
 // A phone held upright facing north, in Android's East-North-Up frame: device x east,

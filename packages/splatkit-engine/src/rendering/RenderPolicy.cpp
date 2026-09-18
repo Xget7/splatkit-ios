@@ -10,6 +10,10 @@ bool finitePositive(float value) {
   return std::isfinite(value) && value > 0.0f;
 }
 
+bool acceptedRaster(uint32_t mask, RasterStrategy strategy) {
+  return mask == 0 || (mask & (1u << static_cast<uint32_t>(strategy))) != 0;
+}
+
 bool acceptedTileSize(uint32_t mask, uint32_t size) {
   if (mask == 0) return size == 8 || size == 16 || size == 32;
   const uint32_t bit = size == 8 ? 1u : size == 16 ? 2u : size == 32 ? 4u : 0u;
@@ -85,7 +89,7 @@ RenderPolicyResolution resolveRenderPolicy(const RenderPolicy& requested,
     result.warnings.push_back({field, std::move(message)});
   };
 
-  if (support.raster) {
+  if (support.raster && acceptedRaster(support.rasterMask, requested.raster)) {
     result.effective.raster = requested.raster;
   } else if (requested.raster != result.effective.raster) {
     warn("raster", std::string("raster ") + toString(requested.raster) +
@@ -112,6 +116,13 @@ RenderPolicyResolution resolveRenderPolicy(const RenderPolicy& requested,
   } else if (requested.lodErrorPixels != result.effective.lodErrorPixels) {
     warn("lodErrorPixels", "lodErrorPixels is not configurable on this backend; using " +
                                number(result.effective.lodErrorPixels));
+  }
+
+  if (support.lodSplatLimit) {
+    result.effective.lodSplatLimit = requested.lodSplatLimit;
+  } else if (requested.lodSplatLimit != result.effective.lodSplatLimit) {
+    warn("lodSplatLimit", "lodSplatLimit is not configurable on this backend; using " +
+                              std::to_string(result.effective.lodSplatLimit));
   }
 
   if (support.alphaThreshold) {

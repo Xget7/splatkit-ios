@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "splat/formats/SplatCloud.h"
 #include "splat/lod/LodTree.h"
@@ -128,6 +129,14 @@ class SplatRenderer {
   virtual uint32_t lastSelectedCount() const { return 0; }
   virtual double lastSelectMillis() const { return 0; }
   virtual ScreenTileStats lastScreenTileStats() const { return {}; }
+  // True when the renderer learns when frames reach the display. It then moves into `times`
+  // the display times, in nanoseconds, of frames shown since the last call, oldest first,
+  // and returns how many submitted frames were never shown.
+  virtual bool reportsPresentTimes() const { return false; }
+  virtual uint32_t takePresentTimes(std::vector<int64_t>* times) {
+    times->clear();
+    return 0;
+  }
   // GPU name and API version, for a HUD.
   virtual const std::string& deviceDescription() const = 0;
 };

@@ -23,6 +23,11 @@ class WalkCamera {
   void setCollider(std::unique_ptr<splat::Collider> collider);
   bool hasCollider() const { return collider_ != nullptr; }
 
+  // The walker's shape: eye height, body radius and what it climbs. Applies at once when
+  // walking, and to the walker a later collider creates.
+  void setCharacter(const splat::CharacterSettings& settings);
+  const splat::CharacterSettings& character() const { return character_; }
+
   // Touch: radians. Yaw/pitch poses clamp pitch; look-at poses turn in screen axes.
   // Pitch input is ignored while motion is on.
   void look(float deltaYaw, float deltaPitch);
@@ -56,6 +61,7 @@ class WalkCamera {
  private:
   std::unique_ptr<splat::Collider> collider_;
   std::unique_ptr<splat::CharacterController> player_;
+  splat::CharacterSettings character_;
   splat::Vec3 freePosition_;
   float yaw_ = 0;
   float pitch_ = 0;

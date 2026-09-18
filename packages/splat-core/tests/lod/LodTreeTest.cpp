@@ -4,6 +4,8 @@
 #include <cmath>
 #include <random>
 
+#include "splat/lod/LodFile.h"
+
 #include <gtest/gtest.h>
 
 using splat::buildLodTree;
@@ -170,4 +172,22 @@ TEST(LodTree, LargeRandomCloudBuildsAConnectedTreeOfBoundedSize) {
   selectLodNodes(t, {0, 0, -30}, {}, 5000, 0.0f, out);
   EXPECT_LE(out.size(), 5000u);
   EXPECT_GT(out.size(), 4000u);
+}
+
+// A wide scene made of fine splats needs more grid levels than the validator once allowed,
+// and the builder must never produce a tree its own validator rejects.
+TEST(LodTree, DeepHierarchyOverAWideSceneStaysValid) {
+  // Point i sits just inside the cell the origin occupies at level i, so it joins the cluster
+  // one level later than the point before it and the hierarchy gains a level per point.
+  std::vector<Vec3> centres{{0, 0, 0}};
+  for (int i = 0; i < 40; ++i)
+    centres.push_back({0.9f * std::pow(1.5f, static_cast<float>(i - 20)), 0, 0});
+  const LodTree t = buildLodTree(cloudOf(centres, 1e-5f));
+
+  const auto valid = splat::validateLodTree(t);
+  ASSERT_TRUE(valid) << valid.error().message;
+  EXPECT_GT(valid.value(), 32u);
+  std::vector<uint32_t> leaves;
+  collectLeaves(t, 0, leaves);
+  EXPECT_EQ(leaves.size(), centres.size());
 }

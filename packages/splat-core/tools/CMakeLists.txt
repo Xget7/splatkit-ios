@@ -14,3 +14,9 @@ target_link_libraries(splat-tile PRIVATE splat_core spz)
 target_compile_options(splat-tile PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Werror>
 )
+
+add_executable(splat_collider splat_collider.cpp)
+target_link_libraries(splat_collider PRIVATE splat_core)
+target_compile_options(splat_collider PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Werror>
+)

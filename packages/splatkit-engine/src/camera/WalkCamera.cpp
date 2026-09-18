@@ -21,11 +21,22 @@ void WalkCamera::setCollider(std::unique_ptr<splat::Collider> collider) {
   collider_ = std::move(collider);
   player_.reset();
   if (collider_) {
-    player_ = std::make_unique<splat::CharacterController>(*collider_);
-    player_->setPosition(current);
+    player_ = std::make_unique<splat::CharacterController>(*collider_, character_);
+    // A camera sitting where the collider has no floor cannot take a single step. Worlds are
+    // captured about an arbitrary origin, so that is the common case, not a rare one: put the
+    // walker on the nearest floor rather than leave it frozen wherever the host left it.
+    const bool standing = player_->floorBelow(current).has_value();
+    const auto spot = standing ? std::optional<splat::Vec3>{current}
+                               : splat::findStandingSpot(*collider_, character_, current);
+    player_->setPosition(spot.value_or(current));
   } else {
     freePosition_ = current;
   }
+}
+
+void WalkCamera::setCharacter(const splat::CharacterSettings& settings) {
+  character_ = settings;
+  if (player_) player_->setSettings(settings);
 }
 
 void WalkCamera::look(float deltaYaw, float deltaPitch) {

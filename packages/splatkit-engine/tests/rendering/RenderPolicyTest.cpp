@@ -99,6 +99,44 @@ TEST(RenderPolicy, BackendTileMaskRejectsAnOtherwiseValidSize) {
   EXPECT_EQ(resolved.warnings[0].field, "tileSize");
 }
 
+TEST(RenderPolicy, BackendRasterMaskRejectsAnOtherwiseValidStrategy) {
+  const RenderPolicy fallback{};
+  RenderPolicySupport support = supportWith(fallback);
+  support.raster = true;
+  support.rasterMask = 0x1 | 0x4;  // hardware and hybrid only
+
+  RenderPolicy requested = fallback;
+  requested.raster = RasterStrategy::hybrid;
+  RenderPolicyResolution resolved = resolveRenderPolicy(requested, support);
+  ASSERT_TRUE(resolved.accepted) << resolved.error;
+  EXPECT_EQ(resolved.effective.raster, RasterStrategy::hybrid);
+  EXPECT_TRUE(resolved.warnings.empty());
+
+  requested.raster = RasterStrategy::computeTile;
+  resolved = resolveRenderPolicy(requested, support);
+  ASSERT_TRUE(resolved.accepted) << resolved.error;
+  EXPECT_EQ(resolved.effective.raster, RasterStrategy::hardware);
+  ASSERT_EQ(resolved.warnings.size(), 1u);
+  EXPECT_EQ(resolved.warnings[0].field, "raster");
+}
+
+TEST(RenderPolicy, SplatLimitAppliesOnlyWhereABackendSupportsIt) {
+  RenderPolicy requested;
+  requested.lodSplatLimit = 1'500'000;
+
+  RenderPolicySupport support = supportWith(RenderPolicy{});
+  RenderPolicyResolution resolved = resolveRenderPolicy(requested, support);
+  ASSERT_TRUE(resolved.accepted) << resolved.error;
+  EXPECT_EQ(resolved.effective.lodSplatLimit, 0u);
+  ASSERT_EQ(resolved.warnings.size(), 1u);
+  EXPECT_EQ(resolved.warnings[0].field, "lodSplatLimit");
+
+  support.lodSplatLimit = true;
+  resolved = resolveRenderPolicy(requested, support);
+  EXPECT_EQ(resolved.effective.lodSplatLimit, 1'500'000u);
+  EXPECT_TRUE(resolved.warnings.empty());
+}
+
 TEST(RenderPolicy, BackendRangesClampSupportedFloats) {
   RenderPolicy fallback;
   fallback.lodErrorPixels = 1.0f;

@@ -33,7 +33,7 @@ bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uin
   if (!valid || capacity == 0 || !std::isfinite(pixelLimit) || pixelLimit < 0 ||
       !std::isfinite(colorWeight) || colorWeight < 0)
     return false;
-  capacity = std::min({capacity, 2200000u, static_cast<uint32_t>(tree.leafCount)});
+  capacity = std::min({capacity, kMaxBudget, static_cast<uint32_t>(tree.leafCount)});
   splat::LodSelectionData compatibility;
   const auto* data = &tree.selection;
   if (data->clusters.empty()) {
@@ -82,6 +82,7 @@ bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uin
       !groups_ || !blocks_ || !state_ || !frontier_[0] || !frontier_[1])
     return false;
   depth_ = valid.value() + 1;
+  capacity_ = capacity;
   config_ = {capacity, pixelLimit, colorWeight, frustumCull ? 1u : 0u};
   LOGI(
       "GPU LOD SSE: %zu interior clusters, %zu leaves, %u rounds, capacity %u, %.2f px, color %.2f",

@@ -147,12 +147,19 @@ final class RenderThread {
         post { [self] in engine?.look(withDeltaYaw: deltaYaw, deltaPitch: deltaPitch) }
     }
 
+    func setVelocity(_ forward: Float, _ right: Float) {
+        post { [self] in engine?.setVelocityForward(forward, right: right) }
+    }
+
     func walk(_ forward: Float, _ right: Float) {
         post { [self] in engine?.walkForward(forward, right: right) }
     }
 
-    func setVelocity(_ forward: Float, _ right: Float) {
-        post { [self] in engine?.setVelocityForward(forward, right: right) }
+    /// Waits: the caller learns whether the settings were walkable.
+    func setCharacter(_ settings: SKCharacterSettings) -> Bool {
+        var accepted = false
+        sync { [self] in accepted = engine?.setCharacter(settings) ?? false }
+        return accepted
     }
 
     func setAttitude(_ rowMajor: [Float]) {

@@ -72,8 +72,8 @@ kernel void evaluateSplatLOD(uint t [[thread_position_in_grid]],
   if (lane == 0 && t < state.active) groups[t / 32] = uint4(sum, drops, 0, 0);
 }
 
-// Two-level parallel scan: 256 SIMD-group totals per block, then at most 269
-// block totals at the 2.2M safety limit. No global atomic contention.
+// Two-level parallel scan: 256 SIMD-group totals per block, then at most 489
+// block totals at the 4M safety limit. No global atomic contention.
 kernel void scanSplatLODGroups(uint t [[thread_position_in_grid]],
                                uint tid [[thread_index_in_threadgroup]],
                                uint lane [[thread_index_in_simdgroup]],

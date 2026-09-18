@@ -3,6 +3,29 @@
 Notable changes to the SplatKit iOS SDK and the shared C++ engine it ships.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alphas may break APIs.
 
+## Unreleased
+
+### Added
+
+- `renderPolicy.raster` selects hybrid screen tiles per view, and `SKRenderPolicySupport.rasterMask` lists the strategies Metal builds: hardware and hybrid.
+  Hybrid is an experimental opt-in for scenes where many large translucent splats overlap each pixel; hardware stays the default and is faster on distant or sparse scenes.
+  The tile pipelines are built on the first request, and switching back to hardware frees the tile scratch.
+- `renderPolicy.lodErrorPixels` applies live on Metal: a lower threshold refines a hierarchy world further, up to the budget it loaded with.
+- Shared engine: `RenderPolicySupport::rasterMask`; a raster strategy outside it falls back with a warning.
+- `renderPolicy.lodSplatLimit` caps the splats a hierarchy frame selects, live, below the loaded capacity.
+  When a cut would exceed the limit or the loaded capacity, Metal raises the error threshold frame by frame until it fits, so detail thins evenly instead of stopping wherever traversal ran out of room.
+- Stats measure frames the display showed: Metal reports each drawable's presented time, `fps` counts shown frames, and `presentTiming`, `frameMillisP95`, `lowFps` (1% low over 5 seconds) and `droppedFrames` join `SKSplatStats` and `SplatStats`.
+  The periodic log line appends the same fields.
+
+### Changed
+
+- A hierarchy world's LOD capacity reaches 4M selected splats, up from 2.2M; `maxLodCapacitySplats` reports it.
+- Walk mode refuses steps onto a floor more than 0.35 m higher, looking 0.25 m ahead, so it climbs stairs and steps over door tracks but no longer climbs counters, chairs or tables whose top the hip probe passes over, and slides along them when walked into at an angle.
+
+### Removed
+
+- The `SPLATKIT_METAL_TILE_RASTER` and `SPLATKIT_METAL_LOD_QUALITY_PIXELS` environment variables; set `renderPolicy.raster` and `renderPolicy.lodErrorPixels` instead.
+
 ## [0.1.0-alpha.3] - 2026-09-16
 
 ### Added
