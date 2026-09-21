@@ -5,6 +5,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 
 ## Unreleased
 
+## [0.1.0-alpha.5] - 2026-09-21
+
+The XCFramework carries the same engine as alpha.4; only the Swift sources and the bundled notices changed.
+
+### Fixed
+
+- The copyright holder in the XCFramework's `Notices/SplatKit.txt` reads Juan Ignacio Andrade.
+- The notices name splat-transform (PlayCanvas), whose collision voxel passes `splat-core`'s collider builder ports, and carry its MIT licence.
+
+### Removed
+
+- `SplatMetalView.motionToggleEnabled` and the double tap that toggled the gyroscope.
+  A host that wants the gesture adds its own recogniser and calls `setMotionEnabled`, which keeps the touches the view claims down to the single drag it documents.
+
+## [0.1.0-alpha.4] - 2026-09-18
+
 ### Added
 
 - `renderPolicy.raster` selects hybrid screen tiles per view, and `SKRenderPolicySupport.rasterMask` lists the strategies Metal builds: hardware and hybrid.
@@ -16,6 +32,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
   When a cut would exceed the limit or the loaded capacity, Metal raises the error threshold frame by frame until it fits, so detail thins evenly instead of stopping wherever traversal ran out of room.
 - Stats measure frames the display showed: Metal reports each drawable's presented time, `fps` counts shown frames, and `presentTiming`, `frameMillisP95`, `lowFps` (1% low over 5 seconds) and `droppedFrames` join `SKSplatStats` and `SplatStats`.
   The periodic log line appends the same fields.
+- `SplatMetalView.walk(forward:right:)`, `look(deltaYaw:deltaPitch:)`, `setCharacter(_:)`, `character` and the `CharacterSettings` type, so the host drives walking and shapes the walker.
+- `SplatMetalView.cameraPoseInterval` and the `splatView(_:cameraPoseChanged:)` delegate method, which report where the camera ended up at most that often and only while it moves.
 
 ### Changed
 
@@ -25,6 +43,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 ### Removed
 
 - The `SPLATKIT_METAL_TILE_RASTER` and `SPLATKIT_METAL_LOD_QUALITY_PIXELS` environment variables; set `renderPolicy.raster` and `renderPolicy.lodErrorPixels` instead.
+- `SplatMetalView.walkSensitivity` and the two-finger walk gesture it configured.
+  The view now handles one drag to look and nothing else, so the host's own controls keep every touch the look drag does not.
 
 ## [0.1.0-alpha.3] - 2026-09-16
 
@@ -58,6 +78,8 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 - Native Metal SDK for iOS 17 and A14/M1 or newer, distributed as a SwiftPM device and simulator XCFramework.
 - GPU visibility and radix sorting, experimental LOD and hybrid screen tiles, asynchronous loading and first-frame readiness.
 
+[0.1.0-alpha.5]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.5
+[0.1.0-alpha.4]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.1

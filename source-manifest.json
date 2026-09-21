@@ -192,7 +192,7 @@
   "packages/splatkit-ios/cmake/embed-text.cmake": "04f1b705aaf5f1f1cb3237c858ed46710ef82badd06ce4d6a91210b1e93c4711",
   "packages/splatkit-ios/cmake/embed.cmake": "efa53039196cc08862b4901a1ae9ba97798ef7e36f75c37ab3c1e8d5345700d9",
   "AGENTS.md": "ae264333145a45e27170884decff8b8b136e2aaa8afbc3bebeb2cf078bcfadd6",
-  "CHANGELOG.md": "effb74668db9057452f637ef05d136450568097cf57c1e16672ed5a2a604ea77",
+  "CHANGELOG.md": "e24577b3d8a6f5f4f77ec2cbcde351768fe1783c05a4f939437d4fd97befe88d",
   "CONTRIBUTING.md": "57a79b10ecbf51252b6c36a8e03804441729b78a3b55691367ba40003872c223",
   "README.md": "513307f26e3fa79ede010236117bc55c7e356a9a609b063002c78611cee15728",
   "packages/splatkit-ios/tests/CMakeLists.txt": "f7b4889a22cb81f0f55c5d53c526654d1651d09d839c92ea11b3ed99292a73e5",
