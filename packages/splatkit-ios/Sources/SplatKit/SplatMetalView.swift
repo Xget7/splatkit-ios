@@ -106,9 +106,9 @@ public extension SplatViewDelegate {
 /// lifecycle: the engine gets the layer when the view is in a window and gives it back,
 /// synchronously, before the view leaves it.
 ///
-/// Touch: a drag looks around (yaw, and pitch when the gyroscope is off) and a double tap
-/// toggles the gyroscope; both can be turned off. The view ships no walking control: the
-/// host draws its own, wherever it likes, and drives `setWalkVelocity` or `walk` from it.
+/// Touch: a drag looks around (yaw, and pitch when the gyroscope is off), and that can be
+/// turned off. The view ships no walking control: the host draws its own, wherever it
+/// likes, and drives `setWalkVelocity` or `walk` from it.
 public final class SplatMetalView: UIView {
     public override class var layerClass: AnyClass { CAMetalLayer.self }
 
@@ -139,9 +139,6 @@ public final class SplatMetalView: UIView {
             if !newValue { touchLook.letGo() }
         }
     }
-    /// Whether the double-tap gesture can toggle motion input.
-    public var motionToggleEnabled = true
-
     /// How often the delegate hears where the camera is, in seconds; 0, the default, never.
     /// A pose is delivered only when it differs from the last one delivered.
     public var cameraPoseInterval: TimeInterval = 0 {
@@ -180,13 +177,6 @@ public final class SplatMetalView: UIView {
         }
         isMultipleTouchEnabled = true
         _ = touchLook
-        let tap = UITapGestureRecognizer(target: self, action: #selector(onDoubleTap(_:)))
-        tap.numberOfTapsRequired = 2
-        // The look drag keeps its touches while the tap is being recognized.
-        tap.cancelsTouchesInView = false
-        tap.delaysTouchesEnded = false
-        tap.delegate = touchLook
-        addGestureRecognizer(tap)
     }
 
     /// False when Metal could not be brought up on this device; the view stays blank.
@@ -469,13 +459,6 @@ public final class SplatMetalView: UIView {
         guard attached else { return }
         attached = false
         renderThread.layerDetached()
-    }
-
-    // Gestures.
-
-    @objc private func onDoubleTap(_ g: UITapGestureRecognizer) {
-        guard motionToggleEnabled else { return }
-        setMotionEnabled(!motionEnabled)
     }
 }
 

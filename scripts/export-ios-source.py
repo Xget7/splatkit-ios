@@ -13,9 +13,11 @@ ROOT = Path(__file__).resolve().parents[1]
 PACKAGES = ("packages/splat-core", "packages/splatkit-engine", "packages/splatkit-ios")
 FILES = (
     "Package.swift", "LICENSE", "CONTEXT.md", ".clang-format", ".gitignore",
+    "CODE_OF_CONDUCT.md", "SECURITY.md",
     "scripts/package-ios.sh", "scripts/build-ios.sh", "scripts/sdk_harness.py",
     "scripts/export-ios-source.py", "scripts/tests/test_sdk_harness.py",
     ".github/workflows/ios.yml", ".github/workflows/engine.yml", ".github/workflows/core.yml",
+    ".github/ISSUE_TEMPLATE", ".github/PULL_REQUEST_TEMPLATE.md",
     "docs/BENCHMARKS.md", "docs/benchmarks",
 )
 # React Native publishes this package at its repository root, with distribution/ files beside it.
@@ -23,7 +25,25 @@ RN_PACKAGE = "packages/react-native-splatkit"
 # iOS publishes these files at its repository root; they link from there.
 IOS_DISTRIBUTION = "packages/splatkit-ios/distribution/"
 FORBIDDEN = {".ply", ".spz", ".glb", ".lodsplat", ".a", ".so", ".dylib", ".pem", ".p12", ".key", ".keystore", ".mobileprovision"}
-SECRET = re.compile(rb"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----|gh[pousr]_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{40,}|AKIA[A-Z0-9]{16}")
+# The only automated gate between the monorepo and two public repositories. Prefix-matched
+# tokens are high-confidence; the generic key=value branch insists on a quoted, unbroken,
+# non-template value so it does not fire on docs or shell examples.
+SECRET = re.compile(
+    rb"-----BEGIN (?:RSA |EC |DSA |OPENSSH |ENCRYPTED |PGP )?PRIVATE KEY-----"
+    rb"|gh[pousr]_[A-Za-z0-9]{30,}"
+    rb"|github_pat_[A-Za-z0-9_]{40,}"
+    rb"|npm_[A-Za-z0-9]{36}"
+    rb"|pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_\-]{20,}"
+    rb"|AKIA[A-Z0-9]{16}"
+    rb"|aws_secret_access_key\s*[=:]\s*[\"']?[A-Za-z0-9/+=]{40}"
+    rb"|xox[abprs]-[A-Za-z0-9-]{10,}"
+    rb"|hooks\.slack\.com/services/[A-Za-z0-9_/]{20,}"
+    rb"|AIza[0-9A-Za-z_\-]{35}"
+    rb"|(?:sk|rk)_live_[0-9a-zA-Z]{20,}"
+    rb"|(?:password|passwd|api[_-]?key|secret[_-]?key|access[_-]?token|auth[_-]?token)"
+    rb"\s*[=:]\s*[\"'](?![^\"'<${}]*[ <${}])[A-Za-z0-9_\-./+]{16,}[\"']",
+    re.IGNORECASE,
+)
 
 
 def published(platform, name):
@@ -42,7 +62,9 @@ def main():
     platform = parser.parse_args().platform
     packages, files = PACKAGES, FILES
     if platform == "react-native":
-        packages, files = (RN_PACKAGE,), ("LICENSE",)
+        packages = (RN_PACKAGE,)
+        files = ("LICENSE", "CODE_OF_CONDUCT.md", "SECURITY.md",
+                 ".github/ISSUE_TEMPLATE", ".github/PULL_REQUEST_TEMPLATE.md")
     if platform == "android":
         packages += ("packages/splatkit-android",)
         files += ("README.md", "CONTRIBUTING.md", "AGENTS.md", "CHANGELOG.md", ".clang-tidy",

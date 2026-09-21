@@ -36,6 +36,8 @@ mkdir -p "$splat_output/SplatKitCore.xcframework/Notices"
 cp "$splat_root/LICENSE" "$splat_output/SplatKitCore.xcframework/Notices/SplatKit.txt"
 cp "$splat_build/_deps/spz-src/LICENSE" "$splat_output/SplatKitCore.xcframework/Notices/SPZ.txt"
 cp "$splat_build/_deps/nlohmann_json-src/LICENSE.MIT" "$splat_output/SplatKitCore.xcframework/Notices/JSON.txt"
+cp "$splat_root/packages/splat-core/third_party/splat-transform-LICENSE.txt" \
+  "$splat_output/SplatKitCore.xcframework/Notices/PlayCanvas.txt"
 cp "$splat_build/_deps/zstd-src/LICENSE" "$splat_output/SplatKitCore.xcframework/Notices/Zstandard.txt"
 ditto -c -k --keepParent "$splat_output/SplatKitCore.xcframework" "$splat_output/SplatKitCore.xcframework.zip"
 swift package compute-checksum "$splat_output/SplatKitCore.xcframework.zip"

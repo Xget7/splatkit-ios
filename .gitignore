@@ -6,6 +6,7 @@ DerivedData/
 *.glb
 .DS_Store
 .argent/
+.claude/
 .idea/
 .gradle/
 local.properties

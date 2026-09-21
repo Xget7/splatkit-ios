@@ -23,7 +23,7 @@ final class TouchLook: UIGestureRecognizer, UIGestureRecognizerDelegate {
         view.addGestureRecognizer(self)
     }
 
-    // The host's controls and the view's double tap recognize alongside this one.
+    // The host's controls recognize alongside this one.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
         true
