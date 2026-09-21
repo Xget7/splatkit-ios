@@ -7,7 +7,7 @@ Run it on a physical device: the iOS Simulator does not report family 7, so `Spl
 ## Use it
 
 Swift Package Manager: add `https://github.com/Xget7/splatkit-ios`, product `SplatKit`, then `import SplatKit`.
-Choose exact version `0.1.0-alpha.4`.
+Choose exact version `0.1.0-alpha.5`.
 
 For source builds, build the static libraries with `scripts/build-ios.sh` from the repository root, then add to your target:
 
