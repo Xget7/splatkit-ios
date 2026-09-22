@@ -4,6 +4,10 @@ Native Metal Gaussian splatting for iOS 17+, A14/M1+ GPUs: asynchronous loading,
 MIT-licensed sources include the shared C++ engine/core.
 Run it on a physical device: the iOS Simulator does not report GPU family 7, so `SplatMetalView.isAvailable` is false and the view renders black.
 
+[![SwiftPM](https://img.shields.io/github/v/release/Xget7/splatkit-ios?include_prereleases&label=SwiftPM)](https://github.com/Xget7/splatkit-ios/releases)
+[![license: MIT](https://img.shields.io/github/license/Xget7/splatkit-ios)](LICENSE)
+[![platform: iOS 17+](https://img.shields.io/badge/platform-iOS%2017%2B-lightgrey.svg)](#install)
+
 ## Install
 
 Add `https://github.com/Xget7/splatkit-ios` in Xcode Package Dependencies and select product `SplatKit`.
