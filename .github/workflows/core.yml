@@ -23,3 +23,19 @@ jobs:
         run: cmake --build build/splat-core --parallel
       - name: Test
         run: ctest --test-dir build/splat-core --output-on-failure
+
+  # The README sends every PLY through scripts/prepare-world.sh, so run it the way a user
+  # would: from a clean checkout, on a closed room of splats, with every output requested.
+  prepare-world:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare a room from a PLY
+        run: |
+          python3 scripts/tests/make_room_ply.py "$RUNNER_TEMP/room.ply"
+          scripts/prepare-world.sh "$RUNNER_TEMP/room.ply" "$RUNNER_TEMP/room" --collider --lod --sh 0
+      - name: Check the outputs
+        run: |
+          test -s "$RUNNER_TEMP/room/room.spz"
+          test -s "$RUNNER_TEMP/room/room.lodsplat"
+          test "$(head -c 4 "$RUNNER_TEMP/room/room.collider.glb")" = glTF

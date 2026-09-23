@@ -22,6 +22,7 @@ view.loadWorld(file: worldURL)
 view.resume()
 ```
 
+`loadWorld` reads `.spz` and `.lodsplat`; `scripts/prepare-world.sh scene.ply out/ --collider` turns any Gaussian splat PLY into a world and a walk collider, and `--lod` adds an offline tree for scenes of several million splats.
 Attach the view to your hierarchy; forward `resume()`, `pause()` and `release()` from lifecycle events.
 Start motion after `splatView(_:worldFrameReady:)`.
 [API and experiments](packages/splatkit-ios/README.md).

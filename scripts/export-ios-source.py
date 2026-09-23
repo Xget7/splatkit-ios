@@ -16,6 +16,7 @@ FILES = (
     "CODE_OF_CONDUCT.md", "SECURITY.md",
     "scripts/package-ios.sh", "scripts/build-ios.sh", "scripts/sdk_harness.py",
     "scripts/export-ios-source.py", "scripts/tests/test_sdk_harness.py",
+    "scripts/prepare-world.sh", "scripts/tests/make_room_ply.py",
     ".github/workflows/ios.yml", ".github/workflows/engine.yml", ".github/workflows/core.yml",
     ".github/ISSUE_TEMPLATE", ".github/PULL_REQUEST_TEMPLATE.md",
     "docs/BENCHMARKS.md", "docs/benchmarks",
