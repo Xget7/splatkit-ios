@@ -193,11 +193,14 @@ bool SplatEngine::applyPendingLoads() {
   planner_.invalidate();
   pendingOrder_.reset();  // an order for the old world indexes past a smaller new one
   drawCount_ = 0;         // the first frustum sort decides what is visible
+  framedBounds_.reset();
   if (!camera_.hasCollider()) {
     const splat::Vec3 centre{(worldBounds.min[0] + worldBounds.max[0]) * 0.5f,
                              (worldBounds.min[1] + worldBounds.max[1]) * 0.5f,
                              (worldBounds.min[2] + worldBounds.max[2]) * 0.5f};
-    camera_.setDefaultAnchor(centre, framingRadius(worldBounds, renderer_->drawExtent()));
+    framedBounds_ = worldBounds;
+    framedExtent_ = renderer_->drawExtent();
+    camera_.setDefaultAnchor(centre, framingRadius(worldBounds, framedExtent_));
   }
   const GpuWorldInfo gpu = renderer_->world().value_or(GpuWorldInfo{});
   LOGI("uploaded %u splats in %.0f ms, sh degree %d", gpu.count, millisSince(start), gpu.shDegree);
@@ -286,6 +289,15 @@ bool SplatEngine::setCharacter(const splat::CharacterSettings& settings) {
   camera_.setCharacter(settings);
   redrawNeeded_ = true;
   return true;
+}
+
+// A world loaded before the view's final shape, or a phone turned mid-orbit, would
+// otherwise keep a framing for the wrong aspect: too close after landscape to portrait.
+void SplatEngine::reframeDefaultOrbit(Extent extent) {
+  if (!framedBounds_ || extent.width == 0 || extent.height == 0) return;
+  if (extent.width == framedExtent_.width && extent.height == framedExtent_.height) return;
+  framedExtent_ = extent;
+  camera_.reframeDefaultAnchor(framingRadius(*framedBounds_, extent));
 }
 
 void SplatEngine::publishPose() {
@@ -441,6 +453,7 @@ void SplatEngine::render(int64_t frameTimeNanos) {
   if (applyPendingLoads()) redrawNeeded_ = true;
 
   const Extent extent = renderer_->drawExtent();
+  reframeDefaultOrbit(extent);
   const std::optional<GpuWorldInfo> world = renderer_->world();
   std::optional<FrameCamera> camera;
   if (world) {

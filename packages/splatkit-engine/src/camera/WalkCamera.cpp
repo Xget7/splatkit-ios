@@ -160,6 +160,15 @@ void WalkCamera::setDefaultAnchor(splat::Vec3 point, float radius) {
   orbit.anchor = point;
   orbit.radius = std::max(radius, kMinOrbitRadius);
   anchor_ = orbit;
+  defaultRadius_ = orbit.radius;
+  if (orbiting_) applyOrbitPose();
+}
+
+void WalkCamera::reframeDefaultAnchor(float radius) {
+  if (!anchor_ || anchorExplicit_) return;
+  const float framed = std::max(radius, kMinOrbitRadius);
+  anchor_->radius = std::max(anchor_->radius + framed - defaultRadius_, kMinOrbitRadius);
+  defaultRadius_ = framed;
   if (orbiting_) applyOrbitPose();
 }
 

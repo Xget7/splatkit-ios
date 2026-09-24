@@ -157,6 +157,30 @@ TEST(WalkCamera, DefaultAnchorFramesTheWorldWhenOrbitFirstStarts) {
   EXPECT_NEAR(camera.position().z, 15.0f, 1e-6f);
 }
 
+TEST(WalkCamera, ReframingTheDefaultAnchorKeepsTheDollyAndTheTurn) {
+  WalkCamera camera;
+  camera.setDefaultAnchor({0, 0, 0}, 1);
+  ASSERT_TRUE(camera.dolly(-0.8f));
+  ASSERT_TRUE(camera.animateOrbit(kPi, kPi, false));
+  camera.update(0.5f);
+  const float azimuth = camera.orbitAzimuth();
+
+  camera.reframeDefaultAnchor(2);  // the view turned from landscape to portrait
+  EXPECT_NEAR(camera.orbitRadius(), 1.2f, 1e-6f);
+  EXPECT_NEAR(splat::length(camera.position()), 1.2f, 1e-5f);
+  EXPECT_NEAR(camera.orbitAzimuth(), azimuth, 1e-6f);
+  EXPECT_TRUE(camera.orbitAnimationRunning());
+}
+
+TEST(WalkCamera, ReframingLeavesAnExplicitAnchorAlone) {
+  WalkCamera camera;
+  camera.setDefaultAnchor({0, 0, 0}, 1);
+  camera.setPosition({0, 0, 3});
+  camera.setAnchor({0, 0, 0});
+  camera.reframeDefaultAnchor(2);
+  EXPECT_NEAR(camera.orbitRadius(), 3.0f, 1e-6f);
+}
+
 // A 10 x 10 m floor at y = 0, as two triangles.
 splat::TriangleMesh floor() {
   splat::TriangleMesh mesh;

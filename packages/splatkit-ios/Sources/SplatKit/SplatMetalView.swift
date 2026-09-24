@@ -213,6 +213,42 @@ public final class SplatMetalView: UIView {
                             up: SKVec3(x: up.x, y: up.y, z: up.z))
     }
 
+    /// Starts orbiting `point` from the current camera pose. Orbit is a temporary fly mode;
+    /// first-person input resumes walk mode from the same pose.
+    public func setAnchor(_ point: SIMD3<Float>) {
+        renderThread.setAnchor(SKVec3(x: point.x, y: point.y, z: point.z))
+    }
+
+    /// Orbits around the anchor by radians. False until an anchor is available.
+    @discardableResult
+    public func orbit(deltaAzimuth: Float, deltaElevation: Float) -> Bool {
+        renderThread.orbit(deltaAzimuth, deltaElevation)
+    }
+
+    /// Changes the orbit radius in metres. Positive values move away from the anchor.
+    @discardableResult
+    public func dolly(deltaRadius: Float) -> Bool {
+        renderThread.dolly(deltaRadius)
+    }
+
+    /// Picks an anchor through normalized view coordinates. A collider must be loaded.
+    /// A miss returns false and keeps the current anchor.
+    @discardableResult
+    public func focus(x: Float, y: Float) -> Bool {
+        renderThread.focus(x, y)
+    }
+
+    /// Runs a finite azimuth turn in degrees at the average degrees per second. The engine
+    /// keeps drawing while it moves and idles when it finishes.
+    @discardableResult
+    public func animateOrbit(
+        degrees: Float,
+        degreesPerSecond: Float,
+        easeInOut: Bool = false
+    ) -> Bool {
+        renderThread.animateOrbit(degrees, degreesPerSecond, easeInOut)
+    }
+
     /// Fraction of the view's resolution the splats are drawn at, in [0.1, 2]. Below one
     /// the frame is drawn smaller and upscaled; above one it is supersampled.
     public var renderScale: Float = 1 {

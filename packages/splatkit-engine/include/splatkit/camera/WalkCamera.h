@@ -45,6 +45,9 @@ class WalkCamera {
   // Angles are radians and dolly distance is metres.
   void setAnchor(splat::Vec3 point);
   void setDefaultAnchor(splat::Vec3 point, float radius);
+  // The default anchor's framing radius for a new view shape. Dolly offsets, the angles
+  // and a running animation carry over; an explicit anchor keeps its radius.
+  void reframeDefaultAnchor(float radius);
   bool hasAnchor() const { return anchor_.has_value(); }
   std::optional<splat::Vec3> anchor() const;
   bool orbit(float deltaAzimuth, float deltaElevation);
@@ -114,6 +117,7 @@ class WalkCamera {
   std::optional<Orbit> anchor_;
   std::optional<OrbitAnimation> animation_;
   bool anchorExplicit_ = false;
+  float defaultRadius_ = 0;  // the framing that dolly offsets of the default anchor add to
   bool orbiting_ = false;
   splat::Vec3 orbitPosition_;
   splat::Mat4 orbitRotation_ = splat::Mat4::identity();

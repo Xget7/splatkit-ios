@@ -41,6 +41,9 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `loadCollider(file:)` | Decodes a GLB mesh and enables walk mode |
 | `cameraPose` | Position, yaw and pitch; set it to teleport |
 | `lookAt(from:target:up:)` | Scripted camera: teleports facing a target with an explicit up vector; the next touch or motion update takes over |
+| `setAnchor`, `orbit`, `dolly` | Orbit a world point in temporary fly mode; angles are radians and distance is metres |
+| `focus(x:y:)` | Pick an anchor through normalized view coordinates against the collider; false keeps the previous anchor |
+| `animateOrbit(degrees:degreesPerSecond:easeInOut:)` | Run a finite engine-driven orbit and idle again when it finishes |
 | `renderScale` | Fraction of the view's resolution the splats are drawn at, 0.1 to 2 |
 | `cullMarginDegrees` | Angular margin kept drawn around the view |
 | `linearBlending` | Blend in linear light instead of the encoded colour space |

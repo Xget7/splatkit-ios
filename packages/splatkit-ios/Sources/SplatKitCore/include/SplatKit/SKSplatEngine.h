@@ -172,6 +172,18 @@ typedef NS_ENUM(NSInteger, SKSplatEvent) {
 - (void)lookWithDeltaYaw:(float)deltaYaw deltaPitch:(float)deltaPitch;
 /// Scripted camera: from `position` looking at `target` with `up` at the top of the frame.
 - (void)lookAtFrom:(SKVec3)position target:(SKVec3)target up:(SKVec3)up;
+/// Starts orbiting this world point from the current camera pose.
+- (void)setAnchor:(SKVec3)point;
+/// Radians around the anchor. NO until an anchor is available.
+- (BOOL)orbitWithDeltaAzimuth:(float)deltaAzimuth deltaElevation:(float)deltaElevation;
+/// Metres added to the radius; positive moves away. NO until an anchor is available.
+- (BOOL)dolly:(float)deltaRadius;
+/// Normalized view coordinates. A miss returns NO and leaves the anchor unchanged.
+- (BOOL)focusX:(float)x y:(float)y;
+/// A finite azimuth turn in degrees at the average degrees per second.
+- (BOOL)startOrbitAnimationDegrees:(float)degrees
+                  degreesPerSecond:(float)degreesPerSecond
+                         easeInOut:(BOOL)easeInOut;
 - (void)walkForward:(float)forward right:(float)right;
 - (void)setVelocityForward:(float)forward right:(float)right;
 /// The walker's shape, applied at once in walk mode and to a collider loaded later.

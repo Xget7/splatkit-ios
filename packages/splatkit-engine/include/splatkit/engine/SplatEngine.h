@@ -182,6 +182,7 @@ class SplatEngine {
   float frameSeconds(int64_t frameTimeNanos);
   void driveBenchmark(float dt, const GpuWorldInfo& world);
   FrameCamera frameCamera(Extent extent) const;
+  void reframeDefaultOrbit(Extent extent);
   void publishPose();
   void requestVisible(const FrameCamera& camera, float dt, Extent extent);
   void streamTiles(const FrameCamera& camera, float pixelScale,
@@ -195,6 +196,10 @@ class SplatEngine {
   RenderPolicy policy_;
   splat::SplatWorldLoader loader_;
   WalkCamera camera_;
+  // What the default orbit anchor frames and for which view shape; a rotation or the
+  // first layout after the load reframes it.
+  std::optional<splat::Bounds> framedBounds_;
+  Extent framedExtent_;
   splat::VisibilityPlanner planner_;
   Benchmark benchmark_;
   StatsPublisher stats_;

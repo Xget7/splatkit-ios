@@ -184,6 +184,28 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
                            {up.x, up.y, up.z});
 }
 
+- (void)setAnchor:(SKVec3)point {
+  _engine->setCameraAnchor({point.x, point.y, point.z});
+}
+
+- (BOOL)orbitWithDeltaAzimuth:(float)deltaAzimuth deltaElevation:(float)deltaElevation {
+  return _engine->orbit(deltaAzimuth, deltaElevation) ? YES : NO;
+}
+
+- (BOOL)dolly:(float)deltaRadius {
+  return _engine->dolly(deltaRadius) ? YES : NO;
+}
+
+- (BOOL)focusX:(float)x y:(float)y {
+  return _engine->focus(x, y) ? YES : NO;
+}
+
+- (BOOL)startOrbitAnimationDegrees:(float)degrees
+                  degreesPerSecond:(float)degreesPerSecond
+                         easeInOut:(BOOL)easeInOut {
+  return _engine->startOrbitAnimation(degrees, degreesPerSecond, easeInOut == YES) ? YES : NO;
+}
+
 - (SKSplatStats)stats {
   const splatkit::Stats s = _engine->stats();
   return {s.fps,

@@ -16,7 +16,7 @@ class RecordingRenderer final : public SplatRenderer {
   bool linearBlending() const override { return false; }
   void setVsync(bool) override {}
   bool ready() const override { return true; }
-  Extent drawExtent() const override { return {1000, 1000}; }
+  Extent drawExtent() const override { return extent; }
   uint32_t generation() const override { return 0; }
   bool uploadWorld(const splat::SplatCloud& cloud, int) override {
     world_ = GpuWorldInfo{static_cast<uint32_t>(cloud.count()), 0};
@@ -41,6 +41,7 @@ class RecordingRenderer final : public SplatRenderer {
   double lastGpuMillis() const override { return 0; }
   ScreenTileStats lastScreenTileStats() const override { return tiles; }
   const std::string& deviceDescription() const override { return description_; }
+  Extent extent{1000, 1000};
   OrderSource source = OrderSource::cpu;
   std::vector<Range> ranges;
   uint32_t frames = 0;
@@ -62,6 +63,22 @@ std::vector<uint8_t> worldBytes() {
   cloud.rotations = {0, 0, 0, 1};
   cloud.alphas = {0};
   cloud.colors = {0, 0, 0};
+  spz::PackOptions options;
+  options.version = 2;
+  std::vector<uint8_t> bytes;
+  EXPECT_TRUE(spz::saveSpz(cloud, options, &bytes));
+  return bytes;
+}
+
+// Two splats 2 m apart, so the default orbit has a size to frame.
+std::vector<uint8_t> pairWorldBytes() {
+  spz::GaussianCloud cloud;
+  cloud.numPoints = 2;
+  cloud.positions = {-1, 0, 2, 1, 0, 2};
+  cloud.scales = {0, 0, 0, 0, 0, 0};
+  cloud.rotations = {0, 0, 0, 1, 0, 0, 0, 1};
+  cloud.alphas = {0, 0};
+  cloud.colors = {0, 0, 0, 0, 0, 0};
   spz::PackOptions options;
   options.version = 2;
   std::vector<uint8_t> bytes;
@@ -164,6 +181,29 @@ TEST(FrameOrder, OrbitAnimationDrawsUntilItFinishesThenIdles) {
   EXPECT_EQ(observed->frames, beforeAnimation + 1);
   engine.render(300000001);
   EXPECT_EQ(observed->frames, beforeAnimation + 1);
+}
+
+// A phone that turns to portrait while a world loads must end up where one held in
+// portrait all along does: the default orbit frames the view's current shape.
+TEST(FrameOrder, DefaultOrbitFramingFollowsTheViewShape) {
+  const auto bytes = pairWorldBytes();
+  const auto orbitPose = [&bytes](Extent atLoad) {
+    auto renderer = std::make_unique<RecordingRenderer>(true);
+    auto* observed = renderer.get();
+    observed->extent = atLoad;
+    SplatEngine engine(std::move(renderer));
+    engine.loadWorld(bytes.data(), bytes.size());
+    engine.render(1);
+    EXPECT_TRUE(engine.dolly(-0.5f));
+    observed->extent = {1000, 2000};
+    engine.render(100000001);
+    return engine.cameraPose();
+  };
+  const CameraPose rotated = orbitPose({2000, 1000});
+  const CameraPose portrait = orbitPose({1000, 2000});
+  EXPECT_NEAR(rotated.x, portrait.x, 1e-4f);
+  EXPECT_NEAR(rotated.y, portrait.y, 1e-4f);
+  EXPECT_NEAR(rotated.z, portrait.z, 1e-4f);
 }
 
 }  // namespace

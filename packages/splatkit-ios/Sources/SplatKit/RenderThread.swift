@@ -174,6 +174,37 @@ final class RenderThread {
         post { [self] in engine?.lookAt(from: position, target: target, up: up) }
     }
 
+    func setAnchor(_ point: SKVec3) {
+        post { [self] in engine?.setAnchor(point) }
+    }
+
+    func orbit(_ deltaAzimuth: Float, _ deltaElevation: Float) -> Bool {
+        var accepted = false
+        sync { [self] in accepted = engine?.orbit(withDeltaAzimuth: deltaAzimuth, deltaElevation: deltaElevation) ?? false }
+        return accepted
+    }
+
+    func dolly(_ deltaRadius: Float) -> Bool {
+        var accepted = false
+        sync { [self] in accepted = engine?.dolly(deltaRadius) ?? false }
+        return accepted
+    }
+
+    func focus(_ x: Float, _ y: Float) -> Bool {
+        var hit = false
+        sync { [self] in hit = engine?.focusX(x, y: y) ?? false }
+        return hit
+    }
+
+    func animateOrbit(_ degrees: Float, _ degreesPerSecond: Float, _ easeInOut: Bool) -> Bool {
+        var accepted = false
+        sync { [self] in
+            accepted = engine?.startOrbitAnimationDegrees(
+                degrees, degreesPerSecond: degreesPerSecond, easeInOut: easeInOut) ?? false
+        }
+        return accepted
+    }
+
     func setCameraPose(_ pose: SKCameraPose) {
         post { [self] in engine?.cameraPose = pose }
     }

@@ -27,6 +27,13 @@ The `renderPolicy` rows ran back to back on an iPhone 17 Pro with sort depth and
 [Initial Mac LOD](benchmarks/2026-09-12-iss-metal-lod.json) and [interior traversal](benchmarks/2026-09-12-iss-metal-lod-sse.json) retain rejected image comparisons and the uninstrumented signal-9 phone failure.
 Guarded measurements observed a ~3.54 GB process limit, not a guaranteed 5 GB.
 
+## iPhone Metal: SDK orbit, 2026-09-22
+
+On a physical iPhone 17 Pro (A19 Pro, iOS 27.0), the new engine orbit completed 360 degrees in 30 seconds around the 1.86M-splat Lioness at closer framing, SH3 and scale 1.0.
+Periodic stats snapshots averaged 37.57 FPS and 25.44 GPU ms; see the [configuration and limits](benchmarks/2026-09-22-lioness-ios-orbit.json), [device log](benchmarks/2026-09-22-lioness-ios-orbit.log) and [frame capture](benchmarks/2026-09-22-lioness-ios-orbit.png).
+A 2026-09-24 [rerun](benchmarks/2026-09-24-lioness-ios-orbit-rerun.log) of the committed engine, which reframes the default orbit when the view changes shape, held the same 1.41 m radius at 37.62 FPS and 25.41 GPU ms.
+Lioness by Spenser Dickerson is [CC BY 4.0](https://superspl.at/scene/7e4e9bcb).
+
 ## Mac Metal: LOD capacity against the reference, 2026-09-12
 
 House 2M with an offline depth-6 hierarchy on an M4 Pro, compared by `compare_captures.py` at exact camera equality.

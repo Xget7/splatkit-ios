@@ -1,0 +1,59 @@
+{
+  "date": "2026-09-22",
+  "status": "full_sdk_orbit_completed",
+  "device": "xgetphone, physical iPhone 17 Pro, Apple A19 Pro GPU, iOS 27.0",
+  "world": {
+    "title": "Lioness (Panthera Spelaea)",
+    "author": "Spenser Dickerson",
+    "source": "https://superspl.at/scene/7e4e9bcb",
+    "license": "CC BY 4.0",
+    "license_url": "https://creativecommons.org/licenses/by/4.0/",
+    "source_splats": 1855777,
+    "input_ply_sha256": "e92fd7a5625a97ca143faaa33598bb4cc52119a87156cbab0104d5d7ed4904be",
+    "converted_spz_sha256": "51875b6541144fda39a7988efcbaa68a6d97f864c5c332656ca54e162f97da4a",
+    "conversion": "ply2spz scene.ply lioness.spz --sh 3"
+  },
+  "configuration": {
+    "view_pixels": [1206, 2622],
+    "render_scale": 1,
+    "spherical_harmonics_degree": 3,
+    "lod_budget_splats": 0,
+    "sort_depth_bits": 32,
+    "raster": "Metal hardware",
+    "orbit_degrees": 360,
+    "orbit_speed_degrees_per_second": 12,
+    "orbit_duration_seconds": 30,
+    "anchor": "world bounds centre",
+    "dolly_delta_metres": -0.8,
+    "dev_app_arguments": "--world lioness.spz --sdk-orbit-speed 12 --sdk-orbit-dolly -0.8 --sh 3 --shdraw 3 --scale 1 --resource-monitor 1 --keep-awake 1 --hud 0 --capture 15"
+  },
+  "measurement": {
+    "sample_count": 58,
+    "sample_interval_seconds": 0.5,
+    "sample_window": "1 to 30 seconds after animation start",
+    "fps": {"mean": 37.57, "min": 29.03, "max": 44.99},
+    "gpu_milliseconds": {"mean": 25.44, "min": 23.0, "max": 28.76},
+    "drawn_splats": {"mean": 1781588, "min": 1760443, "max": 1799674},
+    "observed_peak_process_footprint_bytes": 1797196384,
+    "metal_allocated_bytes": 394379264,
+    "thermal_state_samples": [0],
+    "gpu_errors_logged": 0,
+    "stop_reason": "orbit-complete"
+  },
+  "provenance": {
+    "git_head": "d8eb430e5de33f9f2f0868a9bd7f312334488ff6",
+    "working_tree_dirty": true,
+    "ios_executable_sha256": "d90c8763fffee04768b1eb216d8150d266a712fad0cfd891a06b9facb419c895"
+  },
+  "artifacts": {
+    "log": "2026-09-22-lioness-ios-orbit.log",
+    "capture": "2026-09-22-lioness-ios-orbit.png"
+  },
+  "limits": [
+    "FPS and GPU means are arithmetic means of periodic stats snapshots, not per-frame measurements.",
+    "scripts/build-ios.sh failed with Xcode 27 AppleClang feature detection; an existing correctly configured iOS CMake build and signed Xcode app build succeeded.",
+    "The capture shows an incomplete dark rear or underside at one angle; its cause is unverified.",
+    "No collider was supplied, so focus picking was not exercised.",
+    "This Lioness workload is not directly comparable to the 10M-splat ISS LOD benchmark."
+  ]
+}

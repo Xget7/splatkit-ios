@@ -1,0 +1,155 @@
+Launched application with com.splatkit.devapp bundle identifier.
+Waiting for the application to terminate…
+2026-09-22 22:18:44.613 SplatKitDev[53937:5323475] SplatKit I: Metal depth keys: 32 bits, 4 radix passes (uint32 scratch)
+2026-09-22 22:18:44.613 SplatKitDev[53937:5323475] SplatKit I: Apple A19 Pro GPU, Metal
+2026-09-22 22:18:44.614 SplatKitDev[53937:5323416] SplatPolicy: sortDepth=32 subpixelThreshold=0.5 raster=0 tileSize=16 hiZ=false supports sortDepth=true subpixelThreshold=false in [0.0, 3.4028235e+38] computeTiles=true maxLod=4000000 residency=[100000, 32000000]
+2026-09-22 22:18:44.623 SplatKitDev[53937:5323475] SplatKit I: pipelines for format 115
+2026-09-22 22:18:44.623 SplatKitDev[53937:5323475] SplatKit I: drawable 1206x2622, was 0x0
+[SPZ] deserializePackedGaussians: version=2, numPoints=1855777, shDegree=3, fractionalBits=12, antialiased=0, hasExtensions=0
+2026-09-22 22:18:44.923 SplatKitDev[53937:5323454] SplatKit I: decoded 1855777 splats in 233 ms, sh degree 3, bounds y [-0.08, 0.62], reordered in 69 ms
+2026-09-22 22:18:45.145 SplatKitDev[53937:5323475] SplatKit I: uploaded 1855777 splats in 214 ms, sh degree 3
+2026-09-22 22:18:45.145 SplatKitDev[53937:5323416] SplatPreparation: uploaded elapsed=0.531
+2026-09-22 22:18:45.169 SplatKitDev[53937:5323416] SplatPreparation: first-frame-ready elapsed=0.555
+2026-09-22 22:18:45.169 SplatKitDev[53937:5323416] SplatPreparation: interaction-ready orbit=0
+2026-09-22 22:18:45.169 SplatKitDev[53937:5323416] SplatSDKOrbit: dolly=-0.80 accepted=1
+2026-09-22 22:18:45.169 SplatKitDev[53937:5323416] SplatSDKOrbit: accepted=1 degrees=360 speed=12.00
+2026-09-22 22:18:45.507 SplatKitDev[53937:5323416] SplatResources: elapsed=0.338 footprint=1797180000 peak=1797180000 available=1742812576 metal=394379264 thermal=0 loaded=1855777 drawn=0 paused=0
+2026-09-22 22:18:46.006 SplatKitDev[53937:5323416] SplatResources: elapsed=0.838 footprint=1797196384 peak=1797196384 available=1742796192 metal=394379264 thermal=0 loaded=1855777 drawn=1766917 paused=0
+2026-09-22 22:18:46.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=1.34 fps=37.53 gpuMs=25.01 drawn=1776216
+2026-09-22 22:18:46.506 SplatKitDev[53937:5323416] SplatResources: elapsed=1.337 footprint=1797196384 peak=1797196384 available=1742796192 metal=394379264 thermal=0 loaded=1855777 drawn=1776216 paused=0
+2026-09-22 22:18:46.718 SplatKitDev[53937:5323475] SplatKit I: 36.0 fps, gpu 25.3 ms, sort 34.6 ms, cull 0.0 ms, select 0.0 ms, 1783438 drawn of 1855777 selected of 1855777, pos 0.41 0.27 1.45, yaw 0.32 pitch 0.00, fly, presented frames, p95 33.3 ms, 1% low 18.5 fps, 0 dropped
+2026-09-22 22:18:47.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=1.84 fps=35.99 gpuMs=25.34 drawn=1783438
+2026-09-22 22:18:47.006 SplatKitDev[53937:5323416] SplatResources: elapsed=1.838 footprint=1254705376 peak=1797196384 available=2285287200 metal=394379264 thermal=0 loaded=1855777 drawn=1783438 paused=0
+2026-09-22 22:18:47.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=2.34 fps=35.99 gpuMs=24.91 drawn=1780423
+2026-09-22 22:18:47.506 SplatKitDev[53937:5323416] SplatResources: elapsed=2.338 footprint=1254705376 peak=1797196384 available=2285287200 metal=394379264 thermal=0 loaded=1855777 drawn=1780423 paused=0
+2026-09-22 22:18:48.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=2.84 fps=36.77 gpuMs=24.89 drawn=1777714
+2026-09-22 22:18:48.006 SplatKitDev[53937:5323416] SplatResources: elapsed=2.838 footprint=693716736 peak=1797196384 available=2846275840 metal=394379264 thermal=0 loaded=1855777 drawn=1777714 paused=0
+2026-09-22 22:18:48.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=3.34 fps=37.99 gpuMs=25.60 drawn=1776704
+2026-09-22 22:18:48.506 SplatKitDev[53937:5323416] SplatResources: elapsed=3.338 footprint=693716736 peak=1797196384 available=2846275840 metal=394379264 thermal=0 loaded=1855777 drawn=1776704 paused=0
+2026-09-22 22:18:48.746 SplatKitDev[53937:5323475] SplatKit I: 36.4 fps, gpu 24.8 ms, sort 28.3 ms, cull 0.0 ms, select 0.0 ms, 1778422 drawn of 1855777 selected of 1855777, pos 0.93 0.27 1.14, yaw 0.74 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 18.5 fps, 0 dropped
+2026-09-22 22:18:49.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=3.84 fps=36.45 gpuMs=24.79 drawn=1778422
+2026-09-22 22:18:49.006 SplatKitDev[53937:5323416] SplatResources: elapsed=3.838 footprint=693716736 peak=1797196384 available=2846275840 metal=394379264 thermal=0 loaded=1855777 drawn=1778422 paused=0
+2026-09-22 22:18:49.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=4.34 fps=37.48 gpuMs=25.03 drawn=1781099
+2026-09-22 22:18:49.506 SplatKitDev[53937:5323416] SplatResources: elapsed=4.338 footprint=693700352 peak=1797196384 available=2846292224 metal=394379264 thermal=0 loaded=1855777 drawn=1781099 paused=0
+2026-09-22 22:18:50.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=4.84 fps=37.58 gpuMs=25.99 drawn=1782571
+2026-09-22 22:18:50.006 SplatKitDev[53937:5323416] SplatResources: elapsed=4.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1782571 paused=0
+2026-09-22 22:18:50.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=5.34 fps=37.63 gpuMs=24.58 drawn=1775317
+2026-09-22 22:18:50.506 SplatKitDev[53937:5323416] SplatResources: elapsed=5.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1775317 paused=0
+2026-09-22 22:18:50.837 SplatKitDev[53937:5323475] SplatKit I: 38.4 fps, gpu 24.3 ms, sort 27.8 ms, cull 0.0 ms, select 0.0 ms, 1775894 drawn of 1855777 selected of 1855777, pos 1.28 0.27 0.64, yaw 1.18 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 30.0 fps, 0 dropped
+2026-09-22 22:18:51.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=5.84 fps=38.36 gpuMs=24.31 drawn=1775894
+2026-09-22 22:18:51.006 SplatKitDev[53937:5323416] SplatResources: elapsed=5.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1775894 paused=0
+2026-09-22 22:18:51.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=6.34 fps=38.54 gpuMs=23.66 drawn=1776725
+2026-09-22 22:18:51.506 SplatKitDev[53937:5323416] SplatResources: elapsed=6.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1776725 paused=0
+2026-09-22 22:18:52.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=6.84 fps=39.03 gpuMs=24.23 drawn=1775801
+2026-09-22 22:18:52.006 SplatKitDev[53937:5323416] SplatResources: elapsed=6.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1775801 paused=0
+2026-09-22 22:18:52.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=7.34 fps=40.84 gpuMs=23.81 drawn=1776727
+2026-09-22 22:18:52.506 SplatKitDev[53937:5323416] SplatResources: elapsed=7.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1776727 paused=0
+2026-09-22 22:18:52.894 SplatKitDev[53937:5323475] SplatKit I: 40.0 fps, gpu 23.7 ms, sort 24.1 ms, cull 0.0 ms, select 0.0 ms, 1779765 drawn of 1855777 selected of 1855777, pos 1.38 0.27 0.05, yaw 1.61 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 34.3 fps, 0 dropped
+2026-09-22 22:18:53.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=7.84 fps=39.99 gpuMs=23.68 drawn=1779765
+2026-09-22 22:18:53.006 SplatKitDev[53937:5323416] SplatResources: elapsed=7.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1779765 paused=0
+2026-09-22 22:18:53.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=8.34 fps=40.35 gpuMs=23.23 drawn=1782619
+2026-09-22 22:18:53.506 SplatKitDev[53937:5323416] SplatResources: elapsed=8.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1782619 paused=0
+2026-09-22 22:18:54.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=8.84 fps=42.88 gpuMs=23.00 drawn=1784419
+2026-09-22 22:18:54.006 SplatKitDev[53937:5323416] SplatResources: elapsed=8.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1784419 paused=0
+2026-09-22 22:18:54.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=9.34 fps=41.99 gpuMs=23.35 drawn=1786740
+2026-09-22 22:18:54.506 SplatKitDev[53937:5323416] SplatResources: elapsed=9.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1786740 paused=0
+2026-09-22 22:18:54.916 SplatKitDev[53937:5323475] SplatKit I: 42.0 fps, gpu 26.7 ms, sort 18.8 ms, cull 0.0 ms, select 0.0 ms, 1790665 drawn of 1855777 selected of 1855777, pos 1.23 0.27 -0.53, yaw 2.04 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 34.3 fps, 0 dropped
+2026-09-22 22:18:55.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=9.84 fps=41.99 gpuMs=26.68 drawn=1790665
+2026-09-22 22:18:55.006 SplatKitDev[53937:5323416] SplatResources: elapsed=9.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1790665 paused=0
+2026-09-22 22:18:55.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=10.34 fps=43.51 gpuMs=27.45 drawn=1797834
+2026-09-22 22:18:55.506 SplatKitDev[53937:5323416] SplatResources: elapsed=10.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1797834 paused=0
+2026-09-22 22:18:56.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=10.84 fps=44.99 gpuMs=27.79 drawn=1798038
+2026-09-22 22:18:56.006 SplatKitDev[53937:5323416] SplatResources: elapsed=10.838 footprint=693143296 peak=1797196384 available=2846849280 metal=394379264 thermal=0 loaded=1855777 drawn=1798038 paused=0
+2026-09-22 22:18:56.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=11.34 fps=42.29 gpuMs=27.92 drawn=1797737
+2026-09-22 22:18:56.506 SplatKitDev[53937:5323416] SplatResources: elapsed=11.338 footprint=693143296 peak=1797196384 available=2846849280 metal=394379264 thermal=0 loaded=1855777 drawn=1797737 paused=0
+2026-09-22 22:18:56.980 SplatKitDev[53937:5323475] SplatKit I: 44.8 fps, gpu 28.8 ms, sort 16.9 ms, cull 0.0 ms, select 0.0 ms, 1797381 drawn of 1855777 selected of 1855777, pos 0.85 0.27 -1.00, yaw 2.47 pitch 0.00, fly, presented frames, p95 25.0 ms, 1% low 36.9 fps, 0 dropped
+2026-09-22 22:18:57.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=11.84 fps=44.81 gpuMs=28.76 drawn=1797381
+2026-09-22 22:18:57.006 SplatKitDev[53937:5323416] SplatResources: elapsed=11.838 footprint=693143296 peak=1797196384 available=2846849280 metal=394379264 thermal=0 loaded=1855777 drawn=1797381 paused=0
+2026-09-22 22:18:57.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=12.34 fps=42.08 gpuMs=28.28 drawn=1796418
+2026-09-22 22:18:57.507 SplatKitDev[53937:5323416] SplatResources: elapsed=12.338 footprint=693143296 peak=1797196384 available=2846849280 metal=394379264 thermal=0 loaded=1855777 drawn=1796418 paused=0
+2026-09-22 22:18:58.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=12.84 fps=43.08 gpuMs=26.23 drawn=1789573
+2026-09-22 22:18:58.006 SplatKitDev[53937:5323416] SplatResources: elapsed=12.838 footprint=693143296 peak=1797196384 available=2846849280 metal=394379264 thermal=0 loaded=1855777 drawn=1789573 paused=0
+2026-09-22 22:18:58.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=13.34 fps=41.99 gpuMs=25.22 drawn=1783794
+2026-09-22 22:18:58.506 SplatKitDev[53937:5323416] SplatResources: elapsed=13.338 footprint=693143296 peak=1797196384 available=2846849280 metal=394379264 thermal=0 loaded=1855777 drawn=1783794 paused=0
+2026-09-22 22:18:59.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=13.84 fps=41.99 gpuMs=25.22 drawn=1783794
+2026-09-22 22:18:59.006 SplatKitDev[53937:5323416] SplatResources: elapsed=13.838 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1783794 paused=0
+2026-09-22 22:18:59.010 SplatKitDev[53937:5323475] SplatKit I: 41.2 fps, gpu 24.1 ms, sort 25.3 ms, cull 0.0 ms, select 0.0 ms, 1776130 drawn of 1855777 selected of 1855777, pos 0.32 0.27 -1.26, yaw 2.89 pitch 0.00, fly, presented frames, p95 25.0 ms, 1% low 36.9 fps, 0 dropped
+2026-09-22 22:18:59.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=14.34 fps=41.17 gpuMs=24.09 drawn=1776130
+2026-09-22 22:18:59.506 SplatKitDev[53937:5323416] SplatResources: elapsed=14.338 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1776130 paused=0
+2026-09-22 22:19:00.005 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=14.84 fps=39.64 gpuMs=23.93 drawn=1773837
+2026-09-22 22:19:00.006 SplatKitDev[53937:5323416] SplatResources: elapsed=14.837 footprint=693651200 peak=1797196384 available=2846341376 metal=394379264 thermal=0 loaded=1855777 drawn=1773837 paused=0
+2026-09-22 22:19:00.225 SplatKitDev[53937:5323460] SplatKit I: captured 1206x2622 to /var/mobile/Containers/Data/Application/0728F106-7352-4A06-97FB-E4DCFA6B83C2/Documents/capture.png
+2026-09-22 22:19:00.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=15.34 fps=38.87 gpuMs=24.08 drawn=1769763
+2026-09-22 22:19:00.506 SplatKitDev[53937:5323416] SplatResources: elapsed=15.338 footprint=710756144 peak=1797196384 available=2829236432 metal=394379264 thermal=0 loaded=1855777 drawn=1769763 paused=0
+2026-09-22 22:19:01.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=15.84 fps=29.03 gpuMs=24.66 drawn=1765230
+2026-09-22 22:19:01.006 SplatKitDev[53937:5323416] SplatResources: elapsed=15.838 footprint=710756144 peak=1797196384 available=2829236432 metal=394379264 thermal=0 loaded=1855777 drawn=1765230 paused=0
+2026-09-22 22:19:01.074 SplatKitDev[53937:5323475] SplatKit I: 37.8 fps, gpu 23.4 ms, sort 28.2 ms, cull 0.0 ms, select 0.0 ms, 1760443 drawn of 1855777 selected of 1855777, pos -0.28 0.27 -1.28, yaw -2.96 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 10.9 fps, 0 dropped
+2026-09-22 22:19:01.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=16.34 fps=37.84 gpuMs=23.36 drawn=1760443
+2026-09-22 22:19:01.506 SplatKitDev[53937:5323416] SplatResources: elapsed=16.338 footprint=710756144 peak=1797196384 available=2829236432 metal=394379264 thermal=0 loaded=1855777 drawn=1760443 paused=0
+2026-09-22 22:19:02.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=16.84 fps=37.69 gpuMs=23.87 drawn=1761597
+2026-09-22 22:19:02.006 SplatKitDev[53937:5323416] SplatResources: elapsed=16.838 footprint=682952424 peak=1797196384 available=2857040152 metal=394379264 thermal=0 loaded=1855777 drawn=1761597 paused=0
+2026-09-22 22:19:02.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=17.34 fps=37.43 gpuMs=23.68 drawn=1762678
+2026-09-22 22:19:02.506 SplatKitDev[53937:5323416] SplatResources: elapsed=17.338 footprint=682870504 peak=1797196384 available=2857122072 metal=394379264 thermal=0 loaded=1855777 drawn=1762678 paused=0
+2026-09-22 22:19:03.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=17.84 fps=37.27 gpuMs=23.20 drawn=1765091
+2026-09-22 22:19:03.007 SplatKitDev[53937:5323416] SplatResources: elapsed=17.838 footprint=682870504 peak=1797196384 available=2857122072 metal=394379264 thermal=0 loaded=1855777 drawn=1765091 paused=0
+2026-09-22 22:19:03.134 SplatKitDev[53937:5323475] SplatKit I: 38.0 fps, gpu 23.6 ms, sort 29.1 ms, cull 0.0 ms, select 0.0 ms, 1774431 drawn of 1855777 selected of 1855777, pos -0.84 0.27 -1.05, yaw -2.53 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 9.2 fps, 0 dropped
+2026-09-22 22:19:03.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=18.34 fps=37.99 gpuMs=23.59 drawn=1774431
+2026-09-22 22:19:03.506 SplatKitDev[53937:5323416] SplatResources: elapsed=18.338 footprint=682870504 peak=1797196384 available=2857122072 metal=394379264 thermal=0 loaded=1855777 drawn=1774431 paused=0
+2026-09-22 22:19:04.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=18.84 fps=35.99 gpuMs=24.83 drawn=1779909
+2026-09-22 22:19:04.006 SplatKitDev[53937:5323416] SplatResources: elapsed=18.838 footprint=682870504 peak=1797196384 available=2857122072 metal=394379264 thermal=0 loaded=1855777 drawn=1779909 paused=0
+2026-09-22 22:19:04.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=19.34 fps=36.43 gpuMs=25.26 drawn=1776913
+2026-09-22 22:19:04.506 SplatKitDev[53937:5323416] SplatResources: elapsed=19.338 footprint=682870504 peak=1797196384 available=2857122072 metal=394379264 thermal=0 loaded=1855777 drawn=1776913 paused=0
+2026-09-22 22:19:05.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=19.84 fps=37.11 gpuMs=25.88 drawn=1776749
+2026-09-22 22:19:05.006 SplatKitDev[53937:5323416] SplatResources: elapsed=19.838 footprint=681821928 peak=1797196384 available=2858170648 metal=394379264 thermal=0 loaded=1855777 drawn=1776749 paused=0
+2026-09-22 22:19:05.179 SplatKitDev[53937:5323475] SplatKit I: 34.8 fps, gpu 26.2 ms, sort 29.7 ms, cull 0.0 ms, select 0.0 ms, 1778111 drawn of 1855777 selected of 1855777, pos -1.25 0.27 -0.61, yaw -2.10 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 9.2 fps, 0 dropped
+2026-09-22 22:19:05.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=20.34 fps=34.83 gpuMs=26.24 drawn=1778111
+2026-09-22 22:19:05.506 SplatKitDev[53937:5323416] SplatResources: elapsed=20.338 footprint=681821928 peak=1797196384 available=2858170648 metal=394379264 thermal=0 loaded=1855777 drawn=1778111 paused=0
+2026-09-22 22:19:06.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=20.84 fps=35.99 gpuMs=26.26 drawn=1781471
+2026-09-22 22:19:06.006 SplatKitDev[53937:5323416] SplatResources: elapsed=20.838 footprint=681821928 peak=1797196384 available=2858170648 metal=394379264 thermal=0 loaded=1855777 drawn=1781471 paused=0
+2026-09-22 22:19:06.505 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=21.34 fps=33.99 gpuMs=25.06 drawn=1787145
+2026-09-22 22:19:06.506 SplatKitDev[53937:5323416] SplatResources: elapsed=21.337 footprint=681821928 peak=1797196384 available=2858170648 metal=394379264 thermal=0 loaded=1855777 drawn=1787145 paused=0
+2026-09-22 22:19:07.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=21.84 fps=34.24 gpuMs=25.70 drawn=1787529
+2026-09-22 22:19:07.006 SplatKitDev[53937:5323416] SplatResources: elapsed=21.838 footprint=680773352 peak=1797196384 available=2859219224 metal=394379264 thermal=0 loaded=1855777 drawn=1787529 paused=0
+2026-09-22 22:19:07.220 SplatKitDev[53937:5323475] SplatKit I: 34.6 fps, gpu 24.9 ms, sort 31.5 ms, cull 0.0 ms, select 0.0 ms, 1777575 drawn of 1855777 selected of 1855777, pos -1.43 0.27 -0.04, yaw -1.68 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 26.7 fps, 0 dropped
+2026-09-22 22:19:07.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=22.34 fps=34.62 gpuMs=24.86 drawn=1777575
+2026-09-22 22:19:07.506 SplatKitDev[53937:5323416] SplatResources: elapsed=22.338 footprint=680773352 peak=1797196384 available=2859219224 metal=394379264 thermal=0 loaded=1855777 drawn=1777575 paused=0
+2026-09-22 22:19:08.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=22.84 fps=35.67 gpuMs=25.43 drawn=1777009
+2026-09-22 22:19:08.007 SplatKitDev[53937:5323416] SplatResources: elapsed=22.838 footprint=680773352 peak=1797196384 available=2859219224 metal=394379264 thermal=0 loaded=1855777 drawn=1777009 paused=0
+2026-09-22 22:19:08.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=23.34 fps=33.85 gpuMs=24.66 drawn=1777054
+2026-09-22 22:19:08.506 SplatKitDev[53937:5323416] SplatResources: elapsed=23.338 footprint=680773352 peak=1797196384 available=2859219224 metal=394379264 thermal=0 loaded=1855777 drawn=1777054 paused=0
+2026-09-22 22:19:09.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=23.84 fps=34.98 gpuMs=25.56 drawn=1779741
+2026-09-22 22:19:09.006 SplatKitDev[53937:5323416] SplatResources: elapsed=23.838 footprint=680773352 peak=1797196384 available=2859219224 metal=394379264 thermal=0 loaded=1855777 drawn=1779741 paused=0
+2026-09-22 22:19:09.244 SplatKitDev[53937:5323475] SplatKit I: 34.0 fps, gpu 25.3 ms, sort 33.4 ms, cull 0.0 ms, select 0.0 ms, 1784164 drawn of 1855777 selected of 1855777, pos -1.37 0.27 0.55, yaw -1.25 pitch 0.00, fly, presented frames, p95 29.2 ms, 1% low 26.7 fps, 0 dropped
+2026-09-22 22:19:09.505 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=24.34 fps=33.97 gpuMs=25.29 drawn=1784164
+2026-09-22 22:19:09.506 SplatKitDev[53937:5323416] SplatResources: elapsed=24.337 footprint=680773352 peak=1797196384 available=2859219224 metal=394379264 thermal=0 loaded=1855777 drawn=1784164 paused=0
+2026-09-22 22:19:10.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=24.84 fps=33.80 gpuMs=28.44 drawn=1793005
+2026-09-22 22:19:10.006 SplatKitDev[53937:5323416] SplatResources: elapsed=24.838 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1793005 paused=0
+2026-09-22 22:19:10.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=25.34 fps=33.43 gpuMs=28.34 drawn=1799674
+2026-09-22 22:19:10.506 SplatKitDev[53937:5323416] SplatResources: elapsed=25.338 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1799674 paused=0
+2026-09-22 22:19:11.005 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=25.84 fps=33.41 gpuMs=28.41 drawn=1799553
+2026-09-22 22:19:11.006 SplatKitDev[53937:5323416] SplatResources: elapsed=25.837 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1799553 paused=0
+2026-09-22 22:19:11.308 SplatKitDev[53937:5323475] SplatKit I: 33.1 fps, gpu 28.2 ms, sort 31.5 ms, cull 0.0 ms, select 0.0 ms, 1798370 drawn of 1855777 selected of 1855777, pos -1.06 0.27 1.07, yaw -0.82 pitch 0.00, fly, presented frames, p95 33.3 ms, 1% low 30.0 fps, 0 dropped
+2026-09-22 22:19:11.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=26.34 fps=33.08 gpuMs=28.20 drawn=1798370
+2026-09-22 22:19:11.506 SplatKitDev[53937:5323416] SplatResources: elapsed=26.338 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1798370 paused=0
+2026-09-22 22:19:12.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=26.84 fps=33.53 gpuMs=28.11 drawn=1798124
+2026-09-22 22:19:12.007 SplatKitDev[53937:5323416] SplatResources: elapsed=26.838 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1798124 paused=0
+2026-09-22 22:19:12.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=27.34 fps=34.33 gpuMs=25.21 drawn=1799160
+2026-09-22 22:19:12.507 SplatKitDev[53937:5323416] SplatResources: elapsed=27.338 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1799160 paused=0
+2026-09-22 22:19:13.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=27.84 fps=34.90 gpuMs=25.97 drawn=1797199
+2026-09-22 22:19:13.007 SplatKitDev[53937:5323416] SplatResources: elapsed=27.838 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1797199 paused=0
+2026-09-22 22:19:13.367 SplatKitDev[53937:5323475] SplatKit I: 35.6 fps, gpu 26.0 ms, sort 30.2 ms, cull 0.0 ms, select 0.0 ms, 1784632 drawn of 1855777 selected of 1855777, pos -0.57 0.27 1.41, yaw -0.39 pitch 0.00, fly, presented frames, p95 33.3 ms, 1% low 26.7 fps, 0 dropped
+2026-09-22 22:19:13.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=28.34 fps=35.61 gpuMs=26.04 drawn=1784632
+2026-09-22 22:19:13.507 SplatKitDev[53937:5323416] SplatResources: elapsed=28.338 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1784632 paused=0
+2026-09-22 22:19:14.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=28.84 fps=35.99 gpuMs=26.33 drawn=1773838
+2026-09-22 22:19:14.007 SplatKitDev[53937:5323416] SplatResources: elapsed=28.838 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1773838 paused=0
+2026-09-22 22:19:14.506 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=29.34 fps=34.83 gpuMs=26.17 drawn=1766390
+2026-09-22 22:19:14.506 SplatKitDev[53937:5323416] SplatResources: elapsed=29.337 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1766390 paused=0
+2026-09-22 22:19:15.006 SplatKitDev[53937:5323416] SplatSDKOrbitSample: elapsed=29.84 fps=35.25 gpuMs=26.09 drawn=1763784
+2026-09-22 22:19:15.007 SplatKitDev[53937:5323416] SplatResources: elapsed=29.838 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1763784 paused=0
+2026-09-22 22:19:15.365 SplatKitDev[53937:5323475] SplatKit I: 33.6 fps, gpu 21.0 ms, sort 29.6 ms, cull 0.0 ms, select 0.0 ms, 1764059 drawn of 1855777 selected of 1855777, pos -0.03 0.27 1.52, yaw 0.00 pitch 0.00, fly, presented frames, p95 33.3 ms, 1% low 26.7 fps, 0 dropped
+2026-09-22 22:19:15.507 SplatKitDev[53937:5323416] SplatResources: elapsed=30.338 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1764059 paused=0
+2026-09-22 22:19:16.006 SplatKitDev[53937:5323416] SplatResources: elapsed=30.838 footprint=679724776 peak=1797196384 available=2860267800 metal=394379264 thermal=0 loaded=1855777 drawn=1764059 paused=0
+2026-09-22 22:19:16.506 SplatKitDev[53937:5323416] SplatSDKOrbitComplete: duration=30.00 samples=58 meanFps=37.57 meanGpuMs=25.44
+2026-09-22 22:19:16.508 SplatKitDev[53937:5323416] SplatRunStopped: reason=orbit-complete
+2026-09-22 22:19:16.508 SplatKitDev[53937:5323416] SplatResources: elapsed=31.339 footprint=632538856 peak=1797196384 available=2907453720 metal=394379264 thermal=0 loaded=1855777 drawn=1764059 paused=1
+App terminated due to signal 15.
