@@ -18,11 +18,25 @@ constexpr float kFarPlane = 200.0f;
 constexpr float kMaxFrameSeconds = 0.1f;
 // How many pixels the splats a tile hides may cover before the tiles below are wanted.
 constexpr float kTilePixels = 1.0f;
+constexpr float kRadiansPerDegree = static_cast<float>(M_PI) / 180.0f;
 
 using Clock = std::chrono::steady_clock;
 
 double millisSince(Clock::time_point start) {
   return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+}
+
+float framingRadius(const splat::Bounds& bounds, Extent extent) {
+  const splat::Vec3 half{(bounds.max[0] - bounds.min[0]) * 0.5f,
+                         (bounds.max[1] - bounds.min[1]) * 0.5f,
+                         (bounds.max[2] - bounds.min[2]) * 0.5f};
+  const float sphere = splat::length(half);
+  const float aspect = extent.width > 0 && extent.height > 0
+                           ? static_cast<float>(extent.width) / extent.height
+                           : 1.0f;
+  const float halfY = kFieldOfViewRadians * 0.5f;
+  const float halfX = std::atan(std::tan(halfY) * std::max(aspect, 1e-3f));
+  return std::max(0.05f, sphere * 1.05f / std::sin(std::min(halfX, halfY)));
 }
 
 }  // namespace
@@ -133,6 +147,10 @@ bool SplatEngine::applyPendingLoads() {
   auto world = loader_.takeWorld();
   if (!world) return false;
 
+  const splat::Bounds worldBounds =
+      world->tiles ? world->tiles->tileset->tiles[world->tiles->tileset->root].bounds
+                   : world->splats().bounds;
+
   const auto start = Clock::now();
   if (world->tiles) {
     const splat::Tileset& set = *world->tiles->tileset;
@@ -175,6 +193,12 @@ bool SplatEngine::applyPendingLoads() {
   planner_.invalidate();
   pendingOrder_.reset();  // an order for the old world indexes past a smaller new one
   drawCount_ = 0;         // the first frustum sort decides what is visible
+  if (!camera_.hasCollider()) {
+    const splat::Vec3 centre{(worldBounds.min[0] + worldBounds.max[0]) * 0.5f,
+                             (worldBounds.min[1] + worldBounds.max[1]) * 0.5f,
+                             (worldBounds.min[2] + worldBounds.max[2]) * 0.5f};
+    camera_.setDefaultAnchor(centre, framingRadius(worldBounds, renderer_->drawExtent()));
+  }
   const GpuWorldInfo gpu = renderer_->world().value_or(GpuWorldInfo{});
   LOGI("uploaded %u splats in %.0f ms, sh degree %d", gpu.count, millisSince(start), gpu.shDegree);
   emit(Event::worldReady, {}, sourceCount_);
@@ -198,6 +222,52 @@ void SplatEngine::setCameraLookAt(splat::Vec3 position, splat::Vec3 target, spla
   planner_.invalidate();
   redrawNeeded_ = true;
   publishPose();
+}
+
+void SplatEngine::setCameraAnchor(splat::Vec3 point) {
+  camera_.setAnchor(point);
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+}
+
+bool SplatEngine::orbit(float deltaAzimuth, float deltaElevation) {
+  if (!camera_.orbit(deltaAzimuth, deltaElevation)) return false;
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+  return true;
+}
+
+bool SplatEngine::dolly(float deltaRadius) {
+  if (!camera_.dolly(deltaRadius)) return false;
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+  return true;
+}
+
+bool SplatEngine::focus(float x, float y) {
+  const Extent extent = renderer_->drawExtent();
+  if (extent.width == 0 || extent.height == 0) return false;
+  const float tanHalfY = std::tan(kFieldOfViewRadians * 0.5f);
+  const float tanHalfX = tanHalfY * static_cast<float>(extent.width) / extent.height;
+  if (!camera_.focus(x, y, tanHalfX, tanHalfY, kFarPlane)) return false;
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+  return true;
+}
+
+bool SplatEngine::startOrbitAnimation(float degrees, float degreesPerSecond, bool easeInOut) {
+  if (!camera_.animateOrbit(degrees * kRadiansPerDegree, degreesPerSecond * kRadiansPerDegree,
+                            easeInOut)) {
+    return false;
+  }
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+  return true;
 }
 
 bool SplatEngine::setCharacter(const splat::CharacterSettings& settings) {
@@ -377,7 +447,7 @@ void SplatEngine::render(int64_t frameTimeNanos) {
     const float wallSeconds = frameSeconds(frameTimeNanos);
     driveBenchmark(wallSeconds, *world);
     const float dt = std::min(wallSeconds, kMaxFrameSeconds);
-    camera_.update(dt);
+    if (camera_.update(dt)) redrawNeeded_ = true;
     camera = frameCamera(extent);
     publishPose();
     requestVisible(*camera, dt, extent);

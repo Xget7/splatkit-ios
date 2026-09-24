@@ -148,5 +148,23 @@ TEST(FrameOrder, NativeLodRendererReceivesHierarchyAndUsesGpuOrder) {
   EXPECT_EQ(observed->frames, 1u);
 }
 
+TEST(FrameOrder, OrbitAnimationDrawsUntilItFinishesThenIdles) {
+  auto renderer = std::make_unique<RecordingRenderer>(true);
+  auto* observed = renderer.get();
+  SplatEngine engine(std::move(renderer));
+  const auto bytes = worldBytes();
+  engine.loadWorld(bytes.data(), bytes.size());
+  engine.render(1);
+  ASSERT_TRUE(engine.orbit(0, 0));  // activates the world-bounds default anchor
+  engine.render(100000001);
+  const uint32_t beforeAnimation = observed->frames;
+
+  ASSERT_TRUE(engine.startOrbitAnimation(90, 1800, true));
+  engine.render(200000001);  // 0.1 s: longer than the requested turn
+  EXPECT_EQ(observed->frames, beforeAnimation + 1);
+  engine.render(300000001);
+  EXPECT_EQ(observed->frames, beforeAnimation + 1);
+}
+
 }  // namespace
 }  // namespace splatkit

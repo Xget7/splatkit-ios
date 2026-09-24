@@ -75,6 +75,16 @@ class SplatEngine {
   // Scripted camera: from `position` looking at `target` with `up` at the top of the
   // frame, whatever the roll. Teleports like setCameraPose.
   void setCameraLookAt(splat::Vec3 position, splat::Vec3 target, splat::Vec3 up);
+  // Orbit input. Angles are radians and dolly distance is metres. Orbit temporarily
+  // flies even when a collider is loaded; first-person input resumes walking in place.
+  void setCameraAnchor(splat::Vec3 point);
+  bool orbit(float deltaAzimuth, float deltaElevation);
+  bool dolly(float deltaRadius);
+  // Normalized view coordinates, top-left (0, 0), bottom-right (1, 1). False on a miss.
+  bool focus(float x, float y);
+  // A finite turn in degrees at degrees per second. False without an anchor or for
+  // invalid/zero input.
+  bool startOrbitAnimation(float degrees, float degreesPerSecond, bool easeInOut);
   CameraPose cameraPose() const { return stats_.pose(); }
 
   // What the host needs to know about loading. Ready events fire on the render thread

@@ -35,6 +35,14 @@ _Avoid_: URI (that is the wire format of a source), download
 One presented image.
 The engine draws a frame only when something changed.
 
+**Anchor**:
+A point in the world that an orbit camera keeps centred.
+A picked anchor is a collider ray hit; without a collider the default is the centre of the world's bounds.
+
+**Orbit**:
+Camera movement around an anchor by azimuth, elevation and radius.
+Orbit is fly mode; first-person input resumes walking from the same pose.
+
 **Sort**:
 Ordering splats by camera depth in the direction required by compositing.
 _Avoid_: depth sort, z-order
