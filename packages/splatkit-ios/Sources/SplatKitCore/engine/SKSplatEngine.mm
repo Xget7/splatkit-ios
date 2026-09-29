@@ -272,6 +272,30 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
   return SKRenderPolicyOutcomeApplied;
 }
 
+- (BOOL)applyCameraRequest:(SKCameraRequest)request reason:(NSString**)reason {
+  splatkit::CameraRequest requested{};
+  requested.mode = static_cast<splatkit::CameraMode>(request.mode);
+  requested.anchor = {request.anchor.x, request.anchor.y, request.anchor.z};
+  requested.radius = request.radius;
+  requested.azimuth = request.azimuth;
+  requested.elevation = request.elevation;
+  requested.orbitRadiansPerSecond = request.orbitRadiansPerSecond;
+  const auto resolution = _engine->applyCameraRequest(requested);
+  if (reason != nullptr) *reason = @(resolution.error.c_str());
+  return resolution.accepted;
+}
+
+- (SKCameraState)cameraState {
+  const auto state = _engine->cameraState();
+  return {static_cast<int32_t>(state.mode),
+          state.hasAnchor,
+          {state.anchor.x, state.anchor.y, state.anchor.z},
+          state.radius,
+          state.azimuth,
+          state.elevation,
+          state.orbitRadiansPerSecond};
+}
+
 - (void)lookWithDeltaYaw:(float)deltaYaw deltaPitch:(float)deltaPitch {
   _engine->look(deltaYaw, deltaPitch);
 }

@@ -21,6 +21,32 @@ typedef struct {
   float z;
 } SKVec3;
 
+typedef NS_ENUM(int32_t, SKCameraMode) {
+  SKCameraModeFirstPerson = 0,
+  SKCameraModeOrbit = 1,
+};
+
+/// Atomic camera configuration. Mode 0 preserves the pose in first person; 1 orbits.
+/// Distances are metres, angles radians, and rate signed radians per second.
+typedef struct {
+  int32_t mode;
+  SKVec3 anchor;
+  float radius;
+  float azimuth;
+  float elevation;
+  float orbitRadiansPerSecond;
+} SKCameraRequest;
+
+typedef struct {
+  int32_t mode;
+  BOOL hasAnchor;
+  SKVec3 anchor;
+  float radius;
+  float azimuth;
+  float elevation;
+  float orbitRadiansPerSecond;
+} SKCameraState;
+
 /// The walker in walk mode, in meters. Defaults: 1.5 m eye, 0.35 m body, 0.35 m step,
 /// which climbs stairs and doorsteps but not chairs or counters.
 typedef struct {
@@ -168,6 +194,11 @@ typedef NS_ENUM(NSInteger, SKSplatEvent) {
 - (SKRenderPolicyOutcome)applyRenderPolicy:(SKRenderPolicy)policy
                                     reason:(NSString* _Nullable* _Nullable)reason
                                   warnings:(NSArray<NSString*>* _Nullable* _Nullable)warnings;
+
+/// Render thread. Invalid requests preserve the previous state and return NO.
+- (BOOL)applyCameraRequest:(SKCameraRequest)request reason:(NSString* _Nullable* _Nullable)reason;
+/// Effective state, read on the render thread.
+@property(nonatomic, readonly) SKCameraState cameraState;
 
 - (void)lookWithDeltaYaw:(float)deltaYaw deltaPitch:(float)deltaPitch;
 /// Scripted camera: from `position` looking at `target` with `up` at the top of the frame.

@@ -17,6 +17,8 @@ For source builds, build the static libraries with `scripts/build-ios.sh` from t
 - the Metal, QuartzCore, CoreMotion, ImageIO, CoreGraphics and UniformTypeIdentifiers frameworks.
 
 `scripts/package-ios.sh` builds the XCFramework; `Package.swift` pins its release checksum.
+The source-built Objective-C engine exposes atomic `applyCameraRequest:reason:` and the effective `cameraState`; see [the bridge contract](Sources/SplatKitCore/include/SplatKit/SKSplatEngine.h).
+These additions require a rebuilt XCFramework.
 
 ```swift
 let view = SplatMetalView()
