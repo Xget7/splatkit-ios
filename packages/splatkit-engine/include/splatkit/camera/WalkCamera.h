@@ -6,6 +6,7 @@
 #include "splat/math/Mat4.h"
 #include "splat/navigation/CharacterController.h"
 #include "splat/navigation/Collider.h"
+#include "splatkit/camera/CameraRequest.h"
 
 namespace splatkit {
 
@@ -44,6 +45,8 @@ class WalkCamera {
   // but does not constrain the orbit. First-person input leaves orbit at the same pose.
   // Angles are radians and dolly distance is metres.
   void setAnchor(splat::Vec3 point);
+  CameraResolution applyCameraRequest(const CameraRequest& requested);
+  CameraState cameraState() const;
   void setDefaultAnchor(splat::Vec3 point, float radius);
   // The default anchor's framing radius for a new view shape. Dolly offsets, the angles
   // and a running animation carry over; an explicit anchor keeps its radius.
@@ -99,7 +102,10 @@ class WalkCamera {
   void enterOrbit();
   void leaveOrbit();
   void applyOrbitPose();
-  void stopOrbitAnimation() { animation_.reset(); }
+  void stopOrbitAnimation() {
+    animation_.reset();
+    orbitRadiansPerSecond_ = 0;
+  }
 
   std::unique_ptr<splat::Collider> collider_;
   std::unique_ptr<splat::CharacterController> player_;
@@ -116,6 +122,7 @@ class WalkCamera {
   splat::Mat4 referenceToWorld_;
   std::optional<Orbit> anchor_;
   std::optional<OrbitAnimation> animation_;
+  float orbitRadiansPerSecond_ = 0;
   bool anchorExplicit_ = false;
   float defaultRadius_ = 0;  // the framing that dolly offsets of the default anchor add to
   bool orbiting_ = false;

@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace splatkit {
 namespace {
@@ -9,6 +10,7 @@ namespace {
 constexpr float kPi = 3.14159265358979f;
 constexpr float kMaxPitch = 85.0f * kPi / 180.0f;
 constexpr float kMinOrbitRadius = 0.05f;
+constexpr double kTwoPi = 2.0 * 3.14159265358979323846;
 
 splat::Mat4 lookAtRotation(splat::Vec3 position, splat::Vec3 target, splat::Vec3 up) {
   const splat::Vec3 forward = splat::normalize(target - position);
@@ -89,6 +91,7 @@ splat::Vec3 heading(splat::Vec3 v, splat::Vec3 fallback) {
 }  // namespace
 
 void WalkCamera::walk(float forward, float right) {
+  if (forward == 0 && right == 0) return;
   leaveOrbit();
   stopOrbitAnimation();
   const splat::Mat4 r = rotation();
@@ -153,6 +156,69 @@ void WalkCamera::setAnchor(splat::Vec3 point) {
   applyOrbitPose();
 }
 
+CameraResolution WalkCamera::applyCameraRequest(const CameraRequest& requested) {
+  CameraResolution result;
+  result.effective = cameraState();
+  if (requested.mode != CameraMode::FirstPerson && requested.mode != CameraMode::Orbit) {
+    result.error = "invalid camera mode";
+    return result;
+  }
+  if (!std::isfinite(requested.anchor.x) || !std::isfinite(requested.anchor.y) ||
+      !std::isfinite(requested.anchor.z) || !std::isfinite(requested.radius) ||
+      !std::isfinite(requested.azimuth) || !std::isfinite(requested.elevation) ||
+      !std::isfinite(requested.orbitRadiansPerSecond)) {
+    result.error = "camera values must be finite";
+    return result;
+  }
+  if (requested.radius <= 0) {
+    result.error = "camera radius must be positive";
+    return result;
+  }
+  if (requested.mode == CameraMode::Orbit) {
+    // Any angle reached by a continuous turn must keep the orbit position representable.
+    const double limit = std::numeric_limits<float>::max();
+    const double radius =
+        std::max(static_cast<double>(requested.radius), static_cast<double>(kMinOrbitRadius));
+    if (std::fabs(static_cast<double>(requested.anchor.x)) + radius > limit ||
+        std::fabs(static_cast<double>(requested.anchor.y)) + radius > limit ||
+        std::fabs(static_cast<double>(requested.anchor.z)) + radius > limit) {
+      result.error = "camera orbit position must be finite";
+      return result;
+    }
+  }
+
+  stopOrbitAnimation();
+  if (requested.mode == CameraMode::FirstPerson) {
+    leaveOrbit();
+  } else {
+    anchor_ = Orbit{requested.anchor, std::max(requested.radius, kMinOrbitRadius),
+                    requested.azimuth, std::clamp(requested.elevation, -kMaxPitch, kMaxPitch)};
+    anchorExplicit_ = true;
+    orbiting_ = true;
+    velocityForward_ = 0;
+    velocityRight_ = 0;
+    orbitRadiansPerSecond_ = requested.orbitRadiansPerSecond;
+    applyOrbitPose();
+  }
+  result.effective = cameraState();
+  result.accepted = true;
+  return result;
+}
+
+CameraState WalkCamera::cameraState() const {
+  CameraState state;
+  state.mode = orbiting_ ? CameraMode::Orbit : CameraMode::FirstPerson;
+  state.hasAnchor = anchor_.has_value();
+  if (anchor_) {
+    state.anchor = anchor_->anchor;
+    state.radius = anchor_->radius;
+    state.azimuth = anchor_->azimuth;
+    state.elevation = anchor_->elevation;
+  }
+  state.orbitRadiansPerSecond = orbitRadiansPerSecond_;
+  return state;
+}
+
 void WalkCamera::setDefaultAnchor(splat::Vec3 point, float radius) {
   if (anchorExplicit_) return;
   stopOrbitAnimation();
@@ -196,12 +262,14 @@ void WalkCamera::leaveOrbit() {
 
 void WalkCamera::applyOrbitPose() {
   if (!anchor_) return;
-  const float horizontal = anchor_->radius * std::cos(anchor_->elevation);
-  orbitPosition_ = anchor_->anchor + splat::Vec3{horizontal * std::sin(anchor_->azimuth),
-                                                 anchor_->radius * std::sin(anchor_->elevation),
-                                                 horizontal * std::cos(anchor_->azimuth)};
-  orbitRotation_ = lookAtRotation(orbitPosition_, anchor_->anchor, {0, 1, 0});
-  const splat::Vec3 forward = splat::normalize(anchor_->anchor - orbitPosition_);
+  const float horizontal = std::cos(anchor_->elevation);
+  const splat::Vec3 direction{horizontal * std::sin(anchor_->azimuth), std::sin(anchor_->elevation),
+                              horizontal * std::cos(anchor_->azimuth)};
+  orbitPosition_ = anchor_->anchor + direction * anchor_->radius;
+  // The direction remains well-conditioned even when the world coordinates or radius
+  // are too large for squaring a position difference in float arithmetic.
+  orbitRotation_ = lookAtRotation(direction, {0, 0, 0}, {0, 1, 0});
+  const splat::Vec3 forward = -direction;
   yaw_ = std::atan2(-forward.x, -forward.z);
   pitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
 }
@@ -231,6 +299,7 @@ bool WalkCamera::animateOrbit(float deltaAzimuth, float radiansPerSecond, bool e
     return false;
   }
   enterOrbit();
+  stopOrbitAnimation();
   animation_ = OrbitAnimation{anchor_->azimuth, deltaAzimuth, 0.0f,
                               std::fabs(deltaAzimuth) / radiansPerSecond, easeInOut};
   return true;
@@ -298,6 +367,13 @@ bool WalkCamera::update(float dtSeconds) {
     applyOrbitPose();
     orbitMoved = true;
     if (animation_->elapsed >= animation_->duration) animation_.reset();
+  } else if (orbiting_ && anchor_ && orbitRadiansPerSecond_ != 0 && std::isfinite(dtSeconds) &&
+             dtSeconds > 0) {
+    const double next = static_cast<double>(anchor_->azimuth) +
+                        static_cast<double>(orbitRadiansPerSecond_) * dtSeconds;
+    anchor_->azimuth = static_cast<float>(std::remainder(next, kTwoPi));
+    applyOrbitPose();
+    orbitMoved = true;
   }
   if (velocityForward_ != 0 || velocityRight_ != 0) {
     walk(velocityForward_ * dtSeconds, velocityRight_ * dtSeconds);

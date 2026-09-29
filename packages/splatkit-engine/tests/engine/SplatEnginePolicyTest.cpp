@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <limits>
+
 #include "splatkit/engine/SplatEngine.h"
 
 namespace splatkit {
@@ -153,6 +155,29 @@ TEST(SplatEnginePolicy, CapabilitiesComeFromTheRenderer) {
   EXPECT_EQ(reported.limits.maxResidencyCapacitySplats, 32'000'000u);
   EXPECT_TRUE(reported.supportsSubgroups);
   EXPECT_EQ(reported.maxTextureDimension, 16'384u);
+}
+
+TEST(SplatEnginePolicy, CameraTransactionReportsCurrentStateBeforeAWorldLoads) {
+  SplatEngine engine(std::make_unique<PolicyRecordingRenderer>());
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.anchor = {1, 2, 3};
+  request.radius = 5;
+  request.azimuth = 0.75f;
+  request.orbitRadiansPerSecond = -0.5f;
+  const CameraResolution applied = engine.applyCameraRequest(request);
+  ASSERT_TRUE(applied.accepted) << applied.error;
+  EXPECT_EQ(engine.cameraState().mode, CameraMode::Orbit);
+  EXPECT_FLOAT_EQ(engine.cameraState().anchor.z, 3);
+  EXPECT_FLOAT_EQ(engine.cameraState().azimuth, 0.75f);
+  EXPECT_FLOAT_EQ(engine.cameraState().orbitRadiansPerSecond, -0.5f);
+
+  request.orbitRadiansPerSecond = std::numeric_limits<float>::infinity();
+  const CameraResolution rejected = engine.applyCameraRequest(request);
+  EXPECT_FALSE(rejected.accepted);
+  EXPECT_EQ(rejected.effective.mode, CameraMode::Orbit);
+  EXPECT_FLOAT_EQ(rejected.effective.orbitRadiansPerSecond, -0.5f);
+  EXPECT_FLOAT_EQ(engine.cameraState().azimuth, 0.75f);
 }
 
 }  // namespace

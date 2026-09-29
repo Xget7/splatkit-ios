@@ -227,6 +227,15 @@ void SplatEngine::setCameraLookAt(splat::Vec3 position, splat::Vec3 target, spla
   publishPose();
 }
 
+CameraResolution SplatEngine::applyCameraRequest(const CameraRequest& requested) {
+  CameraResolution resolution = camera_.applyCameraRequest(requested);
+  if (!resolution.accepted) return resolution;
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+  return resolution;
+}
+
 void SplatEngine::setCameraAnchor(splat::Vec3 point) {
   camera_.setAnchor(point);
   planner_.invalidate();

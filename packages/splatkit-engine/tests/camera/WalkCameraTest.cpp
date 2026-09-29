@@ -1,6 +1,7 @@
 #include "splatkit/camera/WalkCamera.h"
 
 #include <cmath>
+#include <limits>
 #include <memory>
 
 #include <gtest/gtest.h>
@@ -14,6 +15,11 @@ splat::TriangleMesh floor();
 
 TEST(WalkCamera, StartsAtTheOriginLookingDownNegativeZ) {
   const WalkCamera camera;
+  const CameraState state = camera.cameraState();
+  EXPECT_EQ(state.mode, CameraMode::FirstPerson);
+  EXPECT_FALSE(state.hasAnchor);
+  EXPECT_FLOAT_EQ(state.radius, 0);
+  EXPECT_FLOAT_EQ(state.orbitRadiansPerSecond, 0);
   const splat::Vec3 forward = camera.rotation().transformDirection({0, 0, -1});
   EXPECT_NEAR(forward.x, 0.0f, 1e-6f);
   EXPECT_NEAR(forward.y, 0.0f, 1e-6f);
@@ -145,6 +151,154 @@ TEST(WalkCamera, OrbitAnimationAdvancesByItsRateAndFinishesExactly) {
   EXPECT_FALSE(camera.orbitAnimationRunning());
   EXPECT_FALSE(camera.update(1.0f));
   EXPECT_NEAR(camera.orbitAzimuth(), start + kPi, 1e-6f);
+}
+
+TEST(WalkCamera, CameraRequestAppliesOrbitAndReportsClampedValues) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.anchor = {1, 2, 3};
+  request.radius = 4;
+  request.azimuth = 0.25f;
+  request.elevation = 10;
+  request.orbitRadiansPerSecond = -0.5f;
+  const CameraResolution result = camera.applyCameraRequest(request);
+  ASSERT_TRUE(result.accepted) << result.error;
+  EXPECT_EQ(result.effective.mode, CameraMode::Orbit);
+  EXPECT_TRUE(result.effective.hasAnchor);
+  EXPECT_FLOAT_EQ(result.effective.anchor.x, 1);
+  EXPECT_FLOAT_EQ(result.effective.radius, 4);
+  EXPECT_FLOAT_EQ(result.effective.azimuth, 0.25f);
+  EXPECT_NEAR(result.effective.elevation, 85.0f * kPi / 180.0f, 1e-6f);
+  EXPECT_FLOAT_EQ(result.effective.orbitRadiansPerSecond, -0.5f);
+  EXPECT_NEAR(splat::length(camera.position() - request.anchor), 4, 1e-5f);
+}
+
+TEST(WalkCamera, InvalidCameraRequestLeavesOrbitAndRateUntouched) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.anchor = {1, 2, 3};
+  request.radius = 4;
+  request.orbitRadiansPerSecond = 1;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  const auto before = camera.cameraState();
+  const auto pose = camera.position();
+
+  request.radius = 0;
+  EXPECT_FALSE(camera.applyCameraRequest(request).accepted);
+  request.radius = 4;
+  request.anchor.y = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_FALSE(camera.applyCameraRequest(request).accepted);
+  request.anchor.y = 2;
+  request.anchor.x = std::numeric_limits<float>::max();
+  request.radius = std::numeric_limits<float>::max();
+  EXPECT_FALSE(camera.applyCameraRequest(request).accepted);
+  request.anchor.x = 1;
+  request.radius = 4;
+  const volatile int invalidMode = 7;
+  request.mode = static_cast<CameraMode>(invalidMode);
+  const auto rejected = camera.applyCameraRequest(request);
+  EXPECT_FALSE(rejected.accepted);
+  EXPECT_FALSE(rejected.error.empty());
+  EXPECT_EQ(rejected.effective.mode, before.mode);
+  EXPECT_FLOAT_EQ(rejected.effective.orbitRadiansPerSecond, before.orbitRadiansPerSecond);
+  EXPECT_FLOAT_EQ(camera.position().x, pose.x);
+  EXPECT_FLOAT_EQ(camera.position().y, pose.y);
+  EXPECT_FLOAT_EQ(camera.position().z, pose.z);
+  EXPECT_TRUE(camera.update(0.25f));
+  EXPECT_NEAR(camera.orbitAzimuth(), before.azimuth + 0.25f, 1e-6f);
+}
+
+TEST(WalkCamera, ContinuousOrbitAdvancesAtSignedRateUntilStopped) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.radius = 3;
+  request.orbitRadiansPerSecond = -2;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  EXPECT_TRUE(camera.update(0.25f));
+  EXPECT_NEAR(camera.cameraState().azimuth, -0.5f, 1e-6f);
+  EXPECT_TRUE(camera.update(0.5f));
+  EXPECT_NEAR(camera.cameraState().azimuth, -1.5f, 1e-6f);
+  request.azimuth = camera.orbitAzimuth();
+  request.orbitRadiansPerSecond = 0;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  EXPECT_FALSE(camera.update(1));
+  EXPECT_NEAR(camera.cameraState().azimuth, -1.5f, 1e-6f);
+}
+
+TEST(WalkCamera, ContinuousOrbitKeepsItsPhaseFiniteAtLargeRates) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.orbitRadiansPerSecond = std::numeric_limits<float>::max();
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  EXPECT_TRUE(camera.update(std::numeric_limits<float>::max()));
+  EXPECT_TRUE(std::isfinite(camera.cameraState().azimuth));
+  EXPECT_LE(std::fabs(camera.cameraState().azimuth), kPi);
+}
+
+TEST(WalkCamera, LoadingColliderPreservesContinuousOrbit) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.anchor = {0, 1, 0};
+  request.radius = 4;
+  request.orbitRadiansPerSecond = 1;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  camera.setCollider(std::make_unique<splat::Collider>(floor()));
+  EXPECT_EQ(camera.cameraState().mode, CameraMode::Orbit);
+  EXPECT_FLOAT_EQ(camera.cameraState().orbitRadiansPerSecond, 1);
+  EXPECT_TRUE(camera.update(0.25f));
+  EXPECT_NEAR(camera.cameraState().azimuth, 0.25f, 1e-6f);
+}
+
+TEST(WalkCamera, FirstPersonRequestKeepsPoseAndZeroWalkDoesNotLeaveOrbit) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.anchor = {1, 2, 3};
+  request.radius = 4;
+  request.orbitRadiansPerSecond = 1;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  camera.walk(0, 0);
+  EXPECT_EQ(camera.cameraState().mode, CameraMode::Orbit);
+  const auto pose = camera.position();
+  const auto rotation = camera.rotation();
+  request.mode = CameraMode::FirstPerson;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  EXPECT_EQ(camera.cameraState().mode, CameraMode::FirstPerson);
+  EXPECT_TRUE(camera.cameraState().hasAnchor);
+  EXPECT_FLOAT_EQ(camera.cameraState().orbitRadiansPerSecond, 0);
+  EXPECT_FALSE(camera.update(1));
+  EXPECT_NEAR(camera.position().x, pose.x, 1e-6f);
+  EXPECT_NEAR(camera.position().y, pose.y, 1e-6f);
+  EXPECT_NEAR(camera.position().z, pose.z, 1e-6f);
+  for (size_t i = 0; i < rotation.m.size(); ++i) {
+    EXPECT_NEAR(camera.rotation().m[i], rotation.m[i], 1e-6f);
+  }
+}
+
+TEST(WalkCamera, LegacyInputCancelsContinuousOrbitAndFiniteAnimationReplacesIt) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.radius = 3;
+  request.orbitRadiansPerSecond = 1;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  ASSERT_TRUE(camera.animateOrbit(1, 1, false));
+  EXPECT_FLOAT_EQ(camera.cameraState().orbitRadiansPerSecond, 0);
+  EXPECT_TRUE(camera.orbitAnimationRunning());
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  EXPECT_FALSE(camera.orbitAnimationRunning());
+  camera.orbit(0.1f, 0);
+  EXPECT_FLOAT_EQ(camera.cameraState().orbitRadiansPerSecond, 0);
+  EXPECT_FALSE(camera.update(1));
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  camera.look(0, 0);
+  EXPECT_EQ(camera.cameraState().mode, CameraMode::FirstPerson);
+  EXPECT_FLOAT_EQ(camera.cameraState().orbitRadiansPerSecond, 0);
 }
 
 TEST(WalkCamera, DefaultAnchorFramesTheWorldWhenOrbitFirstStarts) {
