@@ -12,6 +12,7 @@ bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
   initialize_ = metal::pipeline(device, library, "initializeSplatLOD");
   evaluate_ = metal::pipeline(device, library, "evaluateSplatLOD");
   budget_ = metal::pipeline(device, library, "budgetSplatLOD");
+  rank_ = metal::pipeline(device, library, "rankSplatLOD");
   compact_ = metal::pipeline(device, library, "compactSplatLOD");
   allocate_ = metal::pipeline(device, library, "allocateSplatLOD");
   scatter_ = metal::pipeline(device, library, "scatterSplatLOD");
@@ -19,10 +20,10 @@ bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
   emit_ = metal::pipeline(device, library, "emitSplatLOD");
   scanGroups_ = metal::pipeline(device, library, "scanSplatLODGroups");
   scanBlocks_ = metal::pipeline(device, library, "scanSplatLODBlocks");
-  if (!initialize_ || !evaluate_ || !budget_ || !compact_ || !allocate_ || !scatter_ || !advance_ ||
-      !emit_ || !scanGroups_ || !scanBlocks_)
+  if (!initialize_ || !evaluate_ || !budget_ || !rank_ || !compact_ || !allocate_ || !scatter_ ||
+      !advance_ || !emit_ || !scanGroups_ || !scanBlocks_)
     return false;
-  for (auto p : {evaluate_, compact_, scatter_, emit_, scanGroups_})
+  for (auto p : {evaluate_, rank_, compact_, scatter_, emit_, scanGroups_})
     if (p.threadExecutionWidth != 32 || p.maxTotalThreadsPerThreadgroup < 256) return false;
   return true;
 }
@@ -77,9 +78,10 @@ bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uin
   groups_ = metal::buffer(device_, groupCount * 16, storage);
   blocks_ = metal::buffer(device_, ((groupCount + 255) / 256 + 1) * 16, storage);
   state_ = metal::buffer(device_, 80, storage);
+  histogram_ = metal::buffer(device_, kErrorBuckets * 4, storage);
   for (auto& buffer : frontier_) buffer = metal::buffer(device_, frontierCapacity * 4, storage);
   if (!nodes_ || !leaves_ || !indices_ || !packets_ || !costs_ || !offsets_ || !costGroups_ ||
-      !groups_ || !blocks_ || !state_ || !frontier_[0] || !frontier_[1])
+      !groups_ || !blocks_ || !state_ || !histogram_ || !frontier_[0] || !frontier_[1])
     return false;
   depth_ = valid.value() + 1;
   capacity_ = capacity;
@@ -123,6 +125,7 @@ void MetalLOD::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
   auto e = start(initialize_, @"Initialize interior LOD frontier");
   [e setBuffer:frontier_[0] offset:0 atIndex:0];
   [e setBuffer:state_ offset:0 atIndex:1];
+  [e setBuffer:histogram_ offset:0 atIndex:2];
   one(e);
   for (uint32_t level = 0; level < depth_; ++level) {
     e = start(evaluate_, @"LOD node bounds and screen error");
@@ -133,15 +136,22 @@ void MetalLOD::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
     [e setBytes:&config_ length:sizeof(config_) atIndex:4];
     [e setBuffer:costs_ offset:0 atIndex:5];
     [e setBuffer:costGroups_ offset:0 atIndex:6];
+    [e setBuffer:histogram_ offset:0 atIndex:7];
     active(e);
     scan(costGroups_);
-    e = start(budget_, @"LOD deterministic capacity guard");
-    [e setBuffer:costGroups_ offset:0 atIndex:0];
-    [e setBuffer:costs_ offset:0 atIndex:1];
-    [e setBuffer:state_ offset:0 atIndex:2];
-    [e setBytes:&config_ length:sizeof(config_) atIndex:3];
-    [e setBuffer:blocks_ offset:0 atIndex:4];
+    e = start(budget_, @"LOD error-ranked capacity guard");
+    [e setBuffer:state_ offset:0 atIndex:0];
+    [e setBytes:&config_ length:sizeof(config_) atIndex:1];
+    [e setBuffer:blocks_ offset:0 atIndex:2];
+    [e setBuffer:histogram_ offset:0 atIndex:3];
     one(e);
+    e = start(rank_, @"LOD frontier order within the cutoff bucket");
+    [e setBuffer:costs_ offset:0 atIndex:0];
+    [e setBuffer:state_ offset:0 atIndex:1];
+    [e setBuffer:offsets_ offset:0 atIndex:2];
+    [e setBuffer:costGroups_ offset:0 atIndex:3];
+    active(e);
+    scan(costGroups_);
     e = start(compact_, @"LOD SIMD prefix compaction");
     [e setBuffer:nodes_ offset:0 atIndex:0];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:1];

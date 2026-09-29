@@ -1,6 +1,7 @@
 #import <ImageIO/ImageIO.h>
 #include <gtest/gtest.h>
 #include <algorithm>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <set>
@@ -163,6 +164,16 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
                         : renderer->uploadLodWorld(tree.value(), 1, budget));
   WalkCamera camera;
   camera.setLookAt({0, -2, 43}, {0, -2, -2}, {1, 0, 0});
+  // "x y z yaw pitch", as the SplatKit frame log prints the walk pose.
+  if (const char* pose = std::getenv("SPLAT_LOD_POSE")) {
+    float x = 0, y = 0, z = 0, yaw = 0, pitch = 0;
+    ASSERT_EQ(std::sscanf(pose, "%f %f %f %f %f", &x, &y, &z, &yaw, &pitch), 5);
+    camera.setPosition({x, y, z});
+    camera.setOrientation(yaw, pitch);
+  }
+  // The adaptive threshold settles over frames; the capture is the last one.
+  const char* requestedFrames = std::getenv("SPLAT_LOD_FRAMES");
+  const int frames = requestedFrames ? std::max(1, std::atoi(requestedFrames)) : 3;
   SplatRenderer::Frame frame;
   frame.orderSource = SplatRenderer::OrderSource::gpu;
   frame.view = camera.viewMatrix();
@@ -172,7 +183,7 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
   const SplatRenderer::Range range{0, renderer->world()->count};
   frame.ranges = &range;
   frame.rangeCount = 1;
-  for (int iteration = 0; iteration < 3; ++iteration) {
+  for (int iteration = 0; iteration < frames; ++iteration) {
     auto completed = dispatch_semaphore_create(0);
     std::vector<uint8_t> pixels;
     renderer->captureNextFrame([&](std::vector<uint8_t> image, uint32_t, uint32_t) {
@@ -193,7 +204,7 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
            renderer->lastSortMillis(), renderer->lastGpuMillis());
     printf("[ LOD QUALITY ] %u evaluated interiors, %u denied refinements\n",
            renderer->lastLodEvaluatedCount(), renderer->lastLodLimitedCount());
-    if (iteration == 2) {
+    if (iteration == frames - 1) {
       if (const char* capture = std::getenv("SPLAT_LOD_CAPTURE")) {
         auto space = CGColorSpaceCreateDeviceRGB();
         auto provider =
@@ -242,6 +253,32 @@ TEST(MetalLODTest, QualityRefinesColorVariationWithoutFillingCapacity) {
   EXPECT_EQ(std::set<uint32_t>(cut.begin(), cut.end()), (std::set<uint32_t>{1, 5, 6}));
   EXPECT_EQ(stats[4], 0u);
   EXPECT_EQ(stats[5], 3u);
+}
+
+TEST(MetalLODTest, CapacityRefinesTheLargestScreenErrorFirst) {
+  auto& gpu = test::Gpu::get();
+  splat::LodTree tree;
+  tree.leafCount = 4;
+  // The far cluster comes first in frontier order; the near one covers far more pixels.
+  tree.layout = {{{0, 0, -26}, 30, 1, 2},       {{0, 0, -50}, 0.5f, 3, 2},
+                 {{0, 0, -2}, 0.5f, 5, 2},      {{-0.3f, 0, -50}, 0.1f, 0, 0},
+                 {{0.3f, 0, -50}, 0.1f, 0, 0},  {{-0.3f, 0, -2}, 0.1f, 0, 0},
+                 {{0.3f, 0, -2}, 0.1f, 0, 0}};
+  for (const auto& node : tree.layout) {
+    tree.nodes.positions.insert(tree.nodes.positions.end(), node.position, node.position + 3);
+    tree.nodes.covariances.insert(tree.nodes.covariances.end(), {0.01f, 0, 0, 0.01f, 0, 0.01f});
+    tree.nodes.colors.insert(tree.nodes.colors.end(), {1, 1, 1});
+    tree.nodes.alphas.push_back(0.5f);
+  }
+  tree.selection = splat::buildLodSelectionData(tree);
+  MetalLOD lod;
+  ASSERT_TRUE(lod.create(gpu.device, gpu.library));
+  // Room for the root split and one of the two cluster splits.
+  ASSERT_TRUE(lod.upload(gpu.queue, tree, 3, 0.001f, 4, false));
+  std::array<uint32_t, 6> stats{};
+  const auto cut = select(lod, camera(), &stats);
+  EXPECT_EQ(std::set<uint32_t>(cut.begin(), cut.end()), (std::set<uint32_t>{1, 5, 6}));
+  EXPECT_EQ(stats[4], 1u);
 }
 
 TEST(MetalLODTest, PacketExpansionDoesNotEvaluateLeavesAndReportsCapacityPressure) {

@@ -14,6 +14,8 @@ class MetalLOD {
  public:
   // Safety bound on the selected cut; buffers scale with the budget actually requested.
   static constexpr uint32_t kMaxBudget = 4'000'000;
+  // Matches kLodErrorBuckets in SplatLOD.metal.
+  static constexpr uint32_t kErrorBuckets = 256;
 
   bool create(id<MTLDevice> device, id<MTLLibrary> library);
   bool upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uint32_t budget,
@@ -42,13 +44,13 @@ class MetalLOD {
   } config_{};
   uint32_t capacity_ = 0;
   id<MTLDevice> device_ = nil;
-  id<MTLComputePipelineState> initialize_ = nil, evaluate_ = nil, budget_ = nil;
+  id<MTLComputePipelineState> initialize_ = nil, evaluate_ = nil, budget_ = nil, rank_ = nil;
   id<MTLComputePipelineState> compact_ = nil, allocate_ = nil, scatter_ = nil;
   id<MTLComputePipelineState> advance_ = nil, emit_ = nil;
   id<MTLComputePipelineState> scanGroups_ = nil, scanBlocks_ = nil;
   id<MTLBuffer> nodes_ = nil, leaves_ = nil, indices_ = nil, packets_ = nil;
   id<MTLBuffer> costs_ = nil, costGroups_ = nil, offsets_ = nil, groups_ = nil, state_ = nil;
-  id<MTLBuffer> blocks_ = nil;
+  id<MTLBuffer> blocks_ = nil, histogram_ = nil;
   std::array<id<MTLBuffer>, 2> frontier_{};
   uint32_t depth_ = 0;
 };

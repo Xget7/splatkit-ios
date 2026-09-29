@@ -255,8 +255,11 @@ void WalkCamera::leaveOrbit() {
   } else {
     freePosition_ = orbitPosition_;
   }
+  // The orbit view has no roll, so the yaw and pitch applyOrbitPose set describe it
+  // exactly. Keeping it as a scripted basis would make touch turn about a tilted up axis
+  // and roll the horizon. With motion on, the pose holds until input hands it over.
   scriptedRotation_ = orbitRotation_;
-  scripted_ = true;
+  scripted_ = motion_;
   orbiting_ = false;
 }
 

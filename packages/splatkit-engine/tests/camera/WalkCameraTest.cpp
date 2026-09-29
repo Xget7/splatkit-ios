@@ -280,6 +280,22 @@ TEST(WalkCamera, FirstPersonRequestKeepsPoseAndZeroWalkDoesNotLeaveOrbit) {
   }
 }
 
+TEST(WalkCamera, LookingAroundAfterALookDownOrbitKeepsTheHorizonLevel) {
+  WalkCamera camera;
+  CameraRequest request;
+  request.mode = CameraMode::Orbit;
+  request.anchor = {-6, 2, 3};
+  request.radius = 4;
+  request.elevation = 0.4f;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  request.mode = CameraMode::FirstPerson;
+  ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+  // Dragging sideways while looking down, as a walker does after taking control.
+  for (int i = 0; i < 8; ++i) camera.look(0.4f, 0);
+  const splat::Vec3 right = camera.rotation().transformDirection({1, 0, 0});
+  EXPECT_NEAR(right.y, 0.0f, 1e-5f);
+}
+
 TEST(WalkCamera, LegacyInputCancelsContinuousOrbitAndFiniteAnimationReplacesIt) {
   WalkCamera camera;
   CameraRequest request;
