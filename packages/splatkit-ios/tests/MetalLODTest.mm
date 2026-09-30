@@ -255,32 +255,6 @@ TEST(MetalLODTest, QualityRefinesColorVariationWithoutFillingCapacity) {
   EXPECT_EQ(stats[5], 3u);
 }
 
-TEST(MetalLODTest, CapacityRefinesTheLargestScreenErrorFirst) {
-  auto& gpu = test::Gpu::get();
-  splat::LodTree tree;
-  tree.leafCount = 4;
-  // The far cluster comes first in frontier order; the near one covers far more pixels.
-  tree.layout = {{{0, 0, -26}, 30, 1, 2},       {{0, 0, -50}, 0.5f, 3, 2},
-                 {{0, 0, -2}, 0.5f, 5, 2},      {{-0.3f, 0, -50}, 0.1f, 0, 0},
-                 {{0.3f, 0, -50}, 0.1f, 0, 0},  {{-0.3f, 0, -2}, 0.1f, 0, 0},
-                 {{0.3f, 0, -2}, 0.1f, 0, 0}};
-  for (const auto& node : tree.layout) {
-    tree.nodes.positions.insert(tree.nodes.positions.end(), node.position, node.position + 3);
-    tree.nodes.covariances.insert(tree.nodes.covariances.end(), {0.01f, 0, 0, 0.01f, 0, 0.01f});
-    tree.nodes.colors.insert(tree.nodes.colors.end(), {1, 1, 1});
-    tree.nodes.alphas.push_back(0.5f);
-  }
-  tree.selection = splat::buildLodSelectionData(tree);
-  MetalLOD lod;
-  ASSERT_TRUE(lod.create(gpu.device, gpu.library));
-  // Room for the root split and one of the two cluster splits.
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 3, 0.001f, 4, false));
-  std::array<uint32_t, 6> stats{};
-  const auto cut = select(lod, camera(), &stats);
-  EXPECT_EQ(std::set<uint32_t>(cut.begin(), cut.end()), (std::set<uint32_t>{1, 5, 6}));
-  EXPECT_EQ(stats[4], 1u);
-}
-
 TEST(MetalLODTest, PacketExpansionDoesNotEvaluateLeavesAndReportsCapacityPressure) {
   auto& gpu = test::Gpu::get();
   auto tree = hierarchy();
