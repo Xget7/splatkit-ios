@@ -13,10 +13,17 @@
 namespace splatkit {
 namespace {
 
+constexpr int kMaxThermalZones = 120;
+constexpr float kMaxSeconds = 3600.0f;
+// A window of frame times is reported this often, in seconds of benchmark time.
+constexpr double kWindowSeconds = 30.0;
+// Frames per second the timing vectors reserve room for.
+constexpr float kReservedFps = 120.0f;
+
 // GPU temperature in degrees Celsius from the thermal zones, or a negative value when
 // unavailable.
 float gpuTemperatureCelsius() {
-  for (int i = 0; i < 120; ++i) {
+  for (int i = 0; i < kMaxThermalZones; ++i) {
     const std::string base = "/sys/class/thermal/thermal_zone" + std::to_string(i);
     std::ifstream type(base + "/type");
     std::string name;
@@ -38,7 +45,7 @@ void Benchmark::start(float seconds) {
   gpuMillis_.clear();
   windowFrameMillis_.clear();
   windowGpuMillis_.clear();
-  if (!std::isfinite(seconds) || seconds <= 0 || seconds > 3600) {
+  if (!std::isfinite(seconds) || seconds <= 0 || seconds > kMaxSeconds) {
     LOGW("benchmark rejected: duration must be finite and in (0, 3600] seconds");
     return;
   }
@@ -53,8 +60,8 @@ void Benchmark::begin(uint32_t splatCount) {
   running_ = true;
   elapsed_ = 0;
   windowStart_ = 0;
-  frameMillis_.reserve(static_cast<std::size_t>(seconds_ * 120));
-  gpuMillis_.reserve(static_cast<std::size_t>(seconds_ * 120));
+  frameMillis_.reserve(static_cast<std::size_t>(seconds_ * kReservedFps));
+  gpuMillis_.reserve(static_cast<std::size_t>(seconds_ * kReservedFps));
   LOGI("benchmark started: %u splats, one turn over %.3f s, gpu %.1f C", splatCount, seconds_,
        gpuTemperatureCelsius());
 }
@@ -73,7 +80,7 @@ float Benchmark::step(float dt, double gpuMillis) {
     gpuMillis_.push_back(static_cast<float>(gpuMillis));
     windowGpuMillis_.push_back(static_cast<float>(gpuMillis));
   }
-  if (elapsed_ - windowStart_ >= 30.0) reportWindow();
+  if (elapsed_ - windowStart_ >= kWindowSeconds) reportWindow();
   if (elapsed_ >= seconds_) finish();
   return static_cast<float>(2.0 * M_PI * turnSeconds / seconds_);
 }

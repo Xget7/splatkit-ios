@@ -12,6 +12,15 @@ constexpr float kMaxPitch = 85.0f * kPi / 180.0f;
 constexpr float kMinOrbitRadius = 0.05f;
 constexpr double kTwoPi = 2.0 * 3.14159265358979323846;
 
+// The yaw about up and the pitch of a view looking along the unit `forward`.
+float yawOf(splat::Vec3 forward) {
+  return std::atan2(-forward.x, -forward.z);
+}
+
+float pitchOf(splat::Vec3 forward) {
+  return std::asin(std::clamp(forward.y, -1.0f, 1.0f));
+}
+
 splat::Mat4 lookAtRotation(splat::Vec3 position, splat::Vec3 target, splat::Vec3 up) {
   const splat::Vec3 forward = splat::normalize(target - position);
   splat::Vec3 right = splat::cross(forward, up);
@@ -66,8 +75,8 @@ void WalkCamera::look(float deltaYaw, float deltaPitch) {
     scriptedRotation_ = scriptedRotation_ * splat::Mat4::rotation(deltaYaw, {0, 1, 0}) *
                         splat::Mat4::rotation(deltaPitch, {1, 0, 0});
     const auto forward = splat::normalize(scriptedRotation_.transformDirection({0, 0, -1}));
-    yaw_ = std::atan2(-forward.x, -forward.z);
-    pitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
+    yaw_ = yawOf(forward);
+    pitch_ = pitchOf(forward);
     return;
   }
   scripted_ = false;
@@ -134,8 +143,8 @@ void WalkCamera::setLookAt(splat::Vec3 position, splat::Vec3 target, splat::Vec3
   scriptedRotation_ = lookAtRotation(position, target, up);
   scripted_ = true;
   // Yaw and pitch keep describing the view for whoever reads them.
-  yaw_ = std::atan2(-forward.x, -forward.z);
-  pitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
+  yaw_ = yawOf(forward);
+  pitch_ = pitchOf(forward);
 }
 
 void WalkCamera::setAnchor(splat::Vec3 point) {
@@ -273,8 +282,8 @@ void WalkCamera::applyOrbitPose() {
   // are too large for squaring a position difference in float arithmetic.
   orbitRotation_ = lookAtRotation(direction, {0, 0, 0}, {0, 1, 0});
   const splat::Vec3 forward = -direction;
-  yaw_ = std::atan2(-forward.x, -forward.z);
-  pitch_ = std::asin(std::clamp(forward.y, -1.0f, 1.0f));
+  yaw_ = yawOf(forward);
+  pitch_ = pitchOf(forward);
 }
 
 bool WalkCamera::orbit(float deltaAzimuth, float deltaElevation) {

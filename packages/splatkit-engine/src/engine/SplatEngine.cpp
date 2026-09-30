@@ -19,6 +19,13 @@ constexpr float kMaxFrameSeconds = 0.1f;
 // How many pixels the splats a tile hides may cover before the tiles below are wanted.
 constexpr float kTilePixels = 1.0f;
 constexpr float kRadiansPerDegree = static_cast<float>(M_PI) / 180.0f;
+// Decode threads a tiled world streams its tiles with.
+constexpr int kLoaderThreads = 2;
+// The default orbit frames the bounding sphere with 5% to spare, never closer than the minimum
+// radius, and treats an aspect below the minimum as that, so a zero-width view still frames.
+constexpr float kFramingPadding = 1.05f;
+constexpr float kMinFramingRadius = 0.05f;
+constexpr float kMinFramingAspect = 1e-3f;
 
 using Clock = std::chrono::steady_clock;
 
@@ -35,8 +42,8 @@ float framingRadius(const splat::Bounds& bounds, Extent extent) {
                            ? static_cast<float>(extent.width) / extent.height
                            : 1.0f;
   const float halfY = kFieldOfViewRadians * 0.5f;
-  const float halfX = std::atan(std::tan(halfY) * std::max(aspect, 1e-3f));
-  return std::max(0.05f, sphere * 1.05f / std::sin(std::min(halfX, halfY)));
+  const float halfX = std::atan(std::tan(halfY) * std::max(aspect, kMinFramingAspect));
+  return std::max(kMinFramingRadius, sphere * kFramingPadding / std::sin(std::min(halfX, halfY)));
 }
 
 }  // namespace
@@ -162,7 +169,7 @@ bool SplatEngine::applyPendingLoads() {
     }
     splat::StreamOptions options;
     options.residency = residency;
-    options.loaderThreads = 2;
+    options.loaderThreads = kLoaderThreads;
     // A renderer that sorts on the GPU takes the ranges of the tiles to draw each frame.
     gpuSort_ = renderer_->sortsOnGpu();
     options.cpuSort = !gpuSort_;

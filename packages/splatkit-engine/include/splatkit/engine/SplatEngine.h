@@ -167,6 +167,7 @@ class SplatEngine {
   static constexpr int kMaxShDegree = 3;
   static constexpr int kMinResidency = 100000;
   static constexpr int kMaxResidency = 32000000;
+  static constexpr uint32_t kDefaultResidency = 2000000;
 
   // The camera as the frame sees it: matrices for the draw, axes for the cull.
   struct FrameCamera {
@@ -208,7 +209,7 @@ class SplatEngine {
   std::vector<int64_t> presentTimes_;
 
   std::atomic<int> maxShDegree_{kMaxShDegree};
-  std::atomic<uint32_t> residency_{2000000};
+  std::atomic<uint32_t> residency_{kDefaultResidency};
   int shDegree_ = kMaxShDegree;
   // Render thread from here on. One of the two is up with a world: the sorter for a
   // single file world, the streamer for a tiled one.

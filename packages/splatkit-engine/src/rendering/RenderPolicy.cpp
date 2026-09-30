@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iterator>
 
 namespace splatkit {
 namespace {
@@ -14,10 +15,19 @@ bool acceptedRaster(uint32_t mask, RasterStrategy strategy) {
   return mask == 0 || (mask & (1u << static_cast<uint32_t>(strategy))) != 0;
 }
 
+// Bit i of a tile size mask selects kTileSizes[i].
+constexpr uint32_t kTileSizes[] = {8, 16, 32};
+
+int tileSizeIndex(uint32_t size) {
+  for (int i = 0; i < static_cast<int>(std::size(kTileSizes)); ++i) {
+    if (kTileSizes[i] == size) return i;
+  }
+  return -1;
+}
+
 bool acceptedTileSize(uint32_t mask, uint32_t size) {
-  if (mask == 0) return size == 8 || size == 16 || size == 32;
-  const uint32_t bit = size == 8 ? 1u : size == 16 ? 2u : size == 32 ? 4u : 0u;
-  return bit != 0 && (mask & bit) != 0;
+  const int index = tileSizeIndex(size);
+  return index >= 0 && (mask == 0 || (mask & (1u << index)) != 0);
 }
 
 std::string number(float value) {
@@ -56,7 +66,7 @@ bool validRenderPolicy(const RenderPolicy& policy, std::string* error) {
   if (static_cast<uint32_t>(policy.raster) > static_cast<uint32_t>(RasterStrategy::hybrid)) {
     return reject("raster must be hardware, computeTile or hybrid");
   }
-  if (policy.tileSize != 8 && policy.tileSize != 16 && policy.tileSize != 32) {
+  if (tileSizeIndex(policy.tileSize) < 0) {
     return reject("tileSize must be 8, 16 or 32");
   }
   if (!finitePositive(policy.lodErrorPixels)) {

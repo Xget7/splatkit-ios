@@ -16,6 +16,11 @@ uint32_t packRgba8(float r, float g, float b, float a) {
   return q(r) | (q(g) << 8) | (q(b) << 16) | (q(a) << 24);
 }
 
+// Harmonics coefficients per channel in bands 1 to `degree`; band 0 is the base colour.
+std::size_t shCoefficients(int degree) {
+  return static_cast<std::size_t>((degree + 1) * (degree + 1) - 1);
+}
+
 uint32_t packHalf2(float a, float b) {
   return static_cast<uint32_t>(splat::toHalf(a)) | (static_cast<uint32_t>(splat::toHalf(b)) << 16);
 }
@@ -23,15 +28,13 @@ uint32_t packHalf2(float a, float b) {
 }  // namespace
 
 std::size_t shStride(int degree) {
-  const auto coefficients = static_cast<std::size_t>((degree + 1) * (degree + 1) - 1);
-  return (coefficients * 3 + 1) / 2;
+  return (shCoefficients(degree) * 3 + 1) / 2;
 }
 
 bool carriesSh(const splat::SplatCloud& cloud, int degree) {
   const std::size_t n = cloud.count();
   return degree > 0 && cloud.shDegree >= degree &&
-         cloud.sh.size() >=
-             n * 3 * static_cast<std::size_t>((cloud.shDegree + 1) * (cloud.shDegree + 1) - 1);
+         cloud.sh.size() >= n * 3 * shCoefficients(cloud.shDegree);
 }
 
 std::vector<uint32_t> packSh(const splat::SplatCloud& cloud, int degree) {
@@ -45,8 +48,7 @@ void packShRange(const splat::SplatCloud& cloud, int degree, size_t offset, size
                  uint32_t* out) {
   const size_t n = cloud.count();
   const std::size_t sourceCoefficients = n == 0 ? 0 : cloud.sh.size() / (n * 3);
-  const auto coefficients = static_cast<std::size_t>((degree + 1) * (degree + 1) - 1);
-  const std::size_t halves = coefficients * 3;
+  const std::size_t halves = shCoefficients(degree) * 3;
   const std::size_t stride = shStride(degree);
   for (std::size_t i = 0; i < count; ++i) {
     std::fill_n(out + i * stride, stride, 0u);
@@ -73,12 +75,12 @@ void packSplatRange(const splat::SplatCloud& cloud, size_t offset, size_t count,
     const float alpha = cloud.alphas[i];
     g.rgba8 =
         packRgba8(cloud.colors[i * 3], cloud.colors[i * 3 + 1], cloud.colors[i * 3 + 2], alpha);
+    g.lodAlpha = 0;
     if (alpha > 1.0f) std::memcpy(&g.lodAlpha, &alpha, sizeof(g.lodAlpha));
     const float* c = &cloud.covariances[i * 6];  // xx, xy, xz, yy, yz, zz
     g.cov[0] = packHalf2(c[0], c[1]);
     g.cov[1] = packHalf2(c[2], c[3]);
     g.cov[2] = packHalf2(c[4], c[5]);
-    if (alpha <= 1.0f) g.lodAlpha = 0;
   }
 }
 
