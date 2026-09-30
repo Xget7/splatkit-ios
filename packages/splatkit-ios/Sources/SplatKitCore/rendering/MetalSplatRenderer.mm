@@ -19,6 +19,7 @@ namespace splatkit {
 
 namespace {
 constexpr MTLPixelFormat kDepthFormat = MTLPixelFormatDepth16Unorm;
+// The tile raster shader clears to the same colour (kBackground in SplatTypes.metalh).
 constexpr MTLClearColor kBackground = {0.05, 0.05, 0.08, 1.0};
 }  // namespace
 
@@ -49,19 +50,19 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
     uniform = metal::buffer(r->device_, sizeof(CameraUniform));
     if (uniform == nil) return nullptr;
   }
-  // Internal creation-time opt-in for tight culling and GPU-private scratch buffers.
-  // The public render policy controls sort key width independently of this flag;
-  // its sub-pixel threshold is supported only when tight culling is enabled.
+  // Creation-time opt-in for tight culling and GPU-private scratch buffers; LOD worlds
+  // always cull tightly. The public render policy controls sort key width independently of
+  // this flag; its sub-pixel threshold applies only under tight culling.
   // See deviceCapabilities() and applyRenderPolicy() for the per-instance contract.
-  const char* experimentValue = std::getenv("SPLATKIT_METAL_CULLING_EXPERIMENT");
-  const bool experiment = experimentValue != nullptr && std::strcmp(experimentValue, "1") == 0;
+  const char* cullingValue = std::getenv("SPLATKIT_METAL_CULLING_EXPERIMENT");
+  const bool tightCulling = cullingValue != nullptr && std::strcmp(cullingValue, "1") == 0;
   r->minPixelRadius_ = 0.5f;
   r->depthBits_ = MetalRadixSort::KeyBits::Full32;
-  r->gpuSort_ =
-      r->visibility_.create(r->device_, r->library_, experiment, r->minPixelRadius_, r->depthBits_);
+  r->gpuSort_ = r->visibility_.create(r->device_, r->library_, tightCulling, r->minPixelRadius_,
+                                      r->depthBits_);
   LOGI("Metal depth keys: %u bits, %u radix passes (uint32 scratch)",
        static_cast<uint32_t>(r->depthBits_), static_cast<uint32_t>(r->depthBits_) / 8);
-  if (experiment)
+  if (tightCulling)
     LOGI("Metal culling experiment: opacity < 1/255, footprint bounds, %.2fpx, view depth, private "
          "scratch",
          r->minPixelRadius_);
@@ -160,8 +161,8 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   policy.fallback.enableFrustumCulling = true;
   policy.fallback.enableEarlyTermination = true;
   // The key width and hybrid tiles are public per-instance controls. The sub-pixel radius is
-  // meaningful only under the internal tight-culling experiment; alpha, tile size and
-  // occlusion stay fixed shader/rasterization choices. Pure compute tiles are not built.
+  // meaningful only under tight culling; alpha, tile size and occlusion stay fixed
+  // shader/rasterization choices. Pure compute tiles are not built.
   // The LOD error threshold applies live to a hierarchy world and at its next upload.
   policy.lodErrorPixels = gpuSort_;
   policy.minLodErrorPixels = 0.1f;
@@ -295,7 +296,7 @@ bool MetalSplatRenderer::createPipelines() {
   for (int degree = 0; degree <= kMaxShDegree; ++degree) {
     MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
     uint32_t value = static_cast<uint32_t>(degree);
-    [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:0];
+    [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:kFnShDegree];
     id<MTLFunction> vertex = [library_ newFunctionWithName:@"splatVertex"
                                             constantValues:constants
                                                      error:&error];
@@ -406,6 +407,7 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
     return false;
   lod->setSplatLimit(lodSplatLimit_);
   // Compact projections and radix scratch scale with the cut, not all resident nodes.
+  // The cut is tightly culled.
   MetalVisibility visibility;
   if (!visibility.create(device_, library_, true, minPixelRadius_, depthBits_) ||
       !visibility.reserve(static_cast<uint32_t>(tree.nodeCount()), lod->budget()))

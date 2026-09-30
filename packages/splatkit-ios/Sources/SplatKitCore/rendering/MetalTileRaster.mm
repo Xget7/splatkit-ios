@@ -3,6 +3,16 @@
 #include "rendering/MetalShaderTypes.h"
 
 namespace splatkit {
+namespace {
+
+// Match kTileSize and kTileCandidates in SplatTileRaster.metal.
+constexpr uint32_t kTileSize = 16;
+constexpr uint32_t kTileCandidates = 512;
+constexpr uint32_t kBinThreads = 256;
+constexpr uint32_t kScanThreads = 32;
+constexpr size_t kScratchCeilingBytes = size_t{128} << 20;
+
+}  // namespace
 
 bool MetalTileRaster::create(id<MTLDevice> device, id<MTLLibrary> library) {
   device_ = device;
@@ -14,10 +24,11 @@ bool MetalTileRaster::create(id<MTLDevice> device, id<MTLLibrary> library) {
   for (auto& buffer : diagnostics_) buffer = metal::buffer(device, 4 * sizeof(uint32_t));
   return bin_ != nil && scanRows_ != nil && prepareFallback_ != nil && raster_ != nil &&
          summarize_ != nil && diagnostics_[0] != nil && diagnostics_[1] != nil &&
-         bin_.threadExecutionWidth == 32 && bin_.maxTotalThreadsPerThreadgroup >= 256 &&
-         raster_.threadExecutionWidth == 32 && scanRows_.maxTotalThreadsPerThreadgroup >= 32 &&
-         prepareFallback_.maxTotalThreadsPerThreadgroup >= 32 &&
-         raster_.maxTotalThreadsPerThreadgroup >= 256 &&
+         bin_.threadExecutionWidth == 32 && bin_.maxTotalThreadsPerThreadgroup >= kBinThreads &&
+         raster_.threadExecutionWidth == 32 &&
+         scanRows_.maxTotalThreadsPerThreadgroup >= kScanThreads &&
+         prepareFallback_.maxTotalThreadsPerThreadgroup >= kScanThreads &&
+         raster_.maxTotalThreadsPerThreadgroup >= kTileSize * kTileSize &&
          raster_.staticThreadgroupMemoryLength <= device.maxThreadgroupMemoryLength;
 }
 
@@ -42,12 +53,13 @@ bool MetalTileRaster::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> uniforms,
     uint32_t tilesX, tilesY, capacity, candidates;
   };
   static_assert(sizeof(Config) == 16);
-  const Config config{static_cast<uint32_t>((target.width + 15) / 16),
-                      static_cast<uint32_t>((target.height + 15) / 16), capacity, 512};
+  const Config config{static_cast<uint32_t>((target.width + kTileSize - 1) / kTileSize),
+                      static_cast<uint32_t>((target.height + kTileSize - 1) / kTileSize), capacity,
+                      kTileCandidates};
   const size_t tiles = size_t{config.tilesX} * config.tilesY;
   const size_t bytes = tiles * config.candidates * sizeof(uint32_t);
   const size_t rectangleBytes = size_t{config.tilesX + 1} * (config.tilesY + 1) * sizeof(int32_t);
-  if (bytes + tiles * sizeof(uint32_t) + rectangleBytes + 16 > 128u * 1024u * 1024u) return false;
+  if (bytes + tiles * sizeof(uint32_t) + rectangleBytes + 16 > kScratchCeilingBytes) return false;
   if (bins_ == nil || bins_.length < std::max<size_t>(bytes, 16) ||
       rectangles_.length < rectangleBytes) {
     id<MTLBuffer> bins = metal::buffer(device_, bytes, MTLResourceStorageModePrivate);
@@ -81,8 +93,10 @@ bool MetalTileRaster::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> uniforms,
   [bin setBuffer:fallback_ offset:0 atIndex:6];
   [bin setBytes:&config length:sizeof(config) atIndex:7];
   [bin setBuffer:rectangles_ offset:0 atIndex:8];
-  [bin dispatchThreadgroups:MTLSizeMake((size_t{std::max(capacity, 1u)} + 255) / 256, 1, 1)
-      threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+  [bin dispatchThreadgroups:MTLSizeMake(
+                                (size_t{std::max(capacity, 1u)} + kBinThreads - 1) / kBinThreads, 1,
+                                1)
+      threadsPerThreadgroup:MTLSizeMake(kBinThreads, 1, 1)];
   [bin endEncoding];
   // Encoder boundaries order the rectangle prefix passes before the raster
   // reads counts, without CPU readback or per-large-splat screen-sized loops.
@@ -91,8 +105,9 @@ bool MetalTileRaster::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> uniforms,
   [rows setComputePipelineState:scanRows_];
   [rows setBuffer:rectangles_ offset:0 atIndex:0];
   [rows setBytes:&config length:sizeof(config) atIndex:1];
-  [rows dispatchThreadgroups:MTLSizeMake((config.tilesY + 1 + 31) / 32, 1, 1)
-       threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
+  [rows
+       dispatchThreadgroups:MTLSizeMake((config.tilesY + 1 + kScanThreads - 1) / kScanThreads, 1, 1)
+      threadsPerThreadgroup:MTLSizeMake(kScanThreads, 1, 1)];
   [rows endEncoding];
   id<MTLComputeCommandEncoder> prepare = [cmd computeCommandEncoder];
   prepare.label = @"Per-tile hardware ownership";
@@ -101,8 +116,8 @@ bool MetalTileRaster::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> uniforms,
   [prepare setBuffer:counts_ offset:0 atIndex:1];
   [prepare setBuffer:fallback_ offset:0 atIndex:2];
   [prepare setBytes:&config length:sizeof(config) atIndex:3];
-  [prepare dispatchThreadgroups:MTLSizeMake((config.tilesX + 31) / 32, 1, 1)
-          threadsPerThreadgroup:MTLSizeMake(32, 1, 1)];
+  [prepare dispatchThreadgroups:MTLSizeMake((config.tilesX + kScanThreads - 1) / kScanThreads, 1, 1)
+          threadsPerThreadgroup:MTLSizeMake(kScanThreads, 1, 1)];
   [prepare endEncoding];
   id<MTLComputeCommandEncoder> raster = [cmd computeCommandEncoder];
   raster.label = @"Experimental 16x16 tile compositing";
@@ -117,7 +132,7 @@ bool MetalTileRaster::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> uniforms,
   [raster setBytes:&config length:sizeof(config) atIndex:7];
   [raster setTexture:target atIndex:0];
   [raster dispatchThreadgroups:MTLSizeMake(config.tilesX, config.tilesY, 1)
-         threadsPerThreadgroup:MTLSizeMake(16, 16, 1)];
+         threadsPerThreadgroup:MTLSizeMake(kTileSize, kTileSize, 1)];
   [raster endEncoding];
   id<MTLComputeCommandEncoder> stats = [cmd computeCommandEncoder];
   stats.label = @"Hybrid tile diagnostics";

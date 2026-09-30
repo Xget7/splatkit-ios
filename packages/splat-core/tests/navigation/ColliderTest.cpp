@@ -36,7 +36,7 @@ TEST(Collider, RaycastHitsFloorStraightDown) {
   EXPECT_NEAR(hit->normal.y, 1, 1e-4f);  // faces the ray, which points down
 }
 
-// One vertex a thousand kilometres away used to ask for billions of grid cells.
+// One vertex a thousand kilometres away would ask for billions of grid cells at the default size.
 TEST(Collider, AFarVertexGrowsTheCellsInsteadOfTheGrid) {
   TriangleMesh m = room();
   const auto base = static_cast<uint32_t>(m.vertexCount());

@@ -9,9 +9,6 @@ namespace {
 // Frames the GPU may still be drawing an order after a newer one was taken.
 constexpr std::uint64_t kFramesInFlight = 2;
 
-}  // namespace
-namespace {
-
 SplatDecodeOptions decodeOptions(const TiledWorld& world) {
   SplatDecodeOptions options;
   options.sourceFrame = world.sourceFrame;

@@ -9,8 +9,9 @@ namespace splat {
 
 // Decides, frame by frame, whether the renderer asks the sorter for a new visible set
 // and how much wider than the view the cull keeps it. The distance order does
-// not depend on where the camera looks, so moving asks for a sort and turning only for a
-// cull of the order the sorter has; the frames in between draw whatever order they have.
+// not depend on where the camera looks, so for a sorter that keeps its order (SlabSorter)
+// moving asks for a sort and turning only for a cull; the frames in between draw whatever
+// order they have.
 //
 // The margin is a base angle, for splats whose centre is just outside the view but whose
 // extent is not, plus what the camera will turn before the result reaches the screen:

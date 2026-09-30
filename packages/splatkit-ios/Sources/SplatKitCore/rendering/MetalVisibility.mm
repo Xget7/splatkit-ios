@@ -8,21 +8,21 @@
 
 namespace splatkit {
 
-bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library, bool experiment,
+bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library, bool tightCulling,
                              float minPixelRadius, MetalRadixSort::KeyBits depthBits) {
   if (!std::isfinite(minPixelRadius) || minPixelRadius < 0.0f) return false;
   device_ = device;
   library_ = library;
-  tightCulling_ = experiment;
+  tightCulling_ = tightCulling;
   minPixelRadius_ = minPixelRadius;
   depthBits_ = depthBits;
-  storage_ = experiment ? MTLResourceStorageModePrivate : MTLResourceStorageModeShared;
+  storage_ = tightCulling ? MTLResourceStorageModePrivate : MTLResourceStorageModeShared;
   if (!createPipelines()) return false;
   bool ok = true;
   for (uint32_t slot = 0; slot < kSlots; ++slot) {
     count_[slot] = metal::buffer(device, sizeof(uint32_t), storage_);
-    countReadback_[slot] = experiment ? metal::buffer(device, sizeof(uint32_t)) : count_[slot];
-    drawArguments_[slot] = metal::buffer(device, (kDrawBatches + 1) * kDrawArgumentBytes, storage_);
+    countReadback_[slot] = tightCulling ? metal::buffer(device, sizeof(uint32_t)) : count_[slot];
+    drawArguments_[slot] = metal::buffer(device, kDrawBatches * kDrawArgumentBytes, storage_);
     ranges_[slot] = metal::buffer(device, size_t{kMaxRanges} * sizeof(SplatRenderer::Range));
     rangeStarts_[slot] = metal::buffer(device, size_t{kMaxRanges + 1} * sizeof(uint32_t));
     ok = ok && count_[slot] != nil && countReadback_[slot] != nil && drawArguments_[slot] != nil &&
@@ -32,7 +32,7 @@ bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library, bool 
 }
 
 // Only the pipelines depend on the radius and the key width; the buffers and the radix
-// scratch are reused. `tightCulling_` and the storage mode stay as the experiment set them.
+// scratch are reused. `tightCulling_` and the storage mode stay as `create` set them.
 bool MetalVisibility::reconfigure(float minPixelRadius, MetalRadixSort::KeyBits depthBits) {
   if (device_ == nil || library_ == nil) return false;
   if (!std::isfinite(minPixelRadius) || minPixelRadius < 0.0f) return false;
@@ -54,16 +54,16 @@ bool MetalVisibility::createPipelines() {
   for (int degree = 0; degree < kShDegrees; ++degree) {
     MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
     uint32_t value = static_cast<uint32_t>(degree);
-    [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:0];
-    [constants setConstantValue:&tightCulling_ type:MTLDataTypeBool atIndex:1];
-    [constants setConstantValue:&minPixelRadius_ type:MTLDataTypeFloat atIndex:2];
-    [constants setConstantValue:&quantized type:MTLDataTypeBool atIndex:4];
+    [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:kFnShDegree];
+    [constants setConstantValue:&tightCulling_ type:MTLDataTypeBool atIndex:kFnTightCulling];
+    [constants setConstantValue:&minPixelRadius_ type:MTLDataTypeFloat atIndex:kFnMinPixelRadius];
+    [constants setConstantValue:&quantized type:MTLDataTypeBool atIndex:kFnQuantizedDepth];
     bool indexed = false;
-    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:3];
+    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:kFnIndexedLod];
     visibility_[static_cast<size_t>(degree)] =
         metal::pipeline(device_, library_, "visibility", constants);
     indexed = true;
-    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:3];
+    [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:kFnIndexedLod];
     indexedVisibility_[static_cast<size_t>(degree)] =
         metal::pipeline(device_, library_, "visibility", constants);
     ok = ok && indexedVisibility_[static_cast<size_t>(degree)] != nil;

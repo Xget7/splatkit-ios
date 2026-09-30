@@ -1,6 +1,5 @@
 #include "splat/tiles/TiledWorld.h"
 
-#include <algorithm>
 #include <utility>
 
 #include "splat/io/MappedFile.h"

@@ -202,8 +202,8 @@ TEST(LodTree, OctreeSplitsACrowdedCellWhateverTheSceneExtent) {
   EXPECT_EQ(leaves.size(), kRoom + 1);
 }
 
-// A wide scene made of fine splats needs more grid levels than the validator once allowed,
-// and the builder must never produce a tree its own validator rejects.
+// A wide scene made of fine splats needs many grid levels, and the builder must never
+// produce a tree its own validator rejects.
 TEST(LodTree, DeepHierarchyOverAWideSceneStaysValid) {
   // Point i sits just inside the cell the origin occupies at level i, so it joins the cluster
   // one level later than the point before it and the hierarchy gains a level per point.

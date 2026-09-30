@@ -96,8 +96,8 @@ std::vector<std::uint8_t> oneTriangleGlb(bool withNode = true, bool uint16Indice
 }
 
 TEST(GlbDecoder, RejectsAnAccessorCountThatWouldOverflowTheBoundsCheck) {
-  // (count - 1) * stride wraps to about zero in 64 bits, so the old check passed and the
-  // decoder then walked quintillions of elements.
+  // (count - 1) * stride wraps to about zero in 64 bits, which a bounds check on the product
+  // alone would pass before the decoder walked quintillions of elements.
   auto glb = packGlb(withAccessorCount("4611686018427387905"), triangleBin());
   auto r = decodeGlb(glb.data(), glb.size());
   ASSERT_FALSE(r.ok());

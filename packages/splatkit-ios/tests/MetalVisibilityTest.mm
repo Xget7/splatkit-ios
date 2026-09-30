@@ -123,7 +123,7 @@ TEST_F(MetalVisibilityTest, CullsAndOrdersTheRangesFrontToBack) {
     splats[i].position[2] = positions[i][2];
     splats[i].rgba8 = 0xffffffffu;
     // A unit isotropic covariance gives these test splats a real rendered footprint;
-    // zero-filled records would now (correctly) be rejected as sub-pixel.
+    // zero-filled records are rejected as sub-pixel.
     splats[i].cov[0] = one;
     splats[i].cov[1] = one << 16;
     splats[i].cov[2] = one << 16;
@@ -208,9 +208,9 @@ TEST_F(MetalVisibilityTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
   EXPECT_EQ(visibility.count(0), 1u);
 }
 
-// The experiment keeps all intermediate buffers private. Read them only through
+// Tight culling keeps all intermediate buffers private. Read them only through
 // explicit blits, just as an offline diagnostic would, never through .contents.
-TEST(MetalVisibilityExperimentTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
+TEST(MetalVisibilityTightCullingTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
   Gpu& gpu = Gpu::get();
   constexpr uint32_t n = 8;
   VisibilityInput input(n);
@@ -281,7 +281,7 @@ TEST(MetalVisibilityExperimentTest, QuantizesCameraDepthAndSortsBothSourceAndLod
   }
 }
 
-TEST(MetalVisibilityExperimentTest, CompactsSimdTailsAndClearsReusedSlots) {
+TEST(MetalVisibilityTightCullingTest, CompactsSimdTailsAndClearsReusedSlots) {
   Gpu& gpu = Gpu::get();
   MetalVisibility visibility;
   ASSERT_TRUE(visibility.create(gpu.device, gpu.library, true));
@@ -341,15 +341,10 @@ TEST(MetalVisibilityExperimentTest, CompactsSimdTailsAndClearsReusedSlots) {
       next += draws[b].instanceCount;
     }
     EXPECT_EQ(next, expected);
-    const auto& whole = draws[MetalVisibility::kDrawBatches];
-    EXPECT_EQ(whole.vertexCount, 4u);
-    EXPECT_EQ(whole.instanceCount, expected);
-    EXPECT_EQ(whole.vertexStart, 0u);
-    EXPECT_EQ(whole.baseInstance, 0u);
   }
 }
 
-TEST(MetalVisibilityExperimentTest, KeepsEdgeFootprintsAndSortsByCameraDepth) {
+TEST(MetalVisibilityTightCullingTest, KeepsEdgeFootprintsAndSortsByCameraDepth) {
   Gpu& gpu = Gpu::get();
   MetalVisibility visibility;
   ASSERT_TRUE(visibility.create(gpu.device, gpu.library, true));
@@ -363,7 +358,7 @@ TEST(MetalVisibilityExperimentTest, KeepsEdgeFootprintsAndSortsByCameraDepth) {
   }
   // Source 5 is sub-pixel even though the raster's low-pass filter has a footprint.
   source[5].cov[0] = source[5].cov[1] = source[5].cov[2] = 0;
-  // Source 6's centre is beyond the old 20% margin, but its large quad crosses the view.
+  // Source 6's centre is outside the view, but its large quad crosses the view.
   ASSERT_TRUE(visibility.reserve(n));
   // Nonzero range offset verifies that output values refer to original source slots.
   const SplatRenderer::Range range{1, n - 1};
@@ -387,7 +382,7 @@ TEST(MetalVisibilityExperimentTest, KeepsEdgeFootprintsAndSortsByCameraDepth) {
   EXPECT_EQ((std::vector<uint32_t>(order, order + 3)), (std::vector<uint32_t>{7, 8, 6}));
 }
 
-TEST(MetalVisibilityExperimentTest, ConfigurableCutoffKeepsLargerFootprintsAndLodOpacity) {
+TEST(MetalVisibilityTightCullingTest, ConfigurableCutoffKeepsLargerFootprintsAndLodOpacity) {
   auto& gpu = Gpu::get();
   VisibilityInput input(5);
   auto* source = static_cast<GpuSplat*>(input.splats.contents);

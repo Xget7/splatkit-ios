@@ -35,7 +35,7 @@ float appearanceDifference(const SplatCloud& cloud, uint32_t a, uint32_t b) {
             cloud.sh[a * stride + (start + k) * 3 + c] - cloud.sh[b * stride + (start + k) * 3 + c];
         norm += v * v;
       }
-      d += std::sqrt(norm * (2 * band + 1) / (4.0f * 3.14159265f));
+      d += std::sqrt(norm * (2 * band + 1) / (4.0f * static_cast<float>(M_PI)));
       start += 2 * band + 1;
     }
     difference = std::max(difference, d);

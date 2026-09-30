@@ -13,6 +13,14 @@ namespace splat {
 namespace {
 constexpr std::array<uint8_t, 8> kMagic{'L', 'O', 'D', 'S', 'P', 'L', 'A', 'T'};
 constexpr size_t kHeader = 64;
+// A node record: LodNode, covariance[6], RGB[3] and alpha, then the SH coefficients.
+constexpr size_t kNodeFixedBytes = 64;
+// A LodCluster, written as 16 little-endian words; the header stores this size.
+constexpr size_t kClusterBytes = 64;
+constexpr size_t kClusterWords = kClusterBytes / 4;
+static_assert(sizeof(LodCluster) == kClusterBytes);
+// Records per fwrite.
+constexpr size_t kWriteBatch = 4096;
 constexpr size_t kMaxNodes = 20000000;
 // The grid builder's finest level is floored at a 2^20 fraction of the extent, so at the
 // default base of 1.5 it spans about 35 levels and a real world reaches the mid thirties.
@@ -139,6 +147,7 @@ Result<uint32_t> validateLodTree(const LodTree& tree) {
           ++li;
           ++subtree;
         }
+        // Same leaf reach as buildLodSelectionData, which the bounds below are checked against.
         const float reach = std::sqrt(2 * std::log(std::max(255.0f * c.alphas[index], 1.0f)));
         for (int axis = 0; axis < 3; ++axis) {
           const int diagonal = axis == 0 ? 0 : axis == 1 ? 3 : 5;
@@ -177,10 +186,11 @@ Result<LodTree> decodeLodSplat(const uint8_t* data, size_t size, int maxShDegree
   const size_t leafRefs = u32(data + 56);
   if (n == 0 || n > kMaxNodes || degree > 3 || depth > kMaxDepth || clusters > n || leafRefs > n ||
       (version == 1 && (clusters || leafRefs || u32(data + 60))) ||
-      (version == 2 && (!clusters || leafRefs != u32(data + 16) || u32(data + 60) != 64)))
+      (version == 2 &&
+       (!clusters || leafRefs != u32(data + 16) || u32(data + 60) != kClusterBytes)))
     return corrupt("invalid LODSPLAT header");
-  const size_t stride = 64 + shStride(static_cast<int>(degree)) * 4;
-  if (size != kHeader + n * stride + clusters * 64 + leafRefs * 4)
+  const size_t stride = kNodeFixedBytes + shStride(static_cast<int>(degree)) * 4;
+  if (size != kHeader + n * stride + clusters * kClusterBytes + leafRefs * 4)
     return corrupt("LODSPLAT length does not match node records");
   LodTree tree;
   tree.leafCount = u32(data + 16);
@@ -207,18 +217,18 @@ Result<LodTree> decodeLodSplat(const uint8_t* data, size_t size, int maxShDegree
     for (size_t j = 0; j < 6; ++j) c.covariances[i * 6 + j] = f32(p + 24 + j * 4);
     for (size_t j = 0; j < 3; ++j) c.colors[i * 3 + j] = f32(p + 48 + j * 4);
     c.alphas[i] = f32(p + 60);
-    for (size_t j = 0; j < sh; ++j) c.sh[i * sh + j] = f32(p + 64 + j * 4);
+    for (size_t j = 0; j < sh; ++j) c.sh[i * sh + j] = f32(p + kNodeFixedBytes + j * 4);
   }
   if (version == 2) {
     tree.selection.clusters.resize(clusters);
     tree.selection.leaves.resize(leafRefs);
     const uint8_t* p = data + kHeader + n * stride;
     for (size_t k = 0; k < clusters; ++k)
-      for (size_t j = 0; j < 16; ++j) {
-        const uint32_t word = u32(p + k * 64 + j * 4);
+      for (size_t j = 0; j < kClusterWords; ++j) {
+        const uint32_t word = u32(p + k * kClusterBytes + j * 4);
         std::memcpy(reinterpret_cast<uint8_t*>(&tree.selection.clusters[k]) + j * 4, &word, 4);
       }
-    p += clusters * 64;
+    p += clusters * kClusterBytes;
     for (size_t k = 0; k < leafRefs; ++k) tree.selection.leaves[k] = u32(p + k * 4);
   }
   auto valid = validateLodTree(tree);
@@ -246,17 +256,17 @@ Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path) {
   putU32(header.data() + 24, valid.value());
   putU32(header.data() + 28, static_cast<uint32_t>(selection.clusters.size()));
   putU32(header.data() + 56, static_cast<uint32_t>(selection.leaves.size()));
-  putU32(header.data() + 60, selection.clusters.empty() ? 0 : 64);
+  putU32(header.data() + 60, selection.clusters.empty() ? 0 : static_cast<uint32_t>(kClusterBytes));
   for (int j = 0; j < 3; ++j) {
     putF32(header.data() + 32 + j * 4, c.bounds.min[j]);
     putF32(header.data() + 44 + j * 4, c.bounds.max[j]);
   }
   bool ok = std::fwrite(header.data(), 1, header.size(), file.get()) == header.size();
   const size_t sh = shStride(c.shDegree);
-  const size_t stride = 64 + sh * 4;
-  std::vector<uint8_t> block(stride * 4096);
-  for (size_t start = 0; start < tree.nodeCount() && ok; start += 4096) {
-    const size_t count = std::min(size_t{4096}, tree.nodeCount() - start);
+  const size_t stride = kNodeFixedBytes + sh * 4;
+  std::vector<uint8_t> block(stride * kWriteBatch);
+  for (size_t start = 0; start < tree.nodeCount() && ok; start += kWriteBatch) {
+    const size_t count = std::min(kWriteBatch, tree.nodeCount() - start);
     for (size_t k = 0; k < count; ++k) {
       const size_t i = start + k;
       uint8_t* p = block.data() + k * stride;
@@ -268,23 +278,23 @@ Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path) {
       for (size_t j = 0; j < 6; ++j) putF32(p + 24 + j * 4, c.covariances[i * 6 + j]);
       for (size_t j = 0; j < 3; ++j) putF32(p + 48 + j * 4, c.colors[i * 3 + j]);
       putF32(p + 60, c.alphas[i]);
-      for (size_t j = 0; j < sh; ++j) putF32(p + 64 + j * 4, c.sh[i * sh + j]);
+      for (size_t j = 0; j < sh; ++j) putF32(p + kNodeFixedBytes + j * 4, c.sh[i * sh + j]);
     }
     ok = std::fwrite(block.data(), stride, count, file.get()) == count;
   }
-  for (size_t start = 0; start < selection.clusters.size() && ok; start += 4096) {
-    const size_t count = std::min(size_t{4096}, selection.clusters.size() - start);
+  for (size_t start = 0; start < selection.clusters.size() && ok; start += kWriteBatch) {
+    const size_t count = std::min(kWriteBatch, selection.clusters.size() - start);
     for (size_t k = 0; k < count; ++k)
-      for (size_t j = 0; j < 16; ++j) {
+      for (size_t j = 0; j < kClusterWords; ++j) {
         uint32_t word = 0;
         std::memcpy(&word, reinterpret_cast<const uint8_t*>(&selection.clusters[start + k]) + j * 4,
                     4);
-        putU32(block.data() + k * 64 + j * 4, word);
+        putU32(block.data() + k * kClusterBytes + j * 4, word);
       }
-    ok = std::fwrite(block.data(), 64, count, file.get()) == count;
+    ok = std::fwrite(block.data(), kClusterBytes, count, file.get()) == count;
   }
-  for (size_t start = 0; start < selection.leaves.size() && ok; start += 4096) {
-    const size_t count = std::min(size_t{4096}, selection.leaves.size() - start);
+  for (size_t start = 0; start < selection.leaves.size() && ok; start += kWriteBatch) {
+    const size_t count = std::min(kWriteBatch, selection.leaves.size() - start);
     for (size_t k = 0; k < count; ++k) putU32(block.data() + k * 4, selection.leaves[start + k]);
     ok = std::fwrite(block.data(), 4, count, file.get()) == count;
   }

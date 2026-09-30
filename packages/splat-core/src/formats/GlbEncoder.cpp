@@ -1,7 +1,6 @@
 #include "splat/formats/GlbEncoder.h"
 
 #include <algorithm>
-#include <cstring>
 #include <limits>
 #include <string>
 
@@ -13,6 +12,13 @@ namespace {
 constexpr uint32_t kGlbMagic = 0x46546C67;  // "glTF"
 constexpr uint32_t kChunkJson = 0x4E4F534A;
 constexpr uint32_t kChunkBin = 0x004E4942;
+
+// glTF 2.0 enumerations.
+constexpr int kComponentUnsignedInt = 5125;
+constexpr int kComponentFloat = 5126;
+constexpr int kTargetArrayBuffer = 34962;
+constexpr int kTargetElementArrayBuffer = 34963;
+constexpr int kModeTriangles = 4;
 
 void putU32(std::vector<std::uint8_t>& out, uint32_t v) {
   const auto* p = reinterpret_cast<const std::uint8_t*>(&v);
@@ -55,26 +61,26 @@ std::vector<std::uint8_t> encodeGlb(const TriangleMesh& mesh, const GlbEncodeOpt
       {"scene", 0},
       {"scenes", Json::array({{{"nodes", Json::array({0})}}})},
       {"nodes", Json::array({{{"mesh", 0}}})},
-      {"meshes",
-       Json::array(
-           {{{"primitives",
-              Json::array({{{"attributes", {{"POSITION", 0}}}, {"indices", 1}, {"mode", 4}}})}}})},
+      {"meshes", Json::array({{{"primitives", Json::array({{{"attributes", {{"POSITION", 0}}},
+                                                            {"indices", 1},
+                                                            {"mode", kModeTriangles}}})}}})},
       {"buffers", Json::array({{{"byteLength", positionBytes + indexBytes}}})},
-      {"bufferViews",
-       Json::array(
-           {{{"buffer", 0}, {"byteOffset", 0}, {"byteLength", positionBytes}, {"target", 34962}},
-            {{"buffer", 0},
-             {"byteOffset", positionBytes},
-             {"byteLength", indexBytes},
-             {"target", 34963}}})},
+      {"bufferViews", Json::array({{{"buffer", 0},
+                                    {"byteOffset", 0},
+                                    {"byteLength", positionBytes},
+                                    {"target", kTargetArrayBuffer}},
+                                   {{"buffer", 0},
+                                    {"byteOffset", positionBytes},
+                                    {"byteLength", indexBytes},
+                                    {"target", kTargetElementArrayBuffer}}})},
       {"accessors", Json::array({{{"bufferView", 0},
-                                  {"componentType", 5126},
+                                  {"componentType", kComponentFloat},
                                   {"count", vertices},
                                   {"type", "VEC3"},
                                   {"min", {lo[0], lo[1], lo[2]}},
                                   {"max", {hi[0], hi[1], hi[2]}}},
                                  {{"bufferView", 1},
-                                  {"componentType", 5125},
+                                  {"componentType", kComponentUnsignedInt},
                                   {"count", mesh.indices.size()},
                                   {"type", "SCALAR"}}})},
   };

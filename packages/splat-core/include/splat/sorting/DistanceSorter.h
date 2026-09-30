@@ -12,9 +12,10 @@ namespace splat {
 // Orders splats back to front by Euclidean distance from a point.
 //
 // Distance rather than view depth on purpose: the order only depends on where the
-// camera is, not where it looks, so turning (gyroscope, drag) never triggers a sort.
-// Only translation does. The sort is an LSD radix sort on the float bits of the squared
-// distance: 4 passes of 8 bits, linear time, no comparisons.
+// camera is, not where it looks, so a caller that keeps the order (SlabSorter) only has to
+// re-sort when the camera translates, never when it turns. The sort is an LSD radix sort
+// on the float bits of the squared distance: 4 passes of 8 bits, linear time, no
+// comparisons.
 class DistanceSorter {
  public:
   // Keeps a copy of the positions (xyz per splat) so the caller's cloud may go away.

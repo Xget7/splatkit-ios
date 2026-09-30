@@ -9,11 +9,6 @@
 
 namespace splat {
 
-// A level of detail hierarchy over a cloud: the leaves are the original splats and every
-// interior node is one splat that stands in for its children, up to a root that stands
-// in for the whole scene. Drawing picks, per frame, the set of nodes that covers the
-// scene at about a pixel each, inside a fixed budget: frame cost stops depending on the
-// size of the scene. After Spark 2.0's tiny-lod (World Labs, MIT) and Kerbl et al. 2024.
 // What the selection reads per node, in one cache line: the walk over half a million
 // nodes is bound by memory, not arithmetic.
 struct LodNode {
@@ -45,6 +40,11 @@ struct LodSelectionData {
   std::vector<uint32_t> leaves;
 };
 
+// A level of detail hierarchy over a cloud: the leaves are the original splats and every
+// interior node is one splat that stands in for its children, up to a root that stands
+// in for the whole scene. Drawing picks, per frame, the set of nodes that covers the
+// scene at about a pixel each, inside a fixed budget: frame cost stops depending on the
+// size of the scene. After Spark 2.0's tiny-lod (World Labs, MIT) and Kerbl et al. 2024.
 struct LodTree {
   // Every node, root first, then level by level; the leaves keep their attributes.
   SplatCloud nodes;
@@ -62,12 +62,13 @@ struct LodBuildOptions {
   // Ratio between the cell sizes of consecutive levels. 1.5 merges gently: most
   // interior nodes have 2 to 4 children and the tree is about 1.5 times the leaves.
   float base = 1.5f;
-  // Offline octree: at most 1..kMaxOctreeDepth subdivisions (clamped); 0 keeps the legacy
-  // grid. A cell subdivides while it holds more than `clusterLeaves` splats, so a floater
-  // that stretches the scene's extent cannot leave a room in cells of thousands of splats,
+  // Octree of at most 1..kMaxOctreeDepth subdivisions (clamped), used by the offline
+  // builder; 0 builds the size-adaptive grid that `base` shapes, the load-time path of
+  // SplatWorldLoader. A cell subdivides while it holds more than `clusterLeaves` splats, so a
+  // floater that stretches the scene's extent cannot leave a room in cells of thousands of splats,
   // each a single node away from all of them. Singleton chains collapse.
   uint32_t octreeDepth = 0;
-  // Most original splats one merged node stands in for directly; >= 2. On a 12M-splat
+  // Octree only: most original splats one merged node stands in for directly; >= 2. On a 12M-splat
   // house, 32 draws like 8 at every budget tried, with 18% more nodes than leaves where 8
   // needs 32%, and half the GPU selection time.
   uint32_t clusterLeaves = 32;

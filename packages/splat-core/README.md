@@ -31,7 +31,7 @@ Set `SPLAT_FIXTURES_DIR` to a folder with World Labs example files to run the in
 The engine reads SPZ.
 [`scripts/prepare-world.sh`](../../scripts/prepare-world.sh) builds these tools and runs `ply2spz`, `splat_lod_build` and `splat_collider` in order; the [React Native guide](https://github.com/Xget7/splatkit/tree/main/packages/react-native-splatkit#preparing-a-world) explains its flags.
 Call the tools directly for the options below.
-A scene from SuperSplat, Polycam or the Mip-NeRF 360 set comes as a Gaussian splat PLY; `tools/ply2spz` (built with the tests) packs it:
+A scene from SuperSplat, Polycam or the Mip-NeRF 360 set comes as a Gaussian splat PLY; `tools/ply2spz` (built with `SPLAT_CORE_BUILD_TOOLS`) packs it:
 
 ```
 build/tools/ply2spz bicycle.ply bicycle.spz --sh 1 --keep 2

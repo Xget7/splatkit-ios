@@ -25,14 +25,6 @@ AsyncSorter::~AsyncSorter() {
 
 void AsyncSorter::request(Vec3 from) {
   const std::lock_guard<std::mutex> lock(mutex_);
-
-  if (sortedFrom_) {
-    const float dx = from.x - sortedFrom_->x;
-    const float dy = from.y - sortedFrom_->y;
-    const float dz = from.z - sortedFrom_->z;
-    if ((dx * dx + dy * dy + dz * dz) < 0.000001f) return;
-  }
-
   pending_ = Request{from, std::nullopt, LodSettings{}};
   wake_.notify_one();
 }

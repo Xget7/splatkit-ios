@@ -2,7 +2,7 @@
 #include "SplatProjection.metalh"
 
 constant bool kTightCulling [[function_constant(1)]];
-constant float kExperimentalMinPixelRadius [[function_constant(2)]];
+constant float kTightMinPixelRadius [[function_constant(2)]];
 constant bool kIndexedLOD [[function_constant(3)]];
 constant bool kQuantizedDepth [[function_constant(4)]];
 
@@ -15,7 +15,7 @@ static uint quantizedDepthKey(constant Camera& cam, float depth) {
   float normalized = clamp((depth - zNear) / (zFar - zNear), 0.0f, 1.0f);
   // Reject nonfinite source depths before emission; keep their conversion defined.
   ushort key = ushort(isfinite(normalized) ? normalized * 65535.0f : 0.0f);
-  return uint(key);  // upper bits zero; existing uint scratch, only two radix passes
+  return uint(key);  // upper 16 bits zero: two radix passes sort it
 }
 
 static uint findRange(const device uint* starts, uint rangeCount, uint t) {
@@ -55,10 +55,10 @@ kernel void visibility(uint t [[thread_position_in_grid]],
       index = ranges[r].offset + (t - rangeStarts[r]);
     }
     Splat s = splats[index];
-    visible = projectSplat(cam, s, index, shData, p, kTightCulling, kExperimentalMinPixelRadius);
+    visible = projectSplat(cam, s, index, shData, p, kTightCulling, kTightMinPixelRadius);
     float3 d = float3(s.px, s.py, s.pz) - cam.cameraPosition.xyz;
-    // Positive IEEE float bits sort in ascending numeric order. This experiment
-    // uses camera depth and recomputes it every frame, including rotations.
+    // Positive IEEE float bits sort in ascending numeric order. Tight culling and quantized
+    // keys use view depth, which changes with rotation; otherwise squared distance.
     float depth = -(cam.view * float4(s.px, s.py, s.pz, 1.0)).z;
     float sortDepth = kTightCulling || kQuantizedDepth ? depth : dot(d, d);
     key = kQuantizedDepth ? quantizedDepthKey(cam, depth) : as_type<uint>(sortDepth);
@@ -74,8 +74,8 @@ kernel void visibility(uint t [[thread_position_in_grid]],
   base = simd_broadcast(base, 0);
   if (visible) {
     keys[base + rank] = key;
-    // Experimental values are original slab indices, as requested. Keeping the
-    // projection at that same index lets the existing vertex path consume them.
+    // Tight culling over source ranges stores each projection at its slab index;
+    // otherwise projections are compacted in key order.
     uint projectionIndex = kTightCulling && !kIndexedLOD ? index : base + rank;
     values[base + rank] = projectionIndex;
     projected[projectionIndex] = p;

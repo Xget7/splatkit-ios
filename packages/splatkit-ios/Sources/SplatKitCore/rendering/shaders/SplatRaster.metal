@@ -1,7 +1,7 @@
 #include "SplatTypes.metalh"
 #include "SplatProjection.metalh"
 
-// Rasterization and compositing, including the CPU order compatibility path.
+// CPU order path: projects in the vertex stage.
 vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[instance_id]],
                                constant Camera& cam [[buffer(0)]],
                                const device Splat* splats [[buffer(1)]],
@@ -10,6 +10,7 @@ vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[in
   uint index = order[instanceId];
   Projected p;
   if (!projectSplat(cam, splats[index], index, shData, p)) {
+    // z beyond w is outside clip space, so the quad is discarded.
     SplatVertex out;
     out.position = float4(0.0, 0.0, 2.0, 1.0);
     out.relativePosition = float2(0.0);
@@ -19,7 +20,7 @@ vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[in
   return expandQuad(cam, p, vertexId);
 }
 
-// GPU order path vertex shader
+// GPU order path: the visibility pass already projected the splats.
 vertex SplatVertex projectedVertex(uint vertexId [[vertex_id]], uint instanceId [[instance_id]],
                                    constant Camera& cam [[buffer(0)]],
                                    const device Projected* projected [[buffer(1)]],
@@ -27,7 +28,6 @@ vertex SplatVertex projectedVertex(uint vertexId [[vertex_id]], uint instanceId 
   return expandQuad(cam, projected[order[instanceId]], vertexId);
 }
 
-// Fragment Shaders
 fragment float4 splatFragment(SplatVertex in [[stage_in]]) {
   float alpha = splatAlpha(in);
   if (alpha < 1.0 / 255.0) discard_fragment();
@@ -43,7 +43,7 @@ fragment float4 splatFragmentUnder(SplatVertex in [[stage_in]]) {
   return float4(float3(rgb), float(alpha));
 }
 
-// Fullscreen Blit / Render Scale
+// One oversized triangle covers the screen.
 vertex BlitVertex blitVertex(uint vertexId [[vertex_id]]) {
   const float2 corners[3] = {float2(-1, -1), float2(3, -1), float2(-1, 3)};
   BlitVertex out;

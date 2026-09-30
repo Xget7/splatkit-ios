@@ -7,6 +7,22 @@
 #include "splat/lod/LodFile.h"
 
 namespace splatkit {
+namespace {
+
+// Match SplatLOD.metal: its kernels run in 256 thread groups of 32 wide SIMD groups, and
+// the block scan sums 256 SIMD group totals per block.
+constexpr uint32_t kSimdWidth = 32;
+constexpr uint32_t kGroupThreads = 256;
+constexpr uint32_t kBlockGroups = 256;
+// LodState in SplatLOD.metal: its size and the offsets of the three indirect dispatch
+// arguments (dispatchX, emitX, scanX).
+constexpr size_t kStateBytes = 80;
+constexpr NSUInteger kDispatchArgumentsOffset = 32;
+constexpr NSUInteger kEmitArgumentsOffset = 44;
+constexpr NSUInteger kScanArgumentsOffset = 64;
+
+}  // namespace
+
 bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
   device_ = device;
   initialize_ = metal::pipeline(device, library, "initializeSplatLOD");
@@ -23,7 +39,8 @@ bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
       !emit_ || !scanGroups_ || !scanBlocks_)
     return false;
   for (auto p : {evaluate_, compact_, scatter_, emit_, scanGroups_})
-    if (p.threadExecutionWidth != 32 || p.maxTotalThreadsPerThreadgroup < 256) return false;
+    if (p.threadExecutionWidth != kSimdWidth || p.maxTotalThreadsPerThreadgroup < kGroupThreads)
+      return false;
   return true;
 }
 bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uint32_t capacity,
@@ -42,7 +59,7 @@ bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uin
     data = &compatibility;
   }
   const size_t frontierCapacity = std::min(size_t{capacity}, data->clusters.size());
-  const size_t groupCount = (frontierCapacity + 31) / 32;
+  const size_t groupCount = (frontierCapacity + kSimdWidth - 1) / kSimdWidth;
   constexpr auto storage = MTLResourceStorageModePrivate;
   auto upload = [&](const void* source, size_t bytes) -> id<MTLBuffer> {
     auto buffer = metal::buffer(device_, std::max(bytes, size_t{4}), storage);
@@ -75,8 +92,9 @@ bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uin
   offsets_ = metal::buffer(device_, frontierCapacity * 16, storage);
   costGroups_ = metal::buffer(device_, groupCount * 16, storage);
   groups_ = metal::buffer(device_, groupCount * 16, storage);
-  blocks_ = metal::buffer(device_, ((groupCount + 255) / 256 + 1) * 16, storage);
-  state_ = metal::buffer(device_, 80, storage);
+  blocks_ =
+      metal::buffer(device_, ((groupCount + kBlockGroups - 1) / kBlockGroups + 1) * 16, storage);
+  state_ = metal::buffer(device_, kStateBytes, storage);
   for (auto& buffer : frontier_) buffer = metal::buffer(device_, frontierCapacity * 4, storage);
   if (!nodes_ || !leaves_ || !indices_ || !packets_ || !costs_ || !offsets_ || !costGroups_ ||
       !groups_ || !blocks_ || !state_ || !frontier_[0] || !frontier_[1])
@@ -102,8 +120,8 @@ void MetalLOD::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
   };
   auto active = [&](id<MTLComputeCommandEncoder> e) {
     [e dispatchThreadgroupsWithIndirectBuffer:state_
-                         indirectBufferOffset:32
-                        threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                         indirectBufferOffset:kDispatchArgumentsOffset
+                        threadsPerThreadgroup:MTLSizeMake(kGroupThreads, 1, 1)];
     [e endEncoding];
   };
   auto scan = [&](id<MTLBuffer> groups) {
@@ -112,8 +130,8 @@ void MetalLOD::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
     [e setBuffer:blocks_ offset:0 atIndex:1];
     [e setBuffer:state_ offset:0 atIndex:2];
     [e dispatchThreadgroupsWithIndirectBuffer:state_
-                         indirectBufferOffset:64
-                        threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                         indirectBufferOffset:kScanArgumentsOffset
+                        threadsPerThreadgroup:MTLSizeMake(kGroupThreads, 1, 1)];
     [e endEncoding];
     e = start(scanBlocks_, @"LOD scan of block totals");
     [e setBuffer:blocks_ offset:0 atIndex:0];
@@ -179,8 +197,8 @@ void MetalLOD::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
   [e setBuffer:state_ offset:0 atIndex:2];
   [e setBuffer:indices_ offset:0 atIndex:3];
   [e dispatchThreadgroupsWithIndirectBuffer:state_
-                       indirectBufferOffset:44
-                      threadsPerThreadgroup:MTLSizeMake(256, 1, 1)];
+                       indirectBufferOffset:kEmitArgumentsOffset
+                      threadsPerThreadgroup:MTLSizeMake(kGroupThreads, 1, 1)];
   [e endEncoding];
 }
 }  // namespace splatkit

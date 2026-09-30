@@ -15,6 +15,9 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+// A .lodsplat is already a tree, so it draws with a budget even if the caller set none.
+constexpr int kDefaultLodBudget = 1200000;
+
 double millisSince(Clock::time_point start) {
   return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
 }
@@ -38,7 +41,7 @@ Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadWorld(const std::uin
     if (!decoded) return decoded.error();
     auto world = std::make_unique<World>();
     world->tree = std::make_shared<const LodTree>(std::move(decoded.value()));
-    world->budget = budget() > 0 ? budget() : 1200000;
+    world->budget = budget() > 0 ? budget() : kDefaultLodBudget;
     world->sourceCount = world->tree->leafCount;
     report.splatCount = world->sourceCount;
     report.nodeCount = world->tree->nodeCount();

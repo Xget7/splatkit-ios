@@ -41,7 +41,12 @@ inline float lodErrorPixels(constant Camera& cam, LodCluster node, float colorWe
 kernel void initializeSplatLOD(device uint* frontier [[buffer(0)]],
                                device LodState& state [[buffer(1)]]) {
   frontier[0] = 0;
-  state = {0, 1, 0, 0, 0, 0, 1, 0, 1, 1, 1, 0, 1, 1, 0, 0, 1, 1, 1};
+  // One root to evaluate in one group, and every indirect grid is 1x1x1 (emit starts
+  // empty: its x is 0).
+  state = {/*count*/ 0, /*active*/ 1, /*packets*/ 0, /*accepted*/ 0,
+           /*limited*/ 0, /*evaluated*/ 0, /*groups*/ 1, /*next*/ 0,
+           /*dispatch*/ 1, 1, 1, /*emit*/ 0, 1, 1,
+           /*outputDelta*/ 0, /*packetDelta*/ 0, /*scan*/ 1, 1, 1};
 }
 kernel void evaluateSplatLOD(uint t [[thread_position_in_grid]],
                              uint lane [[thread_index_in_simdgroup]],

@@ -73,7 +73,7 @@ TEST(AsyncSorter, FrustumRequestsDeliverOnlyVisibleSplats) {
   EXPECT_GT(result->sortMillis, 0.0);
 }
 
-TEST(AsyncSorter, TurningReusesTheOrderAndOnlyCulls) {
+TEST(AsyncSorter, TurningInPlaceDeliversTheNewlyVisibleSplat) {
   splat::AsyncSorter sorter({0, 0, -1, 0, 0, 3});
   sorter.requestVisible(lookingForward());
   ASSERT_TRUE(waitFor(sorter).has_value());
@@ -96,7 +96,6 @@ TEST(DistanceSorter, CullMatchesTheSequentialAnswerOnLargeClouds) {
   const Frustum f = lookingForward(0.1f);
 
   std::vector<uint32_t> expected;
-  const std::vector<float> expectedDistances;
   for (std::size_t i = 0; i < n; ++i) {
     const Vec3 p{positions[i * 3], positions[i * 3 + 1], positions[i * 3 + 2]};
     if (f.contains(p)) expected.push_back(static_cast<uint32_t>(i));

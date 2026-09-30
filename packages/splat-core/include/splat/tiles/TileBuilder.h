@@ -30,9 +30,9 @@ struct TileBuildOptions {
 };
 
 // Partitions a cloud into an octree of tiles and builds every level above the leaves by
-// merging, offline. Writes one spz file per tile and `tileset.json` into
-// `directory`, which must exist. The cloud is consumed. Its coordinates are written as
-// they are, so a tiled world stands in the frame of the file it came from.
+// coarsening the tiles below, offline. Writes one spz file per tile and `tileset.json`
+// into `directory`, which must exist. The cloud is left as it is. Its coordinates are
+// written as they are, so a tiled world stands in the frame of the file it came from.
 Result<Tileset> buildTiles(const spz::GaussianCloud& cloud, const std::string& directory,
                            const TileBuildOptions& options = {});
 

@@ -2,9 +2,11 @@
 
 // Bounded hybrid backend. Dense tiles are rendered by the hardware path in full,
 // never truncated. No raster loop or threadgroup barrier depends on source count.
+constant uint kTileSize = 16;
+constant uint kTileThreads = kTileSize * kTileSize;
 constant uint kTileCandidates = 512;
-constant uint kTileThreads = 256;
 constant uint kMaxFootprintTiles = 16;
+constant float kMinTransmittance = 0.0001f;
 
 struct TileConfig { uint tilesX, tilesY, capacity, candidates; };
 // Rasterization does not use the source index. Packed centre alignment keeps
@@ -92,7 +94,7 @@ kernel void binSplatTiles(uint rank [[thread_position_in_grid]],
                           constant TileConfig& config [[buffer(7)]],
                           device atomic_int* rectangles [[buffer(8)]]) {
   uint n = count[0];
-  // Buffer safety only; source count alone no longer forces hardware rendering.
+  // Buffer safety only.
   if (n > config.capacity || config.candidates != kTileCandidates) {
     if (rank == 0) atomic_store_explicit(fallback, 1u, memory_order_relaxed);
     return;
@@ -114,8 +116,8 @@ kernel void binSplatTiles(uint rank [[thread_position_in_grid]],
       if (!all(isfinite(bounds))) {
         unsafe = true;
       } else if (!any(bounds.zw < 0.0) && !any(bounds.xy >= cam.screenSize)) {
-        first = uint2(clamp(floor(bounds.xy / 16.0), float2(0), float2(config.tilesX - 1, config.tilesY - 1)));
-        uint2 last = uint2(clamp(floor(bounds.zw / 16.0), float2(0), float2(config.tilesX - 1, config.tilesY - 1)));
+        first = uint2(clamp(floor(bounds.xy / float(kTileSize)), float2(0), float2(config.tilesX - 1, config.tilesY - 1)));
+        uint2 last = uint2(clamp(floor(bounds.zw / float(kTileSize)), float2(0), float2(config.tilesX - 1, config.tilesY - 1)));
         span = last - first + 1;
         area = span.x * span.y;
       }
@@ -170,8 +172,8 @@ kernel void rasterSplatTiles(uint2 tile [[threadgroup_position_in_grid]],
                              const device uint* fallback [[buffer(6)]],
                              constant TileConfig& config [[buffer(7)]],
                              texture2d<float, access::write> target [[texture(0)]]) {
-  uint tid = local.y * 16 + local.x;
-  uint2 pixel = tile * 16 + local;
+  uint tid = local.y * kTileSize + local.x;
+  uint2 pixel = tile * kTileSize + local;
   bool inBounds = pixel.x < target.get_width() && pixel.y < target.get_height();
   uint tileIndex = tile.y * config.tilesX + tile.x;
   uint n = tileCounts[tileIndex];
@@ -181,7 +183,7 @@ kernel void rasterSplatTiles(uint2 tile [[threadgroup_position_in_grid]],
     return;
   }
   if (n == 0) {
-    if (inBounds) target.write(float4(0.05, 0.05, 0.08, 1.0), pixel);
+    if (inBounds) target.write(float4(kBackground, 1.0), pixel);
     return;
   }
   threadgroup uint ranks[kTileCandidates];
@@ -220,7 +222,7 @@ kernel void rasterSplatTiles(uint2 tile [[threadgroup_position_in_grid]],
   float3 color = 0.0;
   float2 sample = float2(pixel) + 0.5;
   for (uint i = 0; i < n; ++i) {
-    bool done = !inBounds || transmittance <= 0.0001f;
+    bool done = !inBounds || transmittance <= kMinTransmittance;
     if (simd_all(done)) break;
     if (done) continue;
     TileSample p = cache[i];
@@ -240,5 +242,5 @@ kernel void rasterSplatTiles(uint2 tile [[threadgroup_position_in_grid]],
   }
   // Alpha one marks a complete tile for the hardware depth mask. Overflow tiles
   // above remain transparent and receive the full hardware splat draw instead.
-  if (inBounds) target.write(float4(color + transmittance * float3(0.05, 0.05, 0.08), 1.0), pixel);
+  if (inBounds) target.write(float4(color + transmittance * kBackground, 1.0), pixel);
 }

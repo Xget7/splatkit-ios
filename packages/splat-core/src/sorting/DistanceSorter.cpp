@@ -4,7 +4,6 @@
 #include <array>
 #include <cstring>
 #include <mutex>
-#include <thread>
 #include <utility>
 #include <vector>
 

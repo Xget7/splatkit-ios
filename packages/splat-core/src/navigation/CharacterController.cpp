@@ -37,7 +37,7 @@ bool CharacterController::move(Vec3 delta) {
   // along it here: take the nearest walkable heading to either side, at the speed of the push
   // along it. Walkable on both sides at once, the push is head on and the walker stays put.
   const Vec3 dir = d / len;
-  constexpr float kSlideStep = 15.0f * 3.14159265f / 180;
+  constexpr float kSlideStep = 15.0f * static_cast<float>(M_PI) / 180;
   for (int i = 1; i < 6; ++i) {
     const float angle = static_cast<float>(i) * kSlideStep;
     const float c = std::cos(angle);
@@ -165,7 +165,7 @@ void columnSurfaces(const Collider& collider, float x, float z, std::vector<floa
 int openDirections(const Collider& collider, const CharacterSettings& settings, Vec3 eye) {
   int open = 0;
   for (int i = 0; i < kProbeDirections; ++i) {
-    const float angle = 2.0f * 3.14159265f * static_cast<float>(i) / kProbeDirections;
+    const float angle = 2.0f * static_cast<float>(M_PI) * static_cast<float>(i) / kProbeDirections;
     CharacterController probe(collider, settings);
     probe.setPosition(eye);
     open += probe.move(
@@ -180,7 +180,6 @@ std::optional<Vec3> findStandingSpot(const Collider& collider, const CharacterSe
                                      Vec3 from) {
   const Vec3 lo = collider.boundsMin();
   const Vec3 hi = collider.boundsMax();
-  if (lo.x > hi.x || lo.z > hi.z) return std::nullopt;
   const float width = hi.x - lo.x;
   const float depth = hi.z - lo.z;
   float spacing = std::max(2.0f * settings.bodyRadius, 0.1f);

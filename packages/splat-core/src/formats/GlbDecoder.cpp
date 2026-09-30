@@ -17,6 +17,12 @@ constexpr uint32_t kGlbMagic = 0x46546C67;  // "glTF"
 constexpr uint32_t kChunkJson = 0x4E4F534A;
 constexpr uint32_t kChunkBin = 0x004E4942;
 
+// glTF 2.0 enumerations.
+constexpr int kComponentUnsignedShort = 5123;
+constexpr int kComponentUnsignedInt = 5125;
+constexpr int kComponentFloat = 5126;
+constexpr int kModeTriangles = 4;
+
 uint32_t readU32(const std::uint8_t* p) {
   uint32_t v = 0;
   std::memcpy(&v, p, 4);
@@ -55,10 +61,10 @@ bool resolve(const Json& doc, int accessorIndex, const std::uint8_t* bin, std::s
                          : out.type == "VEC2" ? 2
                          : out.type == "VEC3" ? 3
                                               : 4;
-  const std::size_t componentSize = out.componentType == 5126   ? 4
-                                    : out.componentType == 5125 ? 4
-                                    : out.componentType == 5123 ? 2
-                                                                : 1;
+  const std::size_t componentSize = out.componentType == kComponentFloat           ? 4
+                                    : out.componentType == kComponentUnsignedInt   ? 4
+                                    : out.componentType == kComponentUnsignedShort ? 2
+                                                                                   : 1;
   const std::size_t elementSize = static_cast<std::size_t>(components) * componentSize;
   out.stride = view.value("byteStride", 0u);
   if (out.stride == 0) out.stride = elementSize;
@@ -190,11 +196,11 @@ Result<TriangleMesh> decodeGlbOrThrow(const std::uint8_t* data, std::size_t size
     }
     for (const Json& prim :
          meshes[static_cast<std::size_t>(meshIndex)].value("primitives", Json::array())) {
-      if (prim.value("mode", 4) != 4) continue;  // triangles only
+      if (prim.value("mode", kModeTriangles) != kModeTriangles) continue;  // triangles only
       if (!prim.contains("attributes") || !prim["attributes"].contains("POSITION")) continue;
       Accessor pos;
       if (!resolve(doc, prim["attributes"]["POSITION"].get<int>(), bin, binSize, pos) ||
-          pos.componentType != 5126 || pos.type != "VEC3") {
+          pos.componentType != kComponentFloat || pos.type != "VEC3") {
         corrupt = true;
         return;
       }
@@ -217,9 +223,9 @@ Result<TriangleMesh> decodeGlbOrThrow(const std::uint8_t* data, std::size_t size
         for (std::size_t i = 0; i < idx.count; ++i) {
           const std::uint8_t* p = idx.data + i * idx.stride;
           uint32_t value = 0;
-          if (idx.componentType == 5125)
+          if (idx.componentType == kComponentUnsignedInt)
             std::memcpy(&value, p, 4);
-          else if (idx.componentType == 5123) {
+          else if (idx.componentType == kComponentUnsignedShort) {
             uint16_t v16 = 0;
             std::memcpy(&v16, p, 2);
             value = v16;

@@ -4,7 +4,6 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <numeric>
 
 namespace splat {
 namespace {

@@ -4,9 +4,9 @@
 #import <ImageIO/ImageIO.h>
 #import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
-#include <cstdio>
 #include <memory>
 #include <string>
+#include <vector>
 
 #include "rendering/MetalSplatRenderer.h"
 #include "splatkit/Log.h"
@@ -48,11 +48,7 @@ bool writePng(NSString* path, const std::vector<uint8_t>& bgra, uint32_t width, 
   return ok;
 }
 
-}  // namespace
-
 // Bridge between the C++ policy types and their C mirror imported by Swift.
-namespace {
-
 SKRenderPolicy fromCppPolicy(const splatkit::RenderPolicy& p) {
   SKRenderPolicy out{};
   out.raster = static_cast<uint32_t>(p.raster);
