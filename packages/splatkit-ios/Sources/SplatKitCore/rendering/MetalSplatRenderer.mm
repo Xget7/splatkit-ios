@@ -49,9 +49,10 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
     uniform = metal::buffer(r->device_, sizeof(CameraUniform));
     if (uniform == nil) return nullptr;
   }
-  // Temporary internal opt-in, set before renderer creation by the dev app. Not a public
-  // SDK setting until device performance and quality are accepted. The sub-pixel radius
-  // and the sort key width are per-instance policy applied through applyRenderPolicy.
+  // Internal creation-time opt-in for tight culling and GPU-private scratch buffers.
+  // The public render policy controls sort key width independently of this flag;
+  // its sub-pixel threshold is supported only when tight culling is enabled.
+  // See deviceCapabilities() and applyRenderPolicy() for the per-instance contract.
   const char* experimentValue = std::getenv("SPLATKIT_METAL_CULLING_EXPERIMENT");
   const bool experiment = experimentValue != nullptr && std::strcmp(experimentValue, "1") == 0;
   r->minPixelRadius_ = 0.5f;
@@ -481,12 +482,12 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
   if (gpuFailed_.load()) return false;
   if (!ready() || splatPipelines_[0] == nil) return false;
   dispatch_semaphore_wait(inFlight_, DISPATCH_TIME_FOREVER);
+  // Until submitFrame(), every failure returns the acquired slot synchronously.
   if (gpuFailed_.load()) {
     dispatch_semaphore_signal(inFlight_);
     return false;
   }
-  // A capture copies the presented pixels out before the drawable goes to the screen,
-  // and the layer only hands out readable drawables while `framebufferOnly` is off.
+  // Capture requires a readable drawable before nextDrawable() acquires it.
   if (capture_) layer_.framebufferOnly = NO;
   id<CAMetalDrawable> drawable = [layer_ nextDrawable];
   if (drawable == nil) {
@@ -494,20 +495,45 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
     return false;
   }
   const uint32_t slot = static_cast<uint32_t>(frame_ % kFramesInFlight);
-  const Extent extent = drawExtent();
 
   // A new order goes into the buffer the frame in flight is not reading.
   uint32_t drawCount = 0;
   if (world_) {
-    if (frame.order != nullptr) {
-      if (!world_->writeOrder(frame.order, frame.orderCount)) {
-        dispatch_semaphore_signal(inFlight_);
-        return false;
-      }
+    if (frame.order != nullptr && !world_->writeOrder(frame.order, frame.orderCount)) {
+      dispatch_semaphore_signal(inFlight_);
+      return false;
     }
     drawCount = std::min(frame.drawCount, world_->info().count);
   }
+  updateCameraUniforms(frame, slot);
 
+  const bool gpuOrder = world_ && frame.orderSource == OrderSource::gpu && gpuSort_;
+  id<MTLCommandBuffer> selection = gpuOrder && lod_ ? encodeSelection(slot) : nil;
+  id<MTLCommandBuffer> sort = gpuOrder ? encodeVisibilityAndSort(frame, slot) : nil;
+  if (gpuOrder && sort == nil) {
+    // Selection has only been encoded, so no GPU work can still use this slot.
+    dispatch_semaphore_signal(inFlight_);
+    return false;
+  }
+
+  id<MTLCommandBuffer> cmd = [queue_ commandBuffer];
+  const bool tileRendered = encodeRaster(cmd, drawable.texture, frame, slot, drawCount, gpuOrder);
+  encodeOutput(cmd, drawable.texture);
+  CaptureHandler onCapture;
+  id<MTLBuffer> captured = encodeCapture(cmd, drawable.texture, &onCapture);
+
+  // Submit dependencies in order on the same queue. The final completion releases
+  // the slot only after selection, visibility/sort and rendering have finished.
+  if (selection != nil) [selection commit];
+  if (sort != nil) [sort commit];
+  const bool drewWorld = world_ && (gpuOrder || drawCount > 0);
+  submitFrame(cmd, drawable, slot, tileRendered, drewWorld, captured, std::move(onCapture));
+  ++frame_;
+  return true;
+}
+
+void MetalSplatRenderer::updateCameraUniforms(const Frame& frame, uint32_t slot) {
+  const Extent extent = drawExtent();
   CameraUniform u{};
   u.view = frame.view;
   u.proj = frame.proj;
@@ -522,146 +548,149 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
   u.cameraPosition[1] = frame.cameraPosition.y;
   u.cameraPosition[2] = frame.cameraPosition.z;
   std::memcpy(uniforms_[slot].contents, &u, sizeof(u));
+}
 
-  // The GPU order: its own command buffer, so its time is known apart from the draw's.
-  const bool gpuOrder = world_ && frame.orderSource == OrderSource::gpu && gpuSort_;
-  if (gpuOrder) {
-    id<MTLCommandBuffer> sort = [queue_ commandBuffer];
-    const int degree =
-        std::clamp(std::min(frame.shDegree, world_->info().shDegree), 0, kMaxShDegree);
-    if (lod_) {
-      adaptLodThreshold();
-      auto selection = [queue_ commandBuffer];
-      selection.label = @"GPU LOD selection";
-      lod_->encode(selection, uniforms_[slot]);
-      id<MTLBuffer> selectedCount = lodReadback_[slot];
-      auto readback = [selection blitCommandEncoder];
-      [readback copyFromBuffer:lod_->count()
-                  sourceOffset:0
-                      toBuffer:selectedCount
-             destinationOffset:0
-                          size:24];
-      [readback endEncoding];
-      std::atomic<uint32_t>* selected = &lastSelectedCount_;
-      std::atomic<double>* milliseconds = &lastSelectMillis_;
-      std::atomic<uint32_t>* limited = &lastLodLimitedCount_;
-      std::atomic<uint32_t>* evaluated = &lastLodEvaluatedCount_;
-      const bool logLod = frame_ % 120 == 0;
-      std::atomic<uint32_t>* readbacks = &lodReadbacks_;
-      const float pixels = lodPixels_;
-      std::atomic<bool>* failed = &gpuFailed_;
-      [selection addCompletedHandler:^(id<MTLCommandBuffer> done) {
-        if (done.status == MTLCommandBufferStatusError) {
-          failed->store(true);
-          LOGE("LOD command failed: %s", done.error.localizedDescription.UTF8String);
-          return;
-        }
-        selected->store(*static_cast<const uint32_t*>(selectedCount.contents));
-        const auto* counters = static_cast<const uint32_t*>(selectedCount.contents);
-        limited->store(counters[4]);
-        evaluated->store(counters[5]);
-        readbacks->fetch_add(1);
-        if (logLod)
-          LOGI("LOD SSE: %u selected, %u evaluated interiors, %u quality-limited refinements, "
-               "%.2f px",
-               counters[0], counters[5], counters[4], pixels);
-        milliseconds->store((done.GPUEndTime - done.GPUStartTime) * 1000.0);
-      }];
-      [selection commit];
+id<MTLCommandBuffer> MetalSplatRenderer::encodeSelection(uint32_t slot) {
+  adaptLodThreshold();
+  auto selection = [queue_ commandBuffer];
+  selection.label = @"GPU LOD selection";
+  lod_->encode(selection, uniforms_[slot]);
+  id<MTLBuffer> selectedCount = lodReadback_[slot];
+  auto readback = [selection blitCommandEncoder];
+  [readback copyFromBuffer:lod_->count()
+              sourceOffset:0
+                  toBuffer:selectedCount
+         destinationOffset:0
+                      size:24];
+  [readback endEncoding];
+  std::atomic<uint32_t>* selected = &lastSelectedCount_;
+  std::atomic<double>* milliseconds = &lastSelectMillis_;
+  std::atomic<uint32_t>* limited = &lastLodLimitedCount_;
+  std::atomic<uint32_t>* evaluated = &lastLodEvaluatedCount_;
+  const bool logLod = frame_ % 120 == 0;
+  std::atomic<uint32_t>* readbacks = &lodReadbacks_;
+  const float pixels = lodPixels_;
+  std::atomic<bool>* failed = &gpuFailed_;
+  [selection addCompletedHandler:^(id<MTLCommandBuffer> done) {
+    if (done.status == MTLCommandBufferStatusError) {
+      failed->store(true);
+      LOGE("LOD command failed: %s", done.error.localizedDescription.UTF8String);
+      return;
     }
-    if (!visibility_.encode(sort, slot, uniforms_[slot], world_->splats(), world_->harmonics(),
-                            degree, lod_ ? nullptr : frame.ranges, lod_ ? 0 : frame.rangeCount,
-                            lod_ ? lod_->indices() : nil, lod_ ? lod_->count() : nil)) {
-      LOGE("invalid visibility ranges");
-      dispatch_semaphore_signal(inFlight_);
-      return false;
-    }
-    std::atomic<double>* sortMillis = &lastSortMillis_;
-    std::atomic<uint32_t>* drawn = &lastDrawCount_;
-    id<MTLBuffer> countBuffer = visibility_.countBuffer(slot);
-    std::atomic<bool>* failed = &gpuFailed_;
-    [sort addCompletedHandler:^(id<MTLCommandBuffer> done) {
-      if (done.status == MTLCommandBufferStatusError) {
-        failed->store(true);
-        LOGE("visibility command failed: %s", done.error.localizedDescription.UTF8String);
-        return;
-      }
-      sortMillis->store((done.GPUEndTime - done.GPUStartTime) * 1000.0);
-      drawn->store(*static_cast<const uint32_t*>(countBuffer.contents));
-    }];
-    [sort commit];
+    selected->store(*static_cast<const uint32_t*>(selectedCount.contents));
+    const auto* counters = static_cast<const uint32_t*>(selectedCount.contents);
+    limited->store(counters[4]);
+    evaluated->store(counters[5]);
+    readbacks->fetch_add(1);
+    if (logLod)
+      LOGI("LOD SSE: %u selected, %u evaluated interiors, %u quality-limited refinements, "
+           "%.2f px",
+           counters[0], counters[5], counters[4], pixels);
+    milliseconds->store((done.GPUEndTime - done.GPUStartTime) * 1000.0);
+  }];
+  return selection;
+}
+
+id<MTLCommandBuffer> MetalSplatRenderer::encodeVisibilityAndSort(const Frame& frame,
+                                                                 uint32_t slot) {
+  id<MTLCommandBuffer> sort = [queue_ commandBuffer];
+  const int degree = std::clamp(std::min(frame.shDegree, world_->info().shDegree), 0, kMaxShDegree);
+  if (!visibility_.encode(sort, slot, uniforms_[slot], world_->splats(), world_->harmonics(),
+                          degree, lod_ ? nullptr : frame.ranges, lod_ ? 0 : frame.rangeCount,
+                          lod_ ? lod_->indices() : nil, lod_ ? lod_->count() : nil)) {
+    LOGE("invalid visibility ranges");
+    return nil;
   }
+  std::atomic<double>* sortMillis = &lastSortMillis_;
+  std::atomic<uint32_t>* drawn = &lastDrawCount_;
+  id<MTLBuffer> countBuffer = visibility_.countBuffer(slot);
+  std::atomic<bool>* failed = &gpuFailed_;
+  [sort addCompletedHandler:^(id<MTLCommandBuffer> done) {
+    if (done.status == MTLCommandBufferStatusError) {
+      failed->store(true);
+      LOGE("visibility command failed: %s", done.error.localizedDescription.UTF8String);
+      return;
+    }
+    sortMillis->store((done.GPUEndTime - done.GPUStartTime) * 1000.0);
+    drawn->store(*static_cast<const uint32_t*>(countBuffer.contents));
+  }];
+  return sort;
+}
 
-  id<MTLCommandBuffer> cmd = [queue_ commandBuffer];
+bool MetalSplatRenderer::encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture,
+                                      const Frame& frame, uint32_t slot, uint32_t drawCount,
+                                      bool gpuOrder) {
   MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-  id<MTLTexture> colour = target_ != nil ? target_ : drawable.texture;
+  id<MTLTexture> colour = target_ != nil ? target_ : drawableTexture;
   const bool tileRendered =
       gpuOrder && computeRaster_ && target_ != nil &&
       tileRaster_.encode(cmd, uniforms_[slot], visibility_.projected(), visibility_.order(),
                          visibility_.countBuffer(slot), visibility_.capacity(), target_, slot);
-  {
-    pass.colorAttachments[0].texture = colour;
-    pass.colorAttachments[0].loadAction = tileRendered ? MTLLoadActionLoad : MTLLoadActionClear;
-    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    // Front to back accumulates onto nothing and puts the background under at the end.
-    pass.colorAttachments[0].clearColor = gpuOrder ? MTLClearColorMake(0, 0, 0, 0) : kBackground;
-    if (createDepth(colour.width, colour.height)) {
-      pass.depthAttachment.texture = depth_;
-      pass.depthAttachment.loadAction = MTLLoadActionClear;
-      pass.depthAttachment.storeAction = MTLStoreActionDontCare;
-      pass.depthAttachment.clearDepth = 1.0;
-    }
-    id<MTLRenderCommandEncoder> encoder = [cmd renderCommandEncoderWithDescriptor:pass];
-    if (world_ && (drawCount > 0 || gpuOrder)) {
-      [encoder setVertexBuffer:uniforms_[slot] offset:0 atIndex:0];
-      if (gpuOrder) {
-        [encoder setVertexBuffer:visibility_.projected() offset:0 atIndex:1];
-        [encoder setVertexBuffer:visibility_.order() offset:0 atIndex:2];
-        id<MTLBuffer> arguments = visibility_.drawArguments(slot);
-        for (uint32_t batch = 0; batch < MetalVisibility::kDrawBatches; ++batch) {
-          // Completed compute tiles have alpha one and must be masked before even
-          // the first batch. Transparent overflow tiles receive all hardware splats.
-          if (batch > 0 || tileRendered) {
-            [encoder setRenderPipelineState:maskPipeline_];
-            [encoder setDepthStencilState:maskDepth_];
-            [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
-          }
-          [encoder setRenderPipelineState:projectedPipeline_];
-          [encoder setDepthStencilState:splatDepth_];
-          [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                    indirectBuffer:arguments
-              indirectBufferOffset:batch * MetalVisibility::kDrawArgumentBytes];
-        }
-      } else {
-        const int degree =
-            std::clamp(std::min(frame.shDegree, world_->info().shDegree), 0, kMaxShDegree);
-        [encoder setRenderPipelineState:splatPipelines_[static_cast<size_t>(degree)]];
-        [encoder setDepthStencilState:splatDepth_];
-        [encoder setVertexBuffer:world_->splats() offset:0 atIndex:1];
-        [encoder setVertexBuffer:world_->harmonics() offset:0 atIndex:3];
-        [encoder setVertexBuffer:world_->order() offset:0 atIndex:2];
-        [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
-                    vertexStart:0
-                    vertexCount:4
-                  instanceCount:drawCount];
-      }
-    }
+  // Hardware completes overflow tiles, or the entire frame when compute is off.
+  pass.colorAttachments[0].texture = colour;
+  pass.colorAttachments[0].loadAction = tileRendered ? MTLLoadActionLoad : MTLLoadActionClear;
+  pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+  // Front to back accumulates onto nothing and puts the background under at the end.
+  pass.colorAttachments[0].clearColor = gpuOrder ? MTLClearColorMake(0, 0, 0, 0) : kBackground;
+  if (createDepth(colour.width, colour.height)) {
+    pass.depthAttachment.texture = depth_;
+    pass.depthAttachment.loadAction = MTLLoadActionClear;
+    pass.depthAttachment.storeAction = MTLStoreActionDontCare;
+    pass.depthAttachment.clearDepth = 1.0;
+  }
+  id<MTLRenderCommandEncoder> encoder = [cmd renderCommandEncoderWithDescriptor:pass];
+  if (world_ && (drawCount > 0 || gpuOrder)) {
+    [encoder setVertexBuffer:uniforms_[slot] offset:0 atIndex:0];
     if (gpuOrder) {
-      const float background[4] = {static_cast<float>(kBackground.red),
-                                   static_cast<float>(kBackground.green),
-                                   static_cast<float>(kBackground.blue), 1.0f};
-      [encoder setRenderPipelineState:backgroundPipeline_];
+      [encoder setVertexBuffer:visibility_.projected() offset:0 atIndex:1];
+      [encoder setVertexBuffer:visibility_.order() offset:0 atIndex:2];
+      id<MTLBuffer> arguments = visibility_.drawArguments(slot);
+      for (uint32_t batch = 0; batch < MetalVisibility::kDrawBatches; ++batch) {
+        // Completed compute tiles have alpha one and must be masked before even
+        // the first batch. Transparent overflow tiles receive all hardware splats.
+        if (batch > 0 || tileRendered) {
+          [encoder setRenderPipelineState:maskPipeline_];
+          [encoder setDepthStencilState:maskDepth_];
+          [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+        }
+        [encoder setRenderPipelineState:projectedPipeline_];
+        [encoder setDepthStencilState:splatDepth_];
+        [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                  indirectBuffer:arguments
+            indirectBufferOffset:batch * MetalVisibility::kDrawArgumentBytes];
+      }
+    } else {
+      const int degree =
+          std::clamp(std::min(frame.shDegree, world_->info().shDegree), 0, kMaxShDegree);
+      [encoder setRenderPipelineState:splatPipelines_[static_cast<size_t>(degree)]];
       [encoder setDepthStencilState:splatDepth_];
-      [encoder setFragmentBytes:background length:sizeof(background) atIndex:0];
-      [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+      [encoder setVertexBuffer:world_->splats() offset:0 atIndex:1];
+      [encoder setVertexBuffer:world_->harmonics() offset:0 atIndex:3];
+      [encoder setVertexBuffer:world_->order() offset:0 atIndex:2];
+      [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
+                  vertexStart:0
+                  vertexCount:4
+                instanceCount:drawCount];
     }
-    [encoder endEncoding];
+  }
+  if (gpuOrder) {
+    const float background[4] = {static_cast<float>(kBackground.red),
+                                 static_cast<float>(kBackground.green),
+                                 static_cast<float>(kBackground.blue), 1.0f};
+    [encoder setRenderPipelineState:backgroundPipeline_];
+    [encoder setDepthStencilState:splatDepth_];
+    [encoder setFragmentBytes:background length:sizeof(background) atIndex:0];
+    [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
+  }
+  [encoder endEncoding];
 
-  }  // Hardware completes overflow tiles, or the entire frame when compute is off.
+  return tileRendered;
+}
 
+void MetalSplatRenderer::encodeOutput(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture) {
   if (target_ != nil) {
     MTLRenderPassDescriptor* blit = [MTLRenderPassDescriptor renderPassDescriptor];
-    blit.colorAttachments[0].texture = drawable.texture;
+    blit.colorAttachments[0].texture = drawableTexture;
     blit.colorAttachments[0].loadAction = MTLLoadActionDontCare;
     blit.colorAttachments[0].storeAction = MTLStoreActionStore;
     id<MTLRenderCommandEncoder> scale = [cmd renderCommandEncoderWithDescriptor:blit];
@@ -670,18 +699,21 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
     [scale drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
     [scale endEncoding];
   }
+}
 
+id<MTLBuffer> MetalSplatRenderer::encodeCapture(id<MTLCommandBuffer> cmd,
+                                                id<MTLTexture> drawableTexture,
+                                                CaptureHandler* onCapture) {
   id<MTLBuffer> captured = nil;
-  CaptureHandler onCapture;
   if (capture_) {
-    if (drawable.texture.framebufferOnly) {
+    if (drawableTexture.framebufferOnly) {
       LOGW("capture skipped: the drawable is not readable yet");
     } else {
       const NSUInteger bytesPerRow = NSUInteger{width_} * 4;
       captured = [device_ newBufferWithLength:bytesPerRow * height_
                                       options:MTLResourceStorageModeShared];
       id<MTLBlitCommandEncoder> copy = [cmd blitCommandEncoder];
-      [copy copyFromTexture:drawable.texture
+      [copy copyFromTexture:drawableTexture
                        sourceSlice:0
                        sourceLevel:0
                       sourceOrigin:MTLOriginMake(0, 0, 0)
@@ -691,12 +723,18 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
             destinationBytesPerRow:bytesPerRow
           destinationBytesPerImage:bytesPerRow * height_];
       [copy endEncoding];
-      onCapture = std::move(capture_);
+      *onCapture = std::move(capture_);
       capture_ = nullptr;
       layer_.framebufferOnly = YES;
     }
   }
 
+  return captured;
+}
+
+void MetalSplatRenderer::submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable,
+                                     uint32_t slot, bool tileRendered, bool drewWorld,
+                                     id<MTLBuffer> captured, CaptureHandler onCapture) {
   // presentedTime is when the frame reached the display, zero when it was never shown.
   // The simulator's Metal has no presentation handler, so it reports no present timing.
 #if !TARGET_OS_SIMULATOR
@@ -718,7 +756,6 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
   const uint32_t width = width_;
   const uint32_t height = height_;
   auto* worldFrame = &completedWorldFrame_;
-  const bool drewWorld = world_ && (gpuOrder || drawCount > 0);
   id<MTLBuffer> tileStats = tileRendered ? tileRaster_.diagnostics(slot) : nil;
   auto* computeTiles = &lastComputeTiles_;
   auto* nonemptyTiles = &lastNonemptyComputeTiles_;
@@ -754,8 +791,6 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
     dispatch_semaphore_signal(inFlight);
   }];
   [cmd commit];
-  ++frame_;
-  return true;
 }
 
 void MetalSplatRenderer::captureNextFrame(CaptureHandler handler) {

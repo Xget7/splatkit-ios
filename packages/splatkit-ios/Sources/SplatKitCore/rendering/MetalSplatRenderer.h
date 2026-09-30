@@ -110,6 +110,20 @@ class MetalSplatRenderer final : public SplatRenderer {
   MTLPixelFormat targetFormat() const;
   void waitIdle();
 
+  void updateCameraUniforms(const Frame& frame, uint32_t slot);
+  // Encode only: draw() commits these in dependency order after validation succeeds.
+  id<MTLCommandBuffer> encodeSelection(uint32_t slot);
+  id<MTLCommandBuffer> encodeVisibilityAndSort(const Frame& frame, uint32_t slot);
+  bool encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture, const Frame& frame,
+                    uint32_t slot, uint32_t drawCount, bool gpuOrder);
+  void encodeOutput(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture);
+  id<MTLBuffer> encodeCapture(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture,
+                              CaptureHandler* onCapture);
+  // Transfers the acquired inFlight_ slot to the final completion handler.
+  void submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable, uint32_t slot,
+                   bool tileRendered, bool drewWorld, id<MTLBuffer> captured,
+                   CaptureHandler onCapture);
+
   id<MTLDevice> device_ = nil;
   id<MTLCommandQueue> queue_ = nil;
   id<MTLLibrary> library_ = nil;
