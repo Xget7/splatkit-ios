@@ -81,8 +81,6 @@ class TileScheduler {
   std::uint32_t offset(std::uint32_t tile) const { return offsets_[tile]; }
   // Splats resident or loading.
   std::uint32_t held() const { return slab_.used(); }
-  std::uint32_t residency() const { return slab_.capacity(); }
-  const Tileset& tileset() const { return *tileset_; }
 
  private:
   struct Wanted {

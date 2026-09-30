@@ -65,13 +65,6 @@ struct Mat4 {
     return r;
   }
 
-  Mat4 transposed() const {
-    Mat4 r;
-    for (int row = 0; row < 4; ++row)
-      for (int col = 0; col < 4; ++col) r.at(row, col) = at(col, row);
-    return r;
-  }
-
   // Inverse of a rigid transform (rotation + translation): R^T and -R^T t.
   Mat4 rigidInverse() const {
     Mat4 r = identity();

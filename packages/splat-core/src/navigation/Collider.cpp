@@ -6,7 +6,7 @@
 
 namespace splat {
 
-Collider::Collider(const TriangleMesh& mesh, float cellSize) : cellSize_(cellSize) {
+Collider::Collider(const TriangleMesh& mesh) {
   const std::size_t n = mesh.triangleCount();
   tri0_.reserve(n);
   tri1_.reserve(n);

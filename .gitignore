@@ -12,6 +12,7 @@ DerivedData/
 local.properties
 node_modules/
 .cxx/
+.cache/
 *.apk
 apps/android-dev/app/src/debug/jniLibs/
 .kotlin/

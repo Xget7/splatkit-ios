@@ -57,7 +57,6 @@ class SplatWorldLoader {
 
   // Highest SH degree materialized for worlds loaded from now on. The source SPZ remains full.
   void setMaxShDegree(int degree);
-  int maxShDegree() const { return maxShDegree_.load(); }
 
   // Errors leave whatever was waiting untouched.
   Result<WorldReport> loadWorld(const std::uint8_t* data, std::size_t size);

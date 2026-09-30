@@ -23,8 +23,6 @@ struct LodSettings {
   std::size_t budget = 0;  // 0 draws every splat
   float pixelScaleLimit = 0.0f;
   LodView view;
-  // Not read: every request reselects.
-  float reselectCosine = 0.985f;
 };
 
 class AsyncSorter {

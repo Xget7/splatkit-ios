@@ -20,7 +20,7 @@ struct RayHit {
 // a ray walks cells with Amanatides-Woo traversal and tests only the triangles it crosses.
 class Collider {
  public:
-  explicit Collider(const TriangleMesh& mesh, float cellSize = 0.5f);
+  explicit Collider(const TriangleMesh& mesh);
 
   std::size_t triangleCount() const { return tri0_.size(); }
   Vec3 boundsMin() const { return boundsMin_; }
@@ -40,7 +40,7 @@ class Collider {
 
   std::vector<Vec3> tri0_, tri1_, tri2_;
   Vec3 boundsMin_, boundsMax_;
-  float cellSize_;
+  float cellSize_ = 0.5f;  // metres; grows until a far-flung mesh's grid fits
   int dims_[3] = {0, 0, 0};
   std::vector<uint32_t> cellStart_;  // cells + 1 offsets
   std::vector<uint32_t> cellTris_;   // triangle indices grouped by cell

@@ -1,5 +1,6 @@
 #include "splat/formats/GlbDecoder.h"
 
+#include <cstdint>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -256,8 +257,13 @@ Result<TriangleMesh> decodeGlbOrThrow(const std::uint8_t* data, std::size_t size
     for (const Json& child : node.value("children", Json::array())) visit(child.get<int>(), world);
   };
   if (doc.contains("scenes") && !doc["scenes"].empty()) {
-    const std::size_t sceneIndex = doc.value("scene", 0u);
-    for (const Json& root : doc["scenes"][sceneIndex].value("nodes", Json::array()))
+    // A non-const operator[] past the end grows the array, to 2^64 entries for a scene of -1.
+    const Json& scenes = doc["scenes"];
+    const std::int64_t sceneIndex = doc.value("scene", std::int64_t{0});
+    if (sceneIndex < 0 || static_cast<std::uint64_t>(sceneIndex) >= scenes.size())
+      return Error{ErrorCode::corrupt, "GLB default scene is out of range"};
+    for (const Json& root :
+         scenes.at(static_cast<std::size_t>(sceneIndex)).value("nodes", Json::array()))
       visit(root.get<int>(), frame);
   } else {
     for (int i = 0; i < static_cast<int>(doc["meshes"].size()); ++i) appendMesh(i, frame);

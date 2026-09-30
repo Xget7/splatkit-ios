@@ -38,7 +38,6 @@ class CharacterController {
     position_ = p;
     stepOver_.reset();
   }
-  const CharacterSettings& settings() const { return settings_; }
   // Keeps the position; the next update eases the eye to the new height.
   void setSettings(CharacterSettings settings) { settings_ = settings; }
 

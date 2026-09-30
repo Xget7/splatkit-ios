@@ -126,6 +126,19 @@ TEST(GlbDecoder, RejectsAShortTranslationInsteadOfReadingPastIt) {
   EXPECT_EQ(r.error().code, ErrorCode::corrupt);
 }
 
+TEST(GlbDecoder, RejectsASceneIndexOutsideTheScenes) {
+  for (const std::string scene : {"1", "-1"}) {
+    std::string json = withAccessorCount("3");
+    const auto at = json.find("\"scene\":0");
+    ASSERT_NE(at, std::string::npos);
+    json.replace(at, std::string("\"scene\":0").size(), "\"scene\":" + scene);
+    auto glb = packGlb(json, triangleBin());
+    auto r = decodeGlb(glb.data(), glb.size());
+    ASSERT_FALSE(r.ok()) << "scene " << scene;
+    EXPECT_EQ(r.error().code, ErrorCode::corrupt) << "scene " << scene;
+  }
+}
+
 TEST(GlbDecoder, RejectsNonGlb) {
   const std::uint8_t junk[16] = {1, 2, 3};
   auto r = decodeGlb(junk, sizeof(junk));

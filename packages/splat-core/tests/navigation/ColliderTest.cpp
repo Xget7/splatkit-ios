@@ -57,7 +57,7 @@ TEST(Collider, RaycastMissesOutsideMaxDistanceAndOutsideBounds) {
 }
 
 TEST(Collider, RaycastFindsNearestAcrossCells) {
-  const Collider c(room(), 0.5f);
+  const Collider c(room());
   // Diagonal ray from the far corner towards the wall: it crosses many cells.
   auto hit = c.raycast({-4, 1, -4}, {1, 0, 0.3f}, 20);
   ASSERT_TRUE(hit);

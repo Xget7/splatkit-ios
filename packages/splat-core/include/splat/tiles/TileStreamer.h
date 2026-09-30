@@ -60,12 +60,10 @@ class TileStreamer {
   const std::vector<SlabSorter::Range>& ranges() const { return ranges_; }
   void drawnNow();
 
-  const TiledWorld& world() const { return world_; }
   const std::vector<std::uint32_t>& drawn() const { return drawn_; }
   TileState state(std::uint32_t tile) const { return scheduler_.state(tile); }
   std::size_t drawnSplats() const { return drawnSplats_; }
   std::uint32_t held() const { return scheduler_.held(); }
-  std::uint32_t residency() const { return scheduler_.residency(); }
 
  private:
   TiledWorld world_;
