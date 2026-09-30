@@ -8,8 +8,8 @@ Include the affected artifact and version, the platform, and the smallest reprod
 
 ## Supported versions
 
-Only the newest published alpha of each artifact is supported: the Maven Central `io.github.xget7:splatkit-android`, the npm `@splatkit/react-native`, and the `splatkit-ios` Swift package.
-Pre-1.0 alphas are not patched in place; a fix ships as a new alpha.
+Only the newest published release of each artifact is supported: the Maven Central `io.github.xget7:splatkit-android`, the npm `@splatkit/react-native`, and the `splatkit-ios` Swift package.
+Pre-1.0 releases are not patched in place; a fix ships as a new beta.
 
 ## Binary distribution
 
