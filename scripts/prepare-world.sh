@@ -18,7 +18,6 @@ set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 build="$root/build/world-tools"
 readonly minimum_cmake="3.22"
-readonly lod_depth=10
 
 usage() {
   sed -n '2,/^set /s/^# \{0,1\}//p' "$0"
@@ -103,7 +102,7 @@ if [ "$lod" = true ]; then
   echo "Building the level-of-detail tree"
   world="$out/$name.lodsplat"
   rm -f "$world"  # splat_lod_build refuses to overwrite
-  "$tools/splat_lod_build" "$spz" "$world" --depth "$lod_depth" ${sh:+--sh "$sh"}
+  "$tools/splat_lod_build" "$spz" "$world" ${sh:+--sh "$sh"}
 fi
 
 if [ "$collider" = true ]; then

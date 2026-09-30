@@ -12,11 +12,12 @@ namespace {
 int run(int argc, char** argv) {
   if (argc < 3 || (argc - 3) % 2 != 0) {
     std::fprintf(stderr,
-                 "usage: splat_lod_build input.spz output.lodsplat [--depth 6] [--sh 0..3]\n");
+                 "usage: splat_lod_build input.spz output.lodsplat [--depth 1..%u] [--sh 0..3]\n",
+                 splat::kMaxOctreeDepth);
     return 2;
   }
   splat::LodBuildOptions build;
-  build.octreeDepth = 6;
+  build.octreeDepth = splat::kMaxOctreeDepth;
   splat::SplatDecodeOptions decode;
   for (int i = 3; i < argc; i += 2) {
     const std::string key(argv[i]);
@@ -24,7 +25,7 @@ int run(int argc, char** argv) {
     int value = 0;
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
     if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) return 2;
-    if (key == "--depth" && value >= 1 && value <= 10)
+    if (key == "--depth" && value >= 1 && value <= static_cast<int>(splat::kMaxOctreeDepth))
       build.octreeDepth = static_cast<uint32_t>(value);
     else if (key == "--sh" && value >= 0 && value <= 3)
       decode.maxShDegree = value;

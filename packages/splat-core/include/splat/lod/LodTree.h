@@ -55,13 +55,22 @@ struct LodTree {
   std::size_t nodeCount() const { return layout.size(); }
 };
 
+// Morton keys interleave three coordinates in 64 bits: 21 subdivisions at most.
+inline constexpr uint32_t kMaxOctreeDepth = 21;
+
 struct LodBuildOptions {
   // Ratio between the cell sizes of consecutive levels. 1.5 merges gently: most
   // interior nodes have 2 to 4 children and the tree is about 1.5 times the leaves.
   float base = 1.5f;
-  // Offline octree: 1..10 spatial subdivisions (clamped); 0 keeps the legacy grid.
-  // Original splats sit below the finest occupied cells. Singleton chains collapse.
+  // Offline octree: at most 1..kMaxOctreeDepth subdivisions (clamped); 0 keeps the legacy
+  // grid. A cell subdivides while it holds more than `clusterLeaves` splats, so a floater
+  // that stretches the scene's extent cannot leave a room in cells of thousands of splats,
+  // each a single node away from all of them. Singleton chains collapse.
   uint32_t octreeDepth = 0;
+  // Most original splats one merged node stands in for directly; >= 2. On a 12M-splat
+  // house, 32 draws like 8 at every budget tried, with 18% more nodes than leaves where 8
+  // needs 32%, and half the GPU selection time.
+  uint32_t clusterLeaves = 32;
 };
 
 // Builds the tree. The cloud is consumed: its splats become the leaves.

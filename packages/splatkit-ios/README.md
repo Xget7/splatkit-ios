@@ -124,7 +124,8 @@ Tile termination uses transmittance ≤0.0001; hardware geometry submission rema
 Private allocations still consume unified memory.
 The dev memory guard cannot cancel in-flight work or prevent allocation spikes.
 
-Build `splat_lod_build` from `splat-core/tools`; invoke `splat_lod_build input.spz output.lodsplat --depth 10 --sh 1`.
+Build `splat_lod_build` from `splat-core/tools`; invoke `splat_lod_build input.spz output.lodsplat --sh 1`.
+A cell splits until it holds at most 32 splats; `--depth` only caps the octree, at 21 subdivisions by default.
 Output must be new.
 Moment-matched parents remain approximate; original leaves survive.
 Parents use [moment-matching initialization](https://arxiv.org/html/2406.12080v1#S4.SS1), without training/refinement.

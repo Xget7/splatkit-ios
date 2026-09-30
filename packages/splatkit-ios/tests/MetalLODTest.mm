@@ -154,14 +154,27 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
     return splat::decodeLodSplat(file.value().data(), file.value().size(), 1);
   }();
   ASSERT_TRUE(tree) << tree.error().message;
+  // "width height", the drawable the phone renders into; the default is an iPhone 17 Pro.
+  uint32_t width = 1206, height = 2622;
+  if (const char* size = std::getenv("SPLAT_LOD_SIZE")) {
+    ASSERT_EQ(std::sscanf(size, "%u %u", &width, &height), 2);
+  }
   auto renderer = MetalSplatRenderer::create();
   ASSERT_TRUE(renderer);
   auto layer = [CAMetalLayer layer];
-  layer.drawableSize = CGSizeMake(1206, 2622);
+  layer.drawableSize = CGSizeMake(width, height);
   renderer->setLayer(layer);
-  renderer->setDrawableSize(1206, 2622);
+  renderer->setDrawableSize(width, height);
   ASSERT_TRUE(reference ? renderer->uploadWorld(tree.value().nodes, 1)
                         : renderer->uploadLodWorld(tree.value(), 1, budget));
+  // The example's quality presets draw at 0.5 px with 16-bit depth keys.
+  if (const char* errorPixels = std::getenv("SPLAT_LOD_ERROR_PIXELS")) {
+    RenderPolicy policy;
+    policy.lodErrorPixels = std::strtof(errorPixels, nullptr);
+    policy.sortDepth = SortKeyBits::low16;
+    std::string reason;
+    ASSERT_TRUE(renderer->applyRenderPolicy(policy, &reason)) << reason;
+  }
   WalkCamera camera;
   camera.setLookAt({0, -2, 43}, {0, -2, -2}, {1, 0, 0});
   // "x y z yaw pitch", as the SplatKit frame log prints the walk pose.
@@ -178,7 +191,8 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
   frame.orderSource = SplatRenderer::OrderSource::gpu;
   frame.view = camera.viewMatrix();
   frame.cameraPosition = camera.position();
-  frame.proj = splat::Mat4::perspective(65.0f * 3.14159265f / 180, 1206.0f / 2622, 0.05f, 200);
+  frame.proj = splat::Mat4::perspective(65.0f * 3.14159265f / 180,
+                                        static_cast<float>(width) / height, 0.05f, 200);
   frame.shDegree = 1;
   const SplatRenderer::Range range{0, renderer->world()->count};
   frame.ranges = &range;
@@ -193,7 +207,7 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
     ASSERT_TRUE(renderer->draw(frame));
     ASSERT_EQ(
         dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 30 * NSEC_PER_SEC)), 0);
-    ASSERT_EQ(pixels.size(), 1206u * 2622u * 4u);
+    ASSERT_EQ(pixels.size(), std::size_t{width} * height * 4);
     if (!reference) {
       ASSERT_LE(renderer->lastSelectedCount(), budget);
       ASSERT_LE(renderer->lastDrawCount(), renderer->lastSelectedCount());
@@ -209,7 +223,7 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
         auto space = CGColorSpaceCreateDeviceRGB();
         auto provider =
             CGDataProviderCreateWithData(nullptr, pixels.data(), pixels.size(), nullptr);
-        auto image = CGImageCreate(1206, 2622, 8, 32, 1206 * 4, space,
+        auto image = CGImageCreate(width, height, 8, 32, width * 4, space,
                                    kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst,
                                    provider, nullptr, false, kCGRenderingIntentDefault);
         auto url = [NSURL fileURLWithPath:@(capture)];

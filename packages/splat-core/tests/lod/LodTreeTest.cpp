@@ -174,6 +174,34 @@ TEST(LodTree, LargeRandomCloudBuildsAConnectedTreeOfBoundedSize) {
   EXPECT_GT(out.size(), 4000u);
 }
 
+// A floater hundreds of metres out sets the octree's extent. The room it leaves behind
+// must still refine a few splats at a time, not jump from one node to thousands of them.
+TEST(LodTree, OctreeSplitsACrowdedCellWhateverTheSceneExtent) {
+  constexpr std::size_t kRoom = 4096;
+  std::mt19937 rng(3);
+  std::uniform_real_distribution<float> u(0.0f, 0.2f);
+  std::vector<Vec3> centres(kRoom);
+  for (Vec3& p : centres) p = {u(rng), u(rng), u(rng)};
+  centres.push_back({300, 0, 0});
+  splat::LodBuildOptions options;
+  options.octreeDepth = splat::kMaxOctreeDepth;
+  const LodTree t = buildLodTree(cloudOf(centres, 1e-3f), options);
+
+  const auto valid = splat::validateLodTree(t);
+  ASSERT_TRUE(valid) << valid.error().message;
+  uint32_t mostLeaves = 0;
+  for (const auto& node : t.layout) {
+    uint32_t leaves = 0;
+    for (uint32_t k = node.childStart; k < node.childStart + node.childCount; ++k)
+      leaves += t.layout[k].childCount == 0 ? 1 : 0;
+    mostLeaves = std::max(mostLeaves, leaves);
+  }
+  EXPECT_LE(mostLeaves, options.clusterLeaves);
+  std::vector<uint32_t> leaves;
+  collectLeaves(t, 0, leaves);
+  EXPECT_EQ(leaves.size(), kRoom + 1);
+}
+
 // A wide scene made of fine splats needs more grid levels than the validator once allowed,
 // and the builder must never produce a tree its own validator rejects.
 TEST(LodTree, DeepHierarchyOverAWideSceneStaysValid) {

@@ -132,15 +132,16 @@ LodTree buildLodTree(SplatCloud cloud, const LodBuildOptions& options) {
 
   uint32_t root = 0;
   if (options.octreeDepth > 0) {
-    // Morton prefixes describe nested cubes. Unlike the legacy size-adaptive grid,
-    // the number of spatial subdivisions is fixed offline, never built on the phone.
-    const uint32_t depth = std::clamp(options.octreeDepth, 1u, 10u);
+    // Morton prefixes describe nested cubes, so every cell is a contiguous run of the
+    // sorted keys. Unlike the legacy size-adaptive grid, the hierarchy is built offline.
+    const uint32_t depth = std::clamp(options.octreeDepth, 1u, kMaxOctreeDepth);
     const uint32_t resolution = 1u << depth;
+    const std::size_t clusterLeaves = std::max(options.clusterLeaves, 2u);
     float extent = 1e-6f;
     for (int c = 0; c < 3; ++c)
       extent = std::max(extent, cloud.bounds.max[c] - cloud.bounds.min[c]);
-    std::vector<Cell> active;
-    active.reserve(leaves);
+    std::vector<Cell> sorted;
+    sorted.reserve(leaves);
     for (uint32_t i = 0; i < leaves; ++i) {
       uint64_t key = 0;
       for (uint32_t c = 0; c < 3; ++c) {
@@ -150,31 +151,35 @@ LodTree buildLodTree(SplatCloud cloud, const LodBuildOptions& options) {
         for (uint32_t bit = 0; bit < depth; ++bit)
           key |= uint64_t{(grid >> bit) & 1u} << (3 * bit + c);
       }
-      active.push_back({key, i});
+      sorted.push_back({key, i});
     }
-    std::sort(active.begin(), active.end(), [](const Cell& a, const Cell& b) {
+    std::sort(sorted.begin(), sorted.end(), [](const Cell& a, const Cell& b) {
       return a.key == b.key ? a.node < b.node : a.key < b.key;
     });
-    std::vector<uint32_t> members;
-    for (uint32_t level = 0; level <= depth; ++level) {
-      std::vector<Cell> next;
-      for (size_t start = 0; start < active.size();) {
-        size_t end = start + 1;
-        while (end < active.size() && active[end].key == active[start].key) ++end;
-        uint32_t node = active[start].node;
-        if (end - start > 1) {
-          members.clear();
-          for (size_t j = start; j < end; ++j) members.push_back(active[j].node);
-          // Moment matching includes within-child covariance and between-child means.
-          // No cell-size blur is added in the offline path.
-          node = nodes.merge(members, 0.0f);
-        }
-        next.push_back({active[start].key >> 3, node});
-        start = end;
+    // The node for the cell holding sorted[begin, end), whose keys agree above `level`
+    // subdivisions. Moment matching includes within-child covariance and between-child
+    // means; no cell-size blur is added in the offline path.
+    const auto build = [&](const auto& self, std::size_t begin, std::size_t end,
+                           uint32_t level) -> uint32_t {
+      if (end - begin == 1) return sorted[begin].node;
+      std::vector<uint32_t> members;
+      if (end - begin <= clusterLeaves || level == depth) {
+        for (std::size_t j = begin; j < end; ++j) members.push_back(sorted[j].node);
+        return nodes.merge(members, 0.0f);
       }
-      active = std::move(next);
-    }
-    root = active.front().node;
+      const uint32_t shift = 3 * (depth - level - 1);
+      // One occupied octant is the same cell one level down, not a node of its own.
+      if ((sorted[begin].key >> shift) == (sorted[end - 1].key >> shift))
+        return self(self, begin, end, level + 1);
+      for (std::size_t first = begin; first < end;) {
+        std::size_t last = first + 1;
+        while (last < end && (sorted[last].key >> shift) == (sorted[first].key >> shift)) ++last;
+        members.push_back(self(self, first, last, level + 1));
+        first = last;
+      }
+      return nodes.merge(members, 0.0f);
+    };
+    root = build(build, 0, sorted.size(), 0);
   } else {
     // Levels: at level L the cell is base^L wide. A splat joins the hierarchy at the first
     // level whose cell is at least its size, so small splats merge early and big ones late.
