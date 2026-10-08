@@ -5,6 +5,18 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 
 ## Unreleased
 
+## [0.1.0-beta.1] - 2026-09-30
+
+### Added
+
+- Orbit camera on `SplatMetalView`, around an anchor, and revisioned camera requests on `SKSplatEngine`.
+
+### Fixed
+
+- Offline hierarchy construction splits cells until they hold at most 32 splats, avoiding stretched coarse parents.
+- Walking after an orbit restores a level horizon.
+- GLB colliders with an out-of-range default scene index are rejected.
+
 ## [0.1.0-alpha.5] - 2026-09-21
 
 The XCFramework carries the same engine as alpha.4; only the Swift sources and the bundled notices changed.
@@ -78,6 +90,7 @@ The XCFramework carries the same engine as alpha.4; only the Swift sources and t
 - Native Metal SDK for iOS 17 and A14/M1 or newer, distributed as a SwiftPM device and simulator XCFramework.
 - GPU visibility and radix sorting, experimental LOD and hybrid screen tiles, asynchronous loading and first-frame readiness.
 
+[0.1.0-beta.1]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-beta.1
 [0.1.0-alpha.5]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.5
 [0.1.0-alpha.4]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.4
 [0.1.0-alpha.3]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.3
