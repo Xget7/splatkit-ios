@@ -44,3 +44,38 @@ jobs:
           test -s "$RUNNER_TEMP/room/room.spz"
           test -s "$RUNNER_TEMP/room/room.lodsplat"
           test "$(head -c 4 "$RUNNER_TEMP/room/room.collider.glb")" = glTF
+      - name: Prepare a version 4 room
+        run: |
+          scripts/prepare-world.sh "$RUNNER_TEMP/room.ply" "$RUNNER_TEMP/room-v4" --spz-version 4 --collider --lod --sh 0
+          test "$(head -c 4 "$RUNNER_TEMP/room-v4/room.spz")" = NGSP
+          test -s "$RUNNER_TEMP/room-v4/room.lodsplat"
+          test "$(head -c 4 "$RUNNER_TEMP/room-v4/room.collider.glb")" = glTF
+      - name: Normalize a RUB SPZ before building LOD and collision
+        run: |
+          build/world-tools/tools/splat-convert "$RUNNER_TEMP/room-v4/room.spz" "$RUNNER_TEMP/room-rub.spz" --spz-version 4 --target-frame rub
+          scripts/prepare-world.sh "$RUNNER_TEMP/room-rub.spz" "$RUNNER_TEMP/room-normalized" --source-frame rub --spz-version 4 --collider --lod --sh 0
+          test -s "$RUNNER_TEMP/room-normalized/room-rub.lodsplat"
+          cmp "$RUNNER_TEMP/room-v4/room.lodsplat" "$RUNNER_TEMP/room-normalized/room-rub.lodsplat"
+          cmp "$RUNNER_TEMP/room-v4/room.collider.glb" "$RUNNER_TEMP/room-normalized/room-rub.collider.glb"
+
+  spz-interop:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: scripts/spz-interop/package-lock.json
+      - name: Build the converter and SDK decoder checks
+        run: |
+          cmake -S packages/splat-core -B build/splat-core -DCMAKE_BUILD_TYPE=Release
+          cmake --build build/splat-core --parallel --target splat_core_tests
+      - name: Install pinned interoperability tools
+        run: npm ci --prefix scripts/spz-interop --ignore-scripts --no-audit --no-fund
+      - name: Check PlayCanvas parsing and SplatTransform interchange
+        run: >
+          node scripts/spz-interop/test.mjs
+          build/splat-core/tools/splat-convert
+          build/splat-core/tests/splat_core_tests
+          build/spz-interop

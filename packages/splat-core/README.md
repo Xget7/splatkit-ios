@@ -29,7 +29,7 @@ Set `SPLAT_FIXTURES_DIR` to a folder with World Labs example files to run the in
 ## Converting a PLY
 
 The engine reads SPZ.
-[`scripts/prepare-world.sh`](../../scripts/prepare-world.sh) builds these tools and runs `ply2spz`, `splat_lod_build` and `splat_collider` in order; the [React Native guide](https://github.com/Xget7/splatkit/tree/main/packages/react-native-splatkit#preparing-a-world) explains its flags.
+[`scripts/prepare-world.sh`](../../scripts/prepare-world.sh) builds these tools and runs `splat-convert`, `splat_lod_build` and `splat_collider` in order; the [React Native guide](https://github.com/Xget7/splatkit/tree/main/packages/react-native-splatkit#preparing-a-world) explains its flags.
 Call the tools directly for the options below.
 A scene from SuperSplat, Polycam or the Mip-NeRF 360 set comes as a Gaussian splat PLY; `tools/ply2spz` (built with `SPLAT_CORE_BUILD_TOOLS`) packs it:
 
@@ -42,7 +42,34 @@ build/tools/ply2spz bicycle.ply bicycle.spz --sh 1 --keep 2
 Neither tool prunes unless asked; the default output is the whole scene.
 `tools/splat-tile` takes the same `--sh` and `--prune-alpha` before partitioning a scene into streamed tiles.
 `tools/splat_lod_build` writes an offline `.lodsplat` hierarchy; the [iOS README](../splatkit-ios/README.md) shows its options.
-The coordinates are written as they are; the reference 3DGS frame is what the decoder assumes for a file without a frame tag, so the scene stands upright.
+`ply2spz` and `splat-convert` accept `--spz-version 2|3|4`, `--source-frame rdf|rub` and `--target-frame rdf|rub`.
+Defaults remain v2 and RDF on both sides; choosing a version never changes orientation.
+RDF means right/down/forward, the public SDK's untagged SPZ convention; RUB means right/up/back, used by glTF, PlayCanvas and Splat Field Guide.
+`splat-convert` also reads SPZ; conversions transform positions, rotations and SH together and reject unsupported vendor extensions.
+Normalize external RUB SPZ before passing it to a native view or RN `WorldRequest`:
+
+```sh
+scripts/prepare-world.sh external.spz out/ --source-frame rub --spz-version 4
+```
+
+[SplatTransform](https://developer.playcanvas.com/user-manual/splat-transform/cli-reference/) 3.10.0 exports PLY/RDF coordinates unchanged into SPZ, so its output already matches the SDK's default.
+Its `.splat` to SPZ bridge is covered by the interop check; identify the actual source frame instead of inferring it from a tool name or container version.
+
+For [PlayCanvas's v4-only SPZ parser](https://developer.playcanvas.com/user-manual/gaussian-splatting/formats/spz/), export RUB explicitly:
+
+```sh
+build/tools/splat-convert scene.ply playcanvas.spz --spz-version 4 --target-frame rub
+```
+
+SPZ is lossy: positions have 1/4096-unit steps, log scales 1/16 steps, opacity 1/255 steps and SH uses 5 bits for degree 1 and 4 bits above it.
+SPZ v2 uses 8-bit quaternion components; v3/v4 use smallest-three quaternion encoding.
+Repacking an SPZ can add quantization error.
+The pinned [interop check](../../scripts/spz-interop/test.mjs) verifies an oriented SH3 fixture against PlayCanvas's CPU parser and SplatTransform; it does not establish visual or device acceptance.
+
+```sh
+npm ci --prefix ../../scripts/spz-interop --ignore-scripts
+node ../../scripts/spz-interop/test.mjs build/tools/splat-convert build/tests/splat_core_tests ../../build/spz-interop
+```
 
 ## Generating a collider
 

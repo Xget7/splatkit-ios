@@ -1,4 +1,9 @@
 add_executable(ply2spz ply2spz.cpp)
+add_executable(splat-convert ply2spz.cpp)
+target_link_libraries(splat-convert PRIVATE spz)
+target_compile_options(splat-convert PRIVATE
+  $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Werror>
+)
 add_executable(splat_lod_build splat_lod_build.cpp)
 target_link_libraries(splat_lod_build PRIVATE splat_core)
 target_compile_options(splat_lod_build PRIVATE

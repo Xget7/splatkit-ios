@@ -36,6 +36,14 @@ target_include_directories(splat_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/
 target_compile_definitions(splat_core_tests PRIVATE
   SPLAT_FIXTURES_DIR="${SPLAT_FIXTURES_DIR}"
 )
+if(SPLAT_CORE_BUILD_TOOLS)
+  target_sources(splat_core_tests PRIVATE tools/SplatConvertTest.cpp)
+  target_compile_definitions(splat_core_tests PRIVATE
+    SPLAT_CONVERT_PATH="$<TARGET_FILE:splat-convert>"
+    PLY2SPZ_PATH="$<TARGET_FILE:ply2spz>"
+  )
+  add_dependencies(splat_core_tests splat-convert ply2spz)
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(splat_core_tests)

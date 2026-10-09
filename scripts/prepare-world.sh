@@ -6,9 +6,11 @@
 #   scripts/prepare-world.sh scene.ply out/              out/scene.spz
 #   scripts/prepare-world.sh scene.ply out/ --collider   + out/scene.collider.glb, to walk
 #   scripts/prepare-world.sh scene.ply out/ --lod        + out/scene.lodsplat, for huge scenes
-#   scripts/prepare-world.sh scene.spz out/ --collider   an SPZ skips the conversion
+#   scripts/prepare-world.sh scene.spz out/ --source-frame rub   normalizes Y-up SPZ for the SDK
 #
 # --sh N       keeps spherical harmonics up to degree N (0 to 3); the file's degree by default
+# --spz-version N  writes SPZ version 2, 3 or 4 (PLY defaults to 2; unchanged SPZ is copied)
+# --source-frame F  interprets input as rdf (default) or rub; SPZ output is always RDF
 # --collider   builds a walk collider; it assumes a space to walk through, not a lone object
 # --lod        builds the level-of-detail tree offline instead of on the phone at load time
 #
@@ -32,6 +34,8 @@ fail() {
 input=""
 out=""
 sh=""
+spz_version=""
+source_frame="rdf"
 collider=false
 lod=false
 while [ $# -gt 0 ]; do
@@ -40,6 +44,16 @@ while [ $# -gt 0 ]; do
     --sh)
       [ $# -ge 2 ] || usage
       sh="$2"
+      shift
+      ;;
+    --spz-version)
+      [ $# -ge 2 ] || usage
+      spz_version="$2"
+      shift
+      ;;
+    --source-frame)
+      [ $# -ge 2 ] || usage
+      source_frame="$2"
       shift
       ;;
     --collider) collider=true ;;
@@ -59,6 +73,8 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$input" ] && [ -n "$out" ] || usage
 case "$sh" in "" | [0-3]) ;; *) fail "--sh takes 0, 1, 2 or 3, not $sh" ;; esac
+case "$spz_version" in "" | [2-4]) ;; *) fail "--spz-version takes 2, 3 or 4, not $spz_version" ;; esac
+case "$source_frame" in rdf | rub) ;; *) fail "--source-frame takes rdf or rub, not $source_frame" ;; esac
 [ -f "$input" ] || fail "no such file: $input"
 
 name="$(basename "$input")"
@@ -77,22 +93,24 @@ fi
 
 if [ ! -f "$build/CMakeCache.txt" ]; then
   echo "Building the conversion tools into $build (first run only)"
-  cmake -S "$root/packages/splat-core" -B "$build" \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DSPLAT_CORE_BUILD_TESTS=OFF \
-    -DSPLAT_CORE_BUILD_TOOLS=ON \
-    > /dev/null
 fi
-cmake --build "$build" --parallel --target ply2spz splat_collider splat_lod_build > /dev/null
+# Refresh target definitions while reusing the cached dependency/build directories.
+cmake -S "$root/packages/splat-core" -B "$build" \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DSPLAT_CORE_BUILD_TESTS=OFF \
+  -DSPLAT_CORE_BUILD_TOOLS=ON \
+  > /dev/null
+cmake --build "$build" --parallel --target splat-convert splat_collider splat_lod_build > /dev/null
 tools="$build/tools"
 
 mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 spz="$out/$name.spz"
 
-if [ "$extension" = ply ]; then
+if [ "$extension" = ply ] || [ -n "$sh" ] || [ -n "$spz_version" ] || [ "$source_frame" != rdf ]; then
   echo "Converting $input to SPZ"
-  "$tools/ply2spz" "$input" "$spz" ${sh:+--sh "$sh"}
+  "$tools/splat-convert" "$input" "$spz" --source-frame "$source_frame" --target-frame rdf \
+    ${sh:+--sh "$sh"} ${spz_version:+--spz-version "$spz_version"}
 elif [ "$(cd "$(dirname "$input")" && pwd)/$(basename "$input")" != "$spz" ]; then
   cp "$input" "$spz"
 fi
