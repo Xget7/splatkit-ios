@@ -4,7 +4,7 @@
   ".github/ISSUE_TEMPLATE/config.yml": "13064e7bea658e01e718b414fbb7b3b244f36411fe25ee2055c151f7b534547a",
   ".github/ISSUE_TEMPLATE/feature_request.md": "4db2d62dd8afc7df63008e0f79323c1a06dfb1ec504aed3065dbdbc4d01a53d4",
   ".github/PULL_REQUEST_TEMPLATE.md": "31705378bf6795b61af53f3bc9fc36169c41dc488060f8515fe46b981ced8f4a",
-  ".github/workflows/core.yml": "8634bdc9614ac47d5f3bf1d5e200d5d7f4e6679992e478f204a2ea3a59eeae3f",
+  ".github/workflows/core.yml": "4283a320ce231a063177a036405a8b90709772922f353017909fc52d939e1ca3",
   ".github/workflows/engine.yml": "192024fccc43bd226bb0ba64760f3f51bfbe0dd8de2fa8c300a91870822eac87",
   ".github/workflows/ios.yml": "4a9ffa626f168961819f505895a24f0b9627b3d04c8c32a278d6624afdad3fe1",
   ".gitignore": "fc91f3639cbcff08bb3b17273e12b21c05325c56c8aa1da15e22784f392cc593",
@@ -210,10 +210,13 @@
   "packages/splatkit-ios/tests/MetalVisibilityTest.mm": "2229eab5e654a10b4cce5a9b10812672f32091a35f09152c3dcb9e41455dd682",
   "packages/splatkit-ios/tests/MetalWorldTest.mm": "f6a61735bfba292caf4209834c194c1accc862bda6e8f420cd4849a7d9a69305",
   "scripts/build-ios.sh": "c05feb1e381afb85054e4090551942fa7937e77ba43689ca1e4a70e8e9886bb9",
-  "scripts/export-ios-source.py": "f5d2704b15deccb9a16a240319f065b2ce474c6e1c8806461b7320fedc218b66",
+  "scripts/export-ios-source.py": "8eef88cc2bd56a9548d887d884d84b8ea161a6d1b5c65ceaf7c0c2bd7cb0fa7f",
   "scripts/package-ios.sh": "dc46aeae108de22505d863b02cf64128b8b2b199453f4cfeb63150cf396f5c90",
   "scripts/prepare-world.sh": "1554c87b4be16a9f875cd76927a81c62cfb73a6dc8192f2d56ea456a4db380d9",
   "scripts/sdk_harness.py": "b21a3f5123abf1504b7c3a87a325268a246cb340e07fbb67515a34cedaef4d21",
+  "scripts/spz-interop/package-lock.json": "e023052f708290e49bd24c993133d4fee2135ed2c73f8b32dbd6b5b914367f16",
+  "scripts/spz-interop/package.json": "b07b4d608addfd99af52d68fbb8186e096ad541230513b27cc289bf3fd11139a",
+  "scripts/spz-interop/test.mjs": "05985a40d2e9da66b5d6d2a2a99be12020ee9830a8122e291206af674d4102a5",
   "scripts/tests/make_room_ply.py": "1f58c603f0ef7b2de666bd22c77eafe667d1ae8f0518632b1b857c0e91ea3388",
   "scripts/tests/test_sdk_harness.py": "c025dc1d5a74c704827360e071f336521e62a88e447c7dc7ec07e817b8adf938"
 }

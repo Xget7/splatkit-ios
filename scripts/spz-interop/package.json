@@ -1,0 +1,11 @@
+{
+  "name": "splatkit-spz-interop-check",
+  "private": true,
+  "type": "module",
+  "engines": {"node": ">=22"},
+  "dependencies": {
+    "@playcanvas/splat-transform": "3.10.0",
+    "fzstd": "0.1.1",
+    "playcanvas": "2.23.1"
+  }
+}

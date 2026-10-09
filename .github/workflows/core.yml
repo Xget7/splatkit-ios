@@ -60,20 +60,38 @@ jobs:
 
   spz-interop:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        tree: [checkout, ios-export]
     steps:
       - uses: actions/checkout@v4
+      - name: Select the source tree
+        id: source
+        run: |
+          directory="$GITHUB_WORKSPACE"
+          if [[ "${{ matrix.tree }}" == ios-export ]]; then
+            # setup-node hashes cache inputs only within GITHUB_WORKSPACE.
+            mkdir -p "$GITHUB_WORKSPACE/build/mirror-check"
+            directory=$(TMPDIR="$GITHUB_WORKSPACE/build/mirror-check" python3 scripts/export-ios-source.py --platform ios \
+              | python3 -c "import json,sys; print(json.load(sys.stdin)['directory'])")
+          fi
+          echo "directory=$directory" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: scripts/spz-interop/package-lock.json
+          cache-dependency-path: ${{ steps.source.outputs.directory }}/scripts/spz-interop/package-lock.json
       - name: Build the converter and SDK decoder checks
+        working-directory: ${{ steps.source.outputs.directory }}
         run: |
           cmake -S packages/splat-core -B build/splat-core -DCMAKE_BUILD_TYPE=Release
           cmake --build build/splat-core --parallel --target splat_core_tests
       - name: Install pinned interoperability tools
+        working-directory: ${{ steps.source.outputs.directory }}
         run: npm ci --prefix scripts/spz-interop --ignore-scripts --no-audit --no-fund
       - name: Check PlayCanvas parsing and SplatTransform interchange
+        working-directory: ${{ steps.source.outputs.directory }}
         run: >
           node scripts/spz-interop/test.mjs
           build/splat-core/tools/splat-convert
