@@ -137,4 +137,4 @@ The hierarchy stays resident, without Hi-Z or temporal transitions.
 Stats: `loadedSplatCount` counts source splats; `drawnSplatCount` counts completed draw candidates.
 Tile counts distinguish compute, nonempty compute and hardware screen tiles.
 Command timings overlap; HUD sort includes visibility/radix.
-[Measurements](../../docs/BENCHMARKS.md) separate visual rejection, Mac checks and phone evidence.
+[Phone measurements](../../docs/BENCHMARKS.md) record settings, evidence and visual limitations.
