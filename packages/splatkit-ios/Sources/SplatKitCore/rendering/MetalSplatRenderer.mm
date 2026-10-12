@@ -1,6 +1,9 @@
 #include "rendering/MetalSplatRenderer.h"
 
 #include <TargetConditionals.h>
+#if TARGET_OS_IPHONE
+#include <os/proc.h>
+#endif
 
 #include <algorithm>
 #include <cmath>
@@ -381,6 +384,17 @@ bool MetalSplatRenderer::createPipelines() {
   }
   LOGI("pipelines for format %lu", static_cast<unsigned long>(pipelineFormat_));
   return true;
+}
+
+// iOS ends an app whose dirty footprint, GPU buffers included, reaches its limit; what is left
+// below it is what a load may use. Zero means the process has no limit to report. A Mac pages
+// instead, so its loads are not guarded.
+std::optional<std::uint64_t> MetalSplatRenderer::availableMemory() const {
+#if TARGET_OS_IPHONE
+  const std::size_t available = os_proc_available_memory();
+  if (available > 0) return available;
+#endif
+  return std::nullopt;
 }
 
 // Worlds.

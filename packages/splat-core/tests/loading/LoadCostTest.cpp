@@ -12,6 +12,7 @@
 #include "splat/lod/LodFile.h"
 #include "splat/lod/LodTree.h"
 #include "splat/sorting/SpatialOrder.h"
+#include "support/TempPath.h"
 #include "support/TestWorlds.h"
 
 namespace splat {
@@ -69,12 +70,10 @@ LodTree treeOf(int splats, int degree) {
 
 class LodSplatFile : public testing::Test {
  protected:
-  std::string path_ = testing::TempDir() + "/load-cost-" +
-                      std::to_string(reinterpret_cast<std::uintptr_t>(this)) + ".lodsplat";
-  void TearDown() override { std::remove(path_.c_str()); }
+  const TempPath path_{"load-cost.lodsplat"};
   std::vector<std::uint8_t> write(const LodTree& tree) {
-    EXPECT_TRUE(writeLodSplat(tree, path_).ok());
-    auto file = MappedFile::open(path_);
+    EXPECT_TRUE(writeLodSplat(tree, path_.string()).ok());
+    auto file = MappedFile::open(path_.string());
     EXPECT_TRUE(file.ok());
     return {file.value().data(), file.value().data() + file.value().size()};
   }

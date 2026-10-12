@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -13,6 +14,7 @@
 #include "splat/lod/LodTree.h"
 #include "splat/sorting/SpatialOrder.h"
 #include "support/AllocationTracker.h"
+#include "support/TempPath.h"
 #include "support/TestWorlds.h"
 
 // Holds the load cost model to what each stage asks of operator new, on worlds large enough
@@ -60,13 +62,11 @@ SplatCloud decoded(const std::vector<std::uint8_t>& bytes, int degree) {
 
 class LodSplatFile : public testing::Test {
  protected:
-  std::string path_ = testing::TempDir() + "/load-peak-" +
-                      std::to_string(reinterpret_cast<std::uintptr_t>(this)) + ".lodsplat";
-  void TearDown() override { std::remove(path_.c_str()); }
+  const TempPath path_{"load-peak.lodsplat"};
   std::vector<std::uint8_t> write(const LodTree& tree) {
-    std::remove(path_.c_str());
-    EXPECT_TRUE(writeLodSplat(tree, path_).ok());
-    auto file = MappedFile::open(path_);
+    std::filesystem::remove(path_.path());
+    EXPECT_TRUE(writeLodSplat(tree, path_.string()).ok());
+    auto file = MappedFile::open(path_.string());
     EXPECT_TRUE(file.ok());
     return {file.value().data(), file.value().data() + file.value().size()};
   }

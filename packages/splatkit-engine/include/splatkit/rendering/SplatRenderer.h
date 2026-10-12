@@ -67,6 +67,10 @@ class SplatRenderer {
     return true;
   }
 
+  // Bytes the process can still allocate before the system ends it, GPU memory included, or
+  // nothing where the platform does not say; loads that would pass it fail instead. Any thread.
+  virtual std::optional<std::uint64_t> availableMemory() const { return std::nullopt; }
+
   // True when a surface is up: frames can be drawn and worlds uploaded.
   virtual bool ready() const = 0;
   // Where the splats are drawn: the surface's size with the render scale applied.

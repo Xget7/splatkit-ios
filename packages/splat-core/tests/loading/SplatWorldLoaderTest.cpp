@@ -1,6 +1,5 @@
 #include "splat/loading/SplatWorldLoader.h"
 
-#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <optional>
@@ -15,6 +14,7 @@
 #include "splat/lod/LodFile.h"
 #include "splat/lod/LodTree.h"
 #include "splat/tiles/TileBuilder.h"
+#include "support/TempPath.h"
 
 namespace splat {
 namespace {
@@ -115,15 +115,14 @@ TEST(SplatWorldLoader, ANewerLoadReplacesTheWaitingOne) {
 
 TEST(SplatWorldLoader, LoadsAWorldFromAFile) {
   const auto bytes = encodeSpz(30);
-  const std::string path = testing::TempDir() + "/world-loader-test.spz";
+  const TempPath file("world-loader-test.spz");
   {
-    std::ofstream out(path, std::ios::binary);
+    std::ofstream out(file.path(), std::ios::binary);
     out.write(reinterpret_cast<const char*>(bytes.data()),
               static_cast<std::streamsize>(bytes.size()));
   }
   SplatWorldLoader loader;
-  auto report = loader.loadWorldFile(path);
-  std::remove(path.c_str());
+  auto report = loader.loadWorldFile(file.string());
   ASSERT_TRUE(report.ok()) << report.error().message;
   EXPECT_EQ(report.value().splatCount, 30u);
   ASSERT_NE(loader.takeWorld(), nullptr);
@@ -158,16 +157,6 @@ SplatWorldLoader::MemoryGuard guardOf(const std::optional<std::uint64_t>& availa
   return {[&available] { return available; },
           [](const LoadCost& cost) { return cost.records * kGpuBytesPerRecord; }};
 }
-
-struct TempPath {
-  std::filesystem::path path;
-  explicit TempPath(const std::string& name)
-      : path(std::filesystem::path(testing::TempDir()) /
-             (name + "-" + std::to_string(std::random_device{}()))) {}
-  TempPath(const TempPath&) = delete;
-  TempPath& operator=(const TempPath&) = delete;
-  ~TempPath() { std::filesystem::remove_all(path); }
-};
 
 TEST(SplatWorldLoader, AWorldTheMemoryLeftCannotHoldFailsAndLeavesTheWaitingOne) {
   std::optional<std::uint64_t> available = kPlenty;
@@ -233,12 +222,12 @@ TEST(SplatWorldLoader, ALodSplatTheMemoryLeftCannotHoldFails) {
   auto cloud = decodeSpz(spz.data(), spz.size());
   ASSERT_TRUE(cloud.ok());
   const TempPath file("world-loader-guard.lodsplat");
-  ASSERT_TRUE(writeLodSplat(buildLodTree(std::move(cloud.value())), file.path.string()).ok());
+  ASSERT_TRUE(writeLodSplat(buildLodTree(std::move(cloud.value())), file.string()).ok());
 
   std::optional<std::uint64_t> available = kTooLittle;
   SplatWorldLoader loader;
   loader.setMemoryGuard(guardOf(available));
-  auto refused = loader.loadWorldFile(file.path.string());
+  auto refused = loader.loadWorldFile(file.string());
   ASSERT_FALSE(refused.ok());
   EXPECT_EQ(refused.error().code, ErrorCode::insufficientMemory);
   EXPECT_NE(refused.error().message.find("prepare it as a tileset"), std::string::npos)
@@ -246,12 +235,11 @@ TEST(SplatWorldLoader, ALodSplatTheMemoryLeftCannotHoldFails) {
   EXPECT_EQ(loader.takeWorld(), nullptr);
 
   available = kPlenty;
-  EXPECT_TRUE(loader.loadWorldFile(file.path.string()).ok());
+  EXPECT_TRUE(loader.loadWorldFile(file.string()).ok());
 }
 
 TEST(SplatWorldLoader, ATiledWorldIsPricedByItsResidency) {
-  const TempPath dir("world-loader-tiles");
-  std::filesystem::create_directories(dir.path);
+  const TempPath dir("world-loader-tiles", TempKind::directory);
   spz::GaussianCloud cloud;
   cloud.numPoints = 200;
   for (int i = 0; i < cloud.numPoints; ++i) {
@@ -263,8 +251,8 @@ TEST(SplatWorldLoader, ATiledWorldIsPricedByItsResidency) {
   }
   TileBuildOptions options;
   options.tileSplats = 64;
-  ASSERT_TRUE(buildTiles(cloud, dir.path.string(), options).ok());
-  const std::string index = (dir.path / "tileset.json").string();
+  ASSERT_TRUE(buildTiles(cloud, dir.string(), options).ok());
+  const std::string index = (dir.path() / "tileset.json").string();
 
   constexpr std::uint32_t kLargeResidency = 2000000;
   constexpr std::uint32_t kSmallResidency = 100000;

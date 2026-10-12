@@ -7,6 +7,7 @@
 #include "splat/math/Frustum.h"
 #include "splat/tiles/TileStreamer.h"
 #include "splatkit/Log.h"
+#include "splatkit/rendering/GpuLayout.h"
 
 namespace splatkit {
 namespace {
@@ -51,6 +52,7 @@ float framingRadius(const splat::Bounds& bounds, Extent extent) {
 SplatEngine::SplatEngine(std::unique_ptr<SplatRenderer> renderer) : renderer_(std::move(renderer)) {
   // The backend's fallback is the policy in effect until the host sets one.
   policy_ = renderer_->deviceCapabilities().policy.fallback;
+  loader_.setMemoryGuard({[this] { return renderer_->availableMemory(); }, &gpuWorldBytes});
 }
 
 RenderPolicyResolution SplatEngine::setRenderPolicy(const RenderPolicy& requested) {
@@ -132,6 +134,11 @@ void SplatEngine::reportWorld(const splat::Result<splat::SplatWorldLoader::World
          r.splatCount, r.treeMillis);
   }
   if (r.tileCount > 0) LOGI("tiled world: %zu tiles", r.tileCount);
+  if (r.availableBytes > 0) {
+    LOGI("memory: the load needs about %llu MiB with headroom, %llu MiB free",
+         static_cast<unsigned long long>(r.neededBytes >> 20),
+         static_cast<unsigned long long>(r.availableBytes >> 20));
+  }
 }
 
 void SplatEngine::reportCollider(
@@ -161,7 +168,7 @@ bool SplatEngine::applyPendingLoads() {
   const auto start = Clock::now();
   if (world->tiles) {
     const splat::Tileset& set = *world->tiles->tileset;
-    const uint32_t residency = residency_.load();
+    const uint32_t residency = world->residency;
     if (!renderer_->createSlab(residency, std::min(set.shDegree, maxShDegree_.load()))) {
       LOGE("slab of %u splats failed", residency);
       emit(Event::worldFailed, "GPU upload failed");

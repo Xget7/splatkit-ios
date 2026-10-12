@@ -10,6 +10,7 @@
 
 #include "load-spz.h"
 #include "splat/tiles/TileBuilder.h"
+#include "support/TempPath.h"
 
 namespace splat {
 namespace {
@@ -37,17 +38,6 @@ spz::GaussianCloud clusters(int perCluster, float r, float gap) {
   return c;
 }
 
-struct TempDir {
-  fs::path path;
-  TempDir() {
-    path = fs::temp_directory_path() / ("splat-stream-" + std::to_string(std::random_device{}()));
-    fs::create_directories(path);
-  }
-  TempDir(const TempDir&) = delete;
-  TempDir& operator=(const TempDir&) = delete;
-  ~TempDir() { fs::remove_all(path); }
-};
-
 TileView from(Vec3 origin, float limit) {
   TileView view;
   view.frustum = Frustum::make(origin, {0, 0, -1}, {0, 1, 0}, 1.0f, 1.0f, 0.5f);
@@ -73,15 +63,15 @@ int settle(TileStreamer& streamer, const TileView& view) {
 }
 
 struct BuiltWorld {
-  TempDir dir;
+  const TempPath dir{"splat-stream", TempKind::directory};
   TiledWorld world;
   BuiltWorld() {
     TileBuildOptions options;
     options.tileSplats = 64;
-    auto built = buildTiles(clusters(200, 0.3f, 20.0f), dir.path.string(), options);
+    auto built = buildTiles(clusters(200, 0.3f, 20.0f), dir.string(), options);
     EXPECT_TRUE(built.ok());
     // The builder wrote the cloud's own coordinates; read them back unchanged.
-    auto opened = openTiledWorld((dir.path / "tileset.json").string(), kInternalFrame);
+    auto opened = openTiledWorld((dir.path() / "tileset.json").string(), kInternalFrame);
     EXPECT_TRUE(opened.ok()) << (opened.ok() ? "" : opened.error().message);
     world = opened.value();
   }
@@ -248,7 +238,7 @@ TEST(TileStreamer, AMissingTileFileIsReportedAndItsParentStays) {
     const Tile& t = set.tiles[i];
     if (t.level == 0 && near.frustum.intersects(t.bounds.min, t.bounds.max)) leaf = i;
   }
-  fs::remove(built.dir.path / set.tiles[leaf].file);
+  fs::remove(built.dir.path() / set.tiles[leaf].file);
 
   StreamOptions options;
   options.residency = 1000;

@@ -2,7 +2,6 @@
 
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <iterator>
@@ -11,6 +10,7 @@
 
 #include "load-spz.h"
 #include "splat/formats/SpzDecoder.h"
+#include "support/TempPath.h"
 
 namespace splat {
 namespace {
@@ -38,15 +38,7 @@ std::string shellQuote(const std::string& value) {
 
 class SplatConvert : public testing::Test {
  protected:
-  void SetUp() override {
-    base_ = testing::TempDir() + "/splat convert 'fixture-" +
-            std::to_string(reinterpret_cast<std::uintptr_t>(this));
-    ASSERT_TRUE(spz::saveSplatToPly(orientedCloud(), {}, base_ + ".ply"));
-  }
-  void TearDown() override {
-    for (const auto* extension : {".ply", ".spz", "-input.spz"})
-      std::remove((base_ + extension).c_str());
-  }
+  void SetUp() override { ASSERT_TRUE(spz::saveSplatToPly(orientedCloud(), {}, base_ + ".ply")); }
   int convert(const std::string& input, const std::string& options = "",
               const std::string& executable = SPLAT_CONVERT_PATH) const {
     const auto command = shellQuote(executable) + " " + shellQuote(input) + " " +
@@ -95,7 +87,9 @@ class SplatConvert : public testing::Test {
     for (std::size_t i = 0; i < 6; ++i)
       EXPECT_NEAR(decoded.value().covariances[i], referenceDecoded.value().covariances[i], 0.003f);
   }
-  std::string base_;
+  const TempPath dir_{"splat-convert", TempKind::directory};
+  // A space and a quote in every path the tool is handed, for the shell quoting.
+  const std::string base_ = (dir_.path() / "splat convert 'fixture").string();
 };
 
 TEST_F(SplatConvert, LegacyPlyCommandDefaultsToVersion2AndRdf) {

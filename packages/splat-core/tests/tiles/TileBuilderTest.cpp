@@ -9,9 +9,12 @@
 #include <gtest/gtest.h>
 
 #include "load-spz.h"
+#include "support/TempPath.h"
 
 using splat::buildTiles;
 using splat::readTileset;
+using splat::TempKind;
+using splat::TempPath;
 using splat::Tile;
 using splat::TileBuildOptions;
 using splat::Tileset;
@@ -42,17 +45,6 @@ spz::GaussianCloud clusters(int perCluster, float r, float gap, unsigned seed = 
   return c;
 }
 
-struct TempDir {
-  fs::path path;
-  TempDir() {
-    path = fs::temp_directory_path() / ("splat-tiles-" + std::to_string(std::random_device{}()));
-    fs::create_directories(path);
-  }
-  TempDir(const TempDir&) = delete;
-  TempDir& operator=(const TempDir&) = delete;
-  ~TempDir() { fs::remove_all(path); }
-};
-
 bool inside(const float* p, const splat::Bounds& b, float slack = 1e-4f) {
   for (int k = 0; k < 3; ++k) {
     if (p[k] < b.min[k] - slack || p[k] > b.max[k] + slack) return false;
@@ -61,10 +53,10 @@ bool inside(const float* p, const splat::Bounds& b, float slack = 1e-4f) {
 }
 
 TEST(TileBuilder, SplitsUntilTilesFitAndMergesBackUp) {
-  const TempDir dir;
+  const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
   options.tileSplats = 500;
-  auto built = buildTiles(clusters(1200, 0.05f, 20.0f), dir.path.string(), options);
+  auto built = buildTiles(clusters(1200, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const Tileset& set = built.value();
   EXPECT_EQ(set.shDegree, 1);
@@ -74,7 +66,7 @@ TEST(TileBuilder, SplitsUntilTilesFitAndMergesBackUp) {
   int deepest = 0;
   for (const Tile& t : set.tiles) {
     EXPECT_LE(t.count, 500u) << t.file;
-    EXPECT_TRUE(fs::exists(dir.path / t.file));
+    EXPECT_TRUE(fs::exists(dir.path() / t.file));
     if (t.level == 0) {
       leafSplats += t.count;
       EXPECT_EQ(t.error, 0.0f);
@@ -95,13 +87,13 @@ TEST(TileBuilder, SplitsUntilTilesFitAndMergesBackUp) {
 }
 
 TEST(TileBuilder, TileFilesHoldWhatTheIndexSaysInsideTheirBounds) {
-  const TempDir dir;
+  const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
   options.tileSplats = 300;
-  auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.path.string(), options);
+  auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   for (const Tile& t : built.value().tiles) {
-    spz::GaussianCloud c = spz::loadSpz((dir.path / t.file).string(), {});
+    spz::GaussianCloud c = spz::loadSpz((dir.path() / t.file).string(), {});
     ASSERT_EQ(static_cast<uint32_t>(c.numPoints), t.count) << t.file;
     EXPECT_EQ(c.shDegree, 1);
     for (int i = 0; i < c.numPoints; ++i) {
@@ -111,12 +103,12 @@ TEST(TileBuilder, TileFilesHoldWhatTheIndexSaysInsideTheirBounds) {
 }
 
 TEST(TileBuilder, WritesAnIndexTheReaderAccepts) {
-  const TempDir dir;
+  const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
   options.tileSplats = 300;
-  auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.path.string(), options);
+  auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
-  const std::ifstream in(dir.path / "tileset.json");
+  const std::ifstream in(dir.path() / "tileset.json");
   std::stringstream text;
   text << in.rdbuf();
   auto read = readTileset(text.str());
@@ -129,15 +121,15 @@ TEST(TileBuilder, AMergedSplatCoversItsMembers) {
   // Two clusters far apart, forced into one tile at level 1: each cluster of overlapping
   // splats merges into splats that sit on the cluster, no smaller than a member, opaque
   // where the members were, with unit rotations and the cluster's colour.
-  const TempDir dir;
+  const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
   options.tileSplats = 64;
-  auto built = buildTiles(clusters(200, 0.3f, 20.0f), dir.path.string(), options);
+  auto built = buildTiles(clusters(200, 0.3f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const Tileset& set = built.value();
   const Tile& root = set.tiles[set.root];
   ASSERT_GT(root.level, 0);
-  spz::GaussianCloud c = spz::loadSpz((dir.path / root.file).string(), {});
+  spz::GaussianCloud c = spz::loadSpz((dir.path() / root.file).string(), {});
   ASSERT_GT(c.numPoints, 0);
   for (int i = 0; i < c.numPoints; ++i) {
     const float x = c.positions[i * 3];
@@ -155,18 +147,18 @@ TEST(TileBuilder, AMergedSplatCoversItsMembers) {
 }
 
 TEST(TileBuilder, ASelectedSplatIsAMemberGrownToCoverTheCell) {
-  const TempDir dir;
+  const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
   options.tileSplats = 64;
   options.coarsening = splat::Coarsening::select;
   const spz::GaussianCloud source = clusters(200, 0.3f, 20.0f);
   const spz::GaussianCloud copy = source;
-  auto built = buildTiles(source, dir.path.string(), options);
+  auto built = buildTiles(source, dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const Tileset& set = built.value();
   const Tile& root = set.tiles[set.root];
   ASSERT_GT(root.level, 0);
-  spz::GaussianCloud c = spz::loadSpz((dir.path / root.file).string(), {});
+  spz::GaussianCloud c = spz::loadSpz((dir.path() / root.file).string(), {});
   ASSERT_GT(c.numPoints, 0);
   ASSERT_LE(static_cast<uint32_t>(c.numPoints), 64u);
   for (int i = 0; i < c.numPoints; ++i) {
@@ -189,8 +181,8 @@ TEST(TileBuilder, ASelectedSplatIsAMemberGrownToCoverTheCell) {
 }
 
 TEST(TileBuilder, RefusesAnEmptyCloud) {
-  const TempDir dir;
-  EXPECT_FALSE(buildTiles(spz::GaussianCloud{}, dir.path.string()).ok());
+  const TempPath dir("splat-tiles", TempKind::directory);
+  EXPECT_FALSE(buildTiles(spz::GaussianCloud{}, dir.string()).ok());
 }
 
 }  // namespace

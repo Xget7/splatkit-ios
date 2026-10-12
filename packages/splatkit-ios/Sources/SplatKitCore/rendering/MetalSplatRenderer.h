@@ -48,6 +48,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   void setVsync(bool vsync) override;
 
   DeviceCapabilities deviceCapabilities() const override;
+  std::optional<std::uint64_t> availableMemory() const override;
   bool applyRenderPolicy(const RenderPolicy& policy, std::string* reason) override;
 
   bool ready() const override { return layer_ != nil && width_ > 0 && height_ > 0; }
