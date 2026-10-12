@@ -23,6 +23,28 @@ struct SpzDecodeOptions {
   std::size_t maxDecodedBytes = 768u * 1024u * 1024u;
 };
 
+// What an SPZ container declares about its splats, read without decoding them.
+struct SpzHeader {
+  std::uint32_t version = 0;
+  std::uint32_t pointCount = 0;
+  int shDegree = 0;
+  bool gzip = false;  // one gzip stream holding spz's packed layout; else NGSP's zstd streams
+
+  // Bytes per splat of spz's packed layout with harmonics to `degree`: a position, alpha,
+  // colour, scale, a rotation (smallest three from version 3) and the harmonics.
+  std::uint64_t packedBytesPerSplat(int degree) const;
+  // Half floats in version 1, then 24 bit fixed point: the largest attribute but harmonics.
+  std::uint64_t packedPositionBytes() const;
+  // 3 bytes per SH coefficient.
+  static std::uint64_t packedShBytes(int degree);
+  // What a gzip container inflates to: the packed header, then every splat at its degree.
+  std::uint64_t inflatedBytes() const;
+};
+
+// Inflates only the start of a gzip container. Fails like `decodeSpz` for bytes that are
+// not a container, and as `corrupt` for a header it would not decode.
+Result<SpzHeader> readSpzHeader(const std::uint8_t* data, std::size_t size);
+
 // Decodes an SPZ container (v1 to v4; gzip or zstd) into a SplatCloud in the internal frame.
 // Returns `unsupportedFormat` when the bytes are not an SPZ container and
 // `corrupt` when the container is recognised but cannot be decoded, is truncated or

@@ -4,10 +4,20 @@
 #include <cmath>
 #include <cstring>
 
+#include "splat/lod/LodTree.h"
 #include "splat/math/Half.h"
 
 namespace splatkit {
 namespace {
+
+// Per splat a frame may draw: its projection, the sort's key and value (double buffered) and
+// the index the selection writes.
+constexpr std::uint64_t kProjectedSplatBytes = 32;
+constexpr std::uint64_t kDrawBytesPerSplat =
+    kProjectedSplatBytes + 2 * 2 * sizeof(uint32_t) + sizeof(uint32_t);
+// Per cluster, beside its record: the selection walk's packet (16), cost (8) and offsets (16),
+// and its place in the two frontier lists.
+constexpr std::uint64_t kWalkBytesPerCluster = 16 + 8 + 16 + 2 * sizeof(uint32_t);
 
 uint32_t packRgba8(float r, float g, float b, float a) {
   auto q = [](float v) {
@@ -29,6 +39,13 @@ uint32_t packHalf2(float a, float b) {
 
 std::size_t shStride(int degree) {
   return (shCoefficients(degree) * 3 + 1) / 2;
+}
+
+std::uint64_t gpuWorldBytes(const splat::LoadCost& cost) {
+  const std::uint64_t record = sizeof(GpuSplat) + shStride(cost.shDegree) * sizeof(uint32_t);
+  return cost.records * record + cost.drawCapacity * kDrawBytesPerSplat +
+         cost.clusters * (sizeof(splat::LodCluster) + kWalkBytesPerCluster) +
+         cost.leafRefs * sizeof(uint32_t);
 }
 
 bool carriesSh(const splat::SplatCloud& cloud, int degree) {

@@ -2,28 +2,20 @@
 
 #include "load-spz.h"
 #include "splatkit/engine/SplatEngine.h"
+#include "support/StubRenderer.h"
 
 namespace splatkit {
 namespace {
 
 // Capture what the real engine asks of either native renderer.
-class RecordingRenderer final : public SplatRenderer {
+class RecordingRenderer final : public StubRenderer {
  public:
   explicit RecordingRenderer(bool gpu) : gpu_(gpu) {}
-  void setRenderScale(float) override {}
-  float renderScale() const override { return 1; }
-  void setLinearBlending(bool) override {}
-  bool linearBlending() const override { return false; }
-  void setVsync(bool) override {}
-  bool ready() const override { return true; }
   Extent drawExtent() const override { return extent; }
-  uint32_t generation() const override { return 0; }
   bool uploadWorld(const splat::SplatCloud& cloud, int) override {
     world_ = GpuWorldInfo{static_cast<uint32_t>(cloud.count()), 0};
     return true;
   }
-  bool createSlab(uint32_t, int) override { return false; }
-  bool uploadTile(uint32_t, const splat::SplatCloud&) override { return false; }
   std::optional<GpuWorldInfo> world() const override { return world_; }
   bool sortsOnGpu() const override { return gpu_; }
   bool selectsLodOnGpu() const override { return gpuLod; }
@@ -38,9 +30,7 @@ class RecordingRenderer final : public SplatRenderer {
     ++frames;
     return true;
   }
-  double lastGpuMillis() const override { return 0; }
   ScreenTileStats lastScreenTileStats() const override { return tiles; }
-  const std::string& deviceDescription() const override { return description_; }
   Extent extent{1000, 1000};
   OrderSource source = OrderSource::cpu;
   std::vector<Range> ranges;
@@ -52,7 +42,6 @@ class RecordingRenderer final : public SplatRenderer {
  private:
   bool gpu_;
   std::optional<GpuWorldInfo> world_;
-  std::string description_ = "test";
 };
 
 std::vector<uint8_t> worldBytes() {

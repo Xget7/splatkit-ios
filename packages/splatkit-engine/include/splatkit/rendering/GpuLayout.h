@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "splat/formats/SplatCloud.h"
+#include "splat/loading/LoadCost.h"
 
 namespace splatkit {
 
@@ -31,6 +32,11 @@ bool carriesSh(const splat::SplatCloud& cloud, int degree);
 // Bands 1 to `degree` of every splat, `shStride(degree)` uints each. The cloud must
 // carry at least that degree.
 std::vector<uint32_t> packSh(const splat::SplatCloud& cloud, int degree);
+
+// GPU bytes a world of this cost takes once uploaded and drawn, after the Metal renderer's
+// buffers: the records, per splat a frame may draw its projection, sort pair and selected
+// index, and a tree's selection data with the working lists its walk keeps per cluster.
+std::uint64_t gpuWorldBytes(const splat::LoadCost& cost);
 
 // Every splat of the cloud in the GPU layout.
 std::vector<GpuSplat> packSplats(const splat::SplatCloud& cloud);

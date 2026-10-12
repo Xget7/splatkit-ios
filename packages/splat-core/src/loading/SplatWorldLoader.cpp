@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdio>
 #include <utility>
 
 #include "splat/formats/GlbDecoder.h"
@@ -18,6 +19,17 @@ using Clock = std::chrono::steady_clock;
 // A .lodsplat is already a tree, so it draws with a budget even if the caller set none.
 constexpr int kDefaultLodBudget = 1200000;
 
+// Memory a load leaves free beyond its estimate: for what the estimate leaves out (allocator
+// slack, the decoder's small buffers, the renderer's per-frame scratch) and for whatever the
+// app allocates meanwhile.
+constexpr std::uint64_t kMemoryHeadroomBytes = 256ull << 20;
+constexpr double kBytesPerGigabyte = 1e9;
+
+// How a world that does not fit can be made to.
+constexpr const char* kSplatFileAdvice = "prepare it as a .lodsplat or a tileset";
+constexpr const char* kLodSplatAdvice = "prepare it as a tileset";
+constexpr const char* kSlabAdvice = "lower the residency budget";
+
 double millisSince(Clock::time_point start) {
   return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
 }
@@ -32,16 +44,48 @@ void SplatWorldLoader::setMaxShDegree(int degree) {
   maxShDegree_.store(std::clamp(degree, 0, 3));
 }
 
+void SplatWorldLoader::setResidency(std::uint32_t splats) {
+  residency_.store(splats);
+}
+
+void SplatWorldLoader::setMemoryGuard(MemoryGuard guard) {
+  guard_ = std::move(guard);
+}
+
+Result<SplatWorldLoader::MemoryUse> SplatWorldLoader::admit(const Result<LoadCost>& cost,
+                                                            const char* advice) const {
+  // A header the estimate cannot read is left to the decoder, which says what is wrong.
+  if (!cost || !guard_.availableBytes || !guard_.gpuBytes) return MemoryUse{};
+  const std::optional<std::uint64_t> available = guard_.availableBytes();
+  if (!available) return MemoryUse{};
+  const LoadCost& c = cost.value();
+  const std::uint64_t needed =
+      std::max(c.peakBytes, c.residentBytes + guard_.gpuBytes(c)) + kMemoryHeadroomBytes;
+  if (needed <= *available) return MemoryUse{needed, *available};
+  char message[192];
+  std::snprintf(message, sizeof(message),
+                "World needs about %.1f GB of memory to load, but only %.1f GB is free; %s",
+                static_cast<double>(needed) / kBytesPerGigabyte,
+                static_cast<double>(*available) / kBytesPerGigabyte, advice);
+  return Error{ErrorCode::insufficientMemory, message};
+}
+
 Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadWorld(const std::uint8_t* data,
                                                                   std::size_t size) {
   WorldReport report;
   auto start = Clock::now();
   if (isLodSplat(data, size)) {
+    const int lodBudget = budget() > 0 ? budget() : kDefaultLodBudget;
+    const auto memory =
+        admit(lodSplatLoadCost(data, size, maxShDegree_.load(), lodBudget), kLodSplatAdvice);
+    if (!memory) return memory.error();
+    report.neededBytes = memory.value().needed;
+    report.availableBytes = memory.value().available;
     auto decoded = decodeLodSplat(data, size, maxShDegree_.load());
     if (!decoded) return decoded.error();
     auto world = std::make_unique<World>();
     world->tree = std::make_shared<const LodTree>(std::move(decoded.value()));
-    world->budget = budget() > 0 ? budget() : kDefaultLodBudget;
+    world->budget = lodBudget;
     world->sourceCount = world->tree->leafCount;
     report.splatCount = world->sourceCount;
     report.nodeCount = world->tree->nodeCount();
@@ -54,6 +98,11 @@ Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadWorld(const std::uin
   }
   SplatDecodeOptions options;
   options.maxShDegree = maxShDegree_.load();
+  const auto memory =
+      admit(splatFileLoadCost(data, size, options.maxShDegree, budget()), kSplatFileAdvice);
+  if (!memory) return memory.error();
+  report.neededBytes = memory.value().needed;
+  report.availableBytes = memory.value().available;
   auto decoded = decodeSplatFile(data, size, options);
   if (!decoded) return decoded.error();
   report.decodeMillis = millisSince(start);
@@ -94,12 +143,19 @@ Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadTiledWorldFile(
   const auto start = Clock::now();
   auto opened = openTiledWorld(path);
   if (!opened) return opened.error();
+  const std::uint32_t residency = residency_.load();
+  const int shDegree = std::min(opened.value().tileset->shDegree, maxShDegree_.load());
+  const auto memory = admit(slabLoadCost(residency, shDegree), kSlabAdvice);
+  if (!memory) return memory.error();
   auto world = std::make_unique<World>();
   world->tiles = std::make_unique<TiledWorld>(std::move(opened.value()));
+  world->residency = residency;
   const Tileset& set = *world->tiles->tileset;
   world->sourceCount = set.splatCount;
 
   WorldReport report;
+  report.neededBytes = memory.value().needed;
+  report.availableBytes = memory.value().available;
   report.splatCount = set.splatCount;
   report.shDegree = set.shDegree;
   report.bounds = set.tiles[set.root].bounds;

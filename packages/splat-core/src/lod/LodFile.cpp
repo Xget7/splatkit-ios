@@ -173,30 +173,49 @@ Result<uint32_t> validateLodTree(const LodTree& tree) {
   return deepest;
 }
 
-Result<LodTree> decodeLodSplat(const uint8_t* data, size_t size, int maxShDegree) {
+Result<LodSplatHeader> readLodSplatHeader(const uint8_t* data, size_t size) {
   if (!isLodSplat(data, size)) return Error{ErrorCode::unsupportedFormat, "not a LODSPLAT file"};
   if (size < kHeader) return corrupt("truncated LODSPLAT header");
-  const uint32_t version = u32(data + 8);
-  if (version != 1 && version != 2)
+  LodSplatHeader header;
+  header.version = u32(data + 8);
+  if (header.version != 1 && header.version != 2)
     return Error{ErrorCode::unsupportedFormat, "unsupported LODSPLAT version"};
-  const size_t n = u32(data + 12);
+  header.nodeCount = u32(data + 12);
+  header.leafCount = u32(data + 16);
   const uint32_t degree = u32(data + 20);
-  const uint32_t depth = u32(data + 24);
-  const size_t clusters = u32(data + 28);
-  const size_t leafRefs = u32(data + 56);
-  if (n == 0 || n > kMaxNodes || degree > 3 || depth > kMaxDepth || clusters > n || leafRefs > n ||
-      (version == 1 && (clusters || leafRefs || u32(data + 60))) ||
-      (version == 2 &&
-       (!clusters || leafRefs != u32(data + 16) || u32(data + 60) != kClusterBytes)))
+  header.depth = u32(data + 24);
+  header.clusterCount = u32(data + 28);
+  header.leafRefCount = u32(data + 56);
+  const size_t n = header.nodeCount;
+  const size_t clusters = header.clusterCount;
+  const size_t leafRefs = header.leafRefCount;
+  if (n == 0 || n > kMaxNodes || degree > 3 || header.depth > kMaxDepth || clusters > n ||
+      leafRefs > n || (header.version == 1 && (clusters || leafRefs || u32(data + 60))) ||
+      (header.version == 2 &&
+       (!clusters || leafRefs != header.leafCount || u32(data + 60) != kClusterBytes)))
     return corrupt("invalid LODSPLAT header");
-  const size_t stride = kNodeFixedBytes + shStride(static_cast<int>(degree)) * 4;
+  header.shDegree = static_cast<int>(degree);
+  const size_t stride = kNodeFixedBytes + shStride(header.shDegree) * 4;
   if (size != kHeader + n * stride + clusters * kClusterBytes + leafRefs * 4)
     return corrupt("LODSPLAT length does not match node records");
+  return header;
+}
+
+Result<LodTree> decodeLodSplat(const uint8_t* data, size_t size, int maxShDegree) {
+  const auto header = readLodSplatHeader(data, size);
+  if (!header) return header.error();
+  const uint32_t version = header.value().version;
+  const size_t n = header.value().nodeCount;
+  const int degree = header.value().shDegree;
+  const uint32_t depth = header.value().depth;
+  const size_t clusters = header.value().clusterCount;
+  const size_t leafRefs = header.value().leafRefCount;
+  const size_t stride = kNodeFixedBytes + shStride(degree) * 4;
   LodTree tree;
-  tree.leafCount = u32(data + 16);
+  tree.leafCount = header.value().leafCount;
   tree.layout.resize(n);
   auto& c = tree.nodes;
-  c.shDegree = std::min(static_cast<int>(degree), std::clamp(maxShDegree, 0, 3));
+  c.shDegree = std::min(degree, std::clamp(maxShDegree, 0, 3));
   const size_t sh = shStride(c.shDegree);
   c.positions.resize(n * 3);
   c.covariances.resize(n * 6);

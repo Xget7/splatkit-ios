@@ -40,6 +40,7 @@ add_library(splat_core STATIC
   src/lod/LodSelection.cpp
   src/lod/LodFile.cpp
   src/io/MappedFile.cpp
+  src/loading/LoadCost.cpp
   src/loading/SplatWorldLoader.cpp
   src/sorting/VisibilityPlanner.cpp
   src/diagnostics/TimingSummary.cpp

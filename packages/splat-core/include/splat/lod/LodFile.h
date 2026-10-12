@@ -15,6 +15,19 @@ namespace splat {
 // Version 1 ends there. Version 2, written when the tree has selection data, appends the
 // LodCluster records and then the leaf references. The decoder reads both.
 bool isLodSplat(const uint8_t* data, size_t size);
+
+// What a LODSPLAT header declares, checked against the file's length.
+struct LodSplatHeader {
+  uint32_t version = 0;
+  size_t nodeCount = 0;
+  size_t leafCount = 0;
+  int shDegree = 0;
+  uint32_t depth = 0;
+  size_t clusterCount = 0;  // selection data, version 2 only
+  size_t leafRefCount = 0;
+};
+Result<LodSplatHeader> readLodSplatHeader(const uint8_t* data, size_t size);
+
 Result<LodTree> decodeLodSplat(const uint8_t* data, size_t size, int maxShDegree = 3);
 // Refuses to overwrite an existing file. Validates the tree before opening the output.
 Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path);

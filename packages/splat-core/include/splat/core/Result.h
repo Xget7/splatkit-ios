@@ -8,13 +8,13 @@
 
 namespace splat {
 
-// Error codes are stable across platforms: Android and iOS map them one to one
-// to the `LoadState.error` codes seen from JavaScript.
+// Error codes are stable across platforms; hosts are handed the message.
 enum class ErrorCode {
   unsupportedFormat,
   corrupt,
   gpuUnavailable,
-  unreadable,  // a file that cannot be opened, is empty, or cannot be mapped
+  unreadable,          // a file that cannot be opened, is empty, or cannot be mapped
+  insufficientMemory,  // a load the process could not hold without being ended for memory
 };
 
 struct Error {

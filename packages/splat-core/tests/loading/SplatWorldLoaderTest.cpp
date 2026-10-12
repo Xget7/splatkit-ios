@@ -1,7 +1,9 @@
 #include "splat/loading/SplatWorldLoader.h"
 
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
+#include <optional>
 #include <random>
 #include <string>
 #include <vector>
@@ -9,6 +11,10 @@
 #include <gtest/gtest.h>
 
 #include "load-spz.h"
+#include "splat/formats/SpzDecoder.h"
+#include "splat/lod/LodFile.h"
+#include "splat/lod/LodTree.h"
+#include "splat/tiles/TileBuilder.h"
 
 namespace splat {
 namespace {
@@ -137,6 +143,148 @@ TEST(SplatWorldLoader, ColliderBytesThatAreNotGlbFail) {
   auto missing = loader.loadColliderFile("/nonexistent/collider.glb");
   ASSERT_FALSE(missing.ok());
   EXPECT_EQ(missing.error().code, ErrorCode::unreadable);
+}
+
+constexpr std::uint64_t kMebibyte = 1024 * 1024;
+constexpr std::uint64_t kGibibyte = 1024 * kMebibyte;
+// Less than the loader keeps in reserve for everything else, so no world fits in it.
+constexpr std::uint64_t kTooLittle = 64 * kMebibyte;
+constexpr std::uint64_t kPlenty = 64 * kGibibyte;
+constexpr std::uint64_t kGpuBytesPerRecord = 1000;
+
+// A platform that reports `available` bytes left and a renderer that spends
+// kGpuBytesPerRecord on each splat it uploads.
+SplatWorldLoader::MemoryGuard guardOf(const std::optional<std::uint64_t>& available) {
+  return {[&available] { return available; },
+          [](const LoadCost& cost) { return cost.records * kGpuBytesPerRecord; }};
+}
+
+struct TempPath {
+  std::filesystem::path path;
+  explicit TempPath(const std::string& name)
+      : path(std::filesystem::path(testing::TempDir()) /
+             (name + "-" + std::to_string(std::random_device{}()))) {}
+  TempPath(const TempPath&) = delete;
+  TempPath& operator=(const TempPath&) = delete;
+  ~TempPath() { std::filesystem::remove_all(path); }
+};
+
+TEST(SplatWorldLoader, AWorldTheMemoryLeftCannotHoldFailsAndLeavesTheWaitingOne) {
+  std::optional<std::uint64_t> available = kPlenty;
+  SplatWorldLoader loader;
+  loader.setMemoryGuard(guardOf(available));
+  const auto waiting = encodeSpz(10);
+  ASSERT_TRUE(loader.loadWorld(waiting.data(), waiting.size()).ok());
+
+  available = kTooLittle;
+  const auto bytes = encodeSpz(50);
+  auto refused = loader.loadWorld(bytes.data(), bytes.size());
+  ASSERT_FALSE(refused.ok());
+  EXPECT_EQ(refused.error().code, ErrorCode::insufficientMemory);
+  EXPECT_NE(refused.error().message.find("GB"), std::string::npos) << refused.error().message;
+  EXPECT_NE(refused.error().message.find("prepare it as a .lodsplat or a tileset"),
+            std::string::npos)
+      << refused.error().message;
+  auto world = loader.takeWorld();
+  ASSERT_NE(world, nullptr);
+  EXPECT_EQ(world->sourceCount, 10u);
+}
+
+TEST(SplatWorldLoader, TheGuardPricesTheGpuCopyAndReportsWhatItFound) {
+  std::optional<std::uint64_t> available = kPlenty;
+  SplatWorldLoader loader;
+  loader.setMemoryGuard(guardOf(available));
+  constexpr int kSplats = 5000;
+  const auto bytes = encodeSpz(kSplats);
+  auto report = loader.loadWorld(bytes.data(), bytes.size());
+  ASSERT_TRUE(report.ok()) << report.error().message;
+  EXPECT_EQ(report.value().availableBytes, kPlenty);
+  const std::uint64_t needed = report.value().neededBytes;
+  EXPECT_GT(needed, kSplats * kGpuBytesPerRecord);
+
+  available = needed - 1;
+  EXPECT_EQ(loader.loadWorld(bytes.data(), bytes.size()).error().code,
+            ErrorCode::insufficientMemory);
+  available = needed;
+  EXPECT_TRUE(loader.loadWorld(bytes.data(), bytes.size()).ok());
+}
+
+TEST(SplatWorldLoader, WhereThePlatformDoesNotSayLoadsAreNotGuarded) {
+  const std::optional<std::uint64_t> available;
+  SplatWorldLoader loader;
+  loader.setMemoryGuard(guardOf(available));
+  const auto bytes = encodeSpz(50);
+  auto report = loader.loadWorld(bytes.data(), bytes.size());
+  ASSERT_TRUE(report.ok()) << report.error().message;
+  EXPECT_EQ(report.value().neededBytes, 0u);
+  EXPECT_EQ(report.value().availableBytes, 0u);
+}
+
+TEST(SplatWorldLoader, BytesTheEstimateCannotReadAreLeftToTheDecoder) {
+  const std::optional<std::uint64_t> available = kTooLittle;
+  SplatWorldLoader loader;
+  loader.setMemoryGuard(guardOf(available));
+  const std::uint8_t junk[] = {1, 2, 3, 4, 5, 6, 7, 8};
+  EXPECT_EQ(loader.loadWorld(junk, sizeof(junk)).error().code, ErrorCode::unsupportedFormat);
+}
+
+TEST(SplatWorldLoader, ALodSplatTheMemoryLeftCannotHoldFails) {
+  const auto spz = encodeSpz(500);
+  auto cloud = decodeSpz(spz.data(), spz.size());
+  ASSERT_TRUE(cloud.ok());
+  const TempPath file("world-loader-guard.lodsplat");
+  ASSERT_TRUE(writeLodSplat(buildLodTree(std::move(cloud.value())), file.path.string()).ok());
+
+  std::optional<std::uint64_t> available = kTooLittle;
+  SplatWorldLoader loader;
+  loader.setMemoryGuard(guardOf(available));
+  auto refused = loader.loadWorldFile(file.path.string());
+  ASSERT_FALSE(refused.ok());
+  EXPECT_EQ(refused.error().code, ErrorCode::insufficientMemory);
+  EXPECT_NE(refused.error().message.find("prepare it as a tileset"), std::string::npos)
+      << refused.error().message;
+  EXPECT_EQ(loader.takeWorld(), nullptr);
+
+  available = kPlenty;
+  EXPECT_TRUE(loader.loadWorldFile(file.path.string()).ok());
+}
+
+TEST(SplatWorldLoader, ATiledWorldIsPricedByItsResidency) {
+  const TempPath dir("world-loader-tiles");
+  std::filesystem::create_directories(dir.path);
+  spz::GaussianCloud cloud;
+  cloud.numPoints = 200;
+  for (int i = 0; i < cloud.numPoints; ++i) {
+    cloud.positions.insert(cloud.positions.end(), {static_cast<float>(i % 20), 0.0f, 0.0f});
+    cloud.scales.insert(cloud.scales.end(), {-3.0f, -3.0f, -3.0f});
+    cloud.rotations.insert(cloud.rotations.end(), {0.0f, 0.0f, 0.0f, 1.0f});
+    cloud.alphas.push_back(2.0f);
+    cloud.colors.insert(cloud.colors.end(), {0.0f, 0.0f, 0.0f});
+  }
+  TileBuildOptions options;
+  options.tileSplats = 64;
+  ASSERT_TRUE(buildTiles(cloud, dir.path.string(), options).ok());
+  const std::string index = (dir.path / "tileset.json").string();
+
+  constexpr std::uint32_t kLargeResidency = 2000000;
+  constexpr std::uint32_t kSmallResidency = 100000;
+  const std::optional<std::uint64_t> available = kGibibyte;
+  SplatWorldLoader loader;
+  loader.setMemoryGuard(guardOf(available));
+  loader.setResidency(kLargeResidency);
+  auto refused = loader.loadTiledWorldFile(index);
+  ASSERT_FALSE(refused.ok());
+  EXPECT_EQ(refused.error().code, ErrorCode::insufficientMemory);
+  EXPECT_NE(refused.error().message.find("lower the residency budget"), std::string::npos)
+      << refused.error().message;
+
+  loader.setResidency(kSmallResidency);
+  auto report = loader.loadTiledWorldFile(index);
+  ASSERT_TRUE(report.ok()) << report.error().message;
+  EXPECT_GT(report.value().neededBytes, kSmallResidency * kGpuBytesPerRecord);
+  auto world = loader.takeWorld();
+  ASSERT_NE(world, nullptr);
+  EXPECT_EQ(world->residency, kSmallResidency);
 }
 
 }  // namespace

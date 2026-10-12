@@ -26,13 +26,15 @@ add_executable(splat_core_tests
   sorting/SlabSorterTest.cpp
   math/FrustumTest.cpp
   tools/CloudEditTest.cpp
+  loading/LoadCostTest.cpp
 )
 # spz already reaches the link line through the static splat_core; only its headers are added
 # here, so Apple's linker does not warn about the duplicate archive.
 target_link_libraries(splat_core_tests PRIVATE splat_core ZLIB::ZLIB GTest::gtest_main)
 target_include_directories(splat_core_tests PRIVATE
   $<TARGET_PROPERTY:spz,INTERFACE_INCLUDE_DIRECTORIES>)
-target_include_directories(splat_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../tools)
+target_include_directories(splat_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}/../tools)
 target_compile_definitions(splat_core_tests PRIVATE
   SPLAT_FIXTURES_DIR="${SPLAT_FIXTURES_DIR}"
 )
@@ -45,5 +47,16 @@ if(SPLAT_CORE_BUILD_TOOLS)
   add_dependencies(splat_core_tests splat-convert ply2spz)
 endif()
 
+# Holds the loader's memory model to what the code allocates. A binary of its own: the
+# tracker replaces operator new for everything linked with it.
+add_executable(splat_core_memory_tests
+  memory/LoadPeakTest.cpp
+  support/AllocationTracker.cpp
+)
+target_link_libraries(splat_core_memory_tests PRIVATE splat_core GTest::gtest_main)
+target_include_directories(splat_core_memory_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
+  $<TARGET_PROPERTY:spz,INTERFACE_INCLUDE_DIRECTORIES>)
+
 include(GoogleTest)
 gtest_discover_tests(splat_core_tests)
+gtest_discover_tests(splat_core_memory_tests)

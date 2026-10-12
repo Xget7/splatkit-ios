@@ -63,6 +63,19 @@ bool looksLikeGzip(const std::uint8_t* data, std::size_t size) {
 // magic, version, numPoints (uint32 each), shDegree (uint8), then layout fields.
 constexpr std::size_t kNgspHeaderBytes = 32;
 
+// Header bytes both containers share: magic, version, point count, then the SH degree. In a
+// gzip container they open the inflated packed layout; NGSP keeps them uncompressed.
+constexpr std::size_t kPackedHeaderBytes = 16;
+constexpr std::size_t kVersionOffset = 4;
+constexpr std::size_t kPointCountOffset = 8;
+constexpr std::size_t kShDegreeOffset = 12;
+constexpr int kMaxShDegree = 3;
+// The most splats a container's bytes could hold, as spz bounds them: every splat packs into
+// at least a 9 byte position, and neither deflate nor spz's zstd check exceeds these ratios.
+constexpr std::uint64_t kMinPackedBytesPerSplat = 9;
+constexpr std::uint64_t kMaxDeflateRatio = 1032;
+constexpr std::uint64_t kMaxZstdRatio = 1024;
+
 bool looksLikeNgsp(const std::uint8_t* data, std::size_t size) {
   return size >= 4 && data[0] == 'N' && data[1] == 'G' && data[2] == 'S' && data[3] == 'P';
 }
@@ -80,23 +93,25 @@ std::uint32_t readU32(const std::uint8_t* p) {
 // to, so gzip is inflated here with a ceiling instead of trusted.
 std::optional<std::uint64_t> declaredDecodedSize(const std::uint8_t* data, std::size_t size) {
   if (looksLikeNgsp(data, size) && size >= kNgspHeaderBytes) {
-    const std::uint64_t points = readU32(data + 8);
-    const std::uint32_t degree = std::min<std::uint32_t>(data[12], 3);
+    const std::uint64_t points = readU32(data + kPointCountOffset);
+    const std::uint32_t degree = std::min<std::uint32_t>(data[kShDegreeOffset], kMaxShDegree);
     const std::uint64_t coefficients = (degree + 1) * (degree + 1) - 1;
     return points * (14 + 3 * coefficients) * sizeof(float);
   }
   return std::nullopt;
 }
 
-// Inflates a gzip stream, stopping as soon as the output would pass `ceiling`.
+// Inflates a gzip stream, stopping as soon as the output would pass `ceiling`. Room for
+// `expected` bytes, what the header declares, is taken at once rather than grown into.
 // Returns nullopt for a broken stream or one past the ceiling.
 std::optional<std::vector<std::uint8_t>> inflateGzip(const std::uint8_t* data, std::size_t size,
-                                                     std::size_t ceiling) {
+                                                     std::size_t ceiling, std::uint64_t expected) {
   z_stream stream{};
   if (inflateInit2(&stream, 16 | MAX_WBITS) != Z_OK) return std::nullopt;
   stream.next_in = const_cast<Bytef*>(data);
   stream.avail_in = static_cast<uInt>(size);
   std::vector<std::uint8_t> out;
+  out.reserve(static_cast<std::size_t>(std::min<std::uint64_t>(expected, ceiling)));
   std::vector<std::uint8_t> chunk(1u << 20);
   int status = Z_OK;
   while (status != Z_STREAM_END) {
@@ -116,6 +131,21 @@ std::optional<std::vector<std::uint8_t>> inflateGzip(const std::uint8_t* data, s
   }
   inflateEnd(&stream);
   return out;
+}
+
+// Inflates the first `count` bytes of a gzip stream into `out`; false if it holds fewer.
+bool inflatePrefix(const std::uint8_t* data, std::size_t size, std::uint8_t* out,
+                   std::size_t count) {
+  z_stream stream{};
+  if (inflateInit2(&stream, 16 | MAX_WBITS) != Z_OK) return false;
+  stream.next_in = const_cast<Bytef*>(data);
+  stream.avail_in = static_cast<uInt>(size);
+  stream.next_out = out;
+  stream.avail_out = static_cast<uInt>(count);
+  int status = Z_OK;
+  while (stream.avail_out > 0 && status == Z_OK) status = inflate(&stream, Z_NO_FLUSH);
+  inflateEnd(&stream);
+  return stream.avail_out == 0;
 }
 
 // A read only istream over bytes already in memory, for spz's stream based deserializer.
@@ -179,6 +209,55 @@ std::array<float, 6> covariance(const float* quaternion, const float* scale) {
 
 }  // namespace
 
+std::uint64_t SpzHeader::packedPositionBytes() const {
+  return version == 1 ? 3 * 2 : 3 * 3;
+}
+
+std::uint64_t SpzHeader::packedShBytes(int degree) {
+  return 3 * static_cast<std::uint64_t>((degree + 1) * (degree + 1) - 1);
+}
+
+std::uint64_t SpzHeader::packedBytesPerSplat(int degree) const {
+  const std::uint64_t rotation =
+      version >= static_cast<std::uint32_t>(spz::MIN_SMALLEST_THREE_QUATERNIONS_VERSION) ? 4 : 3;
+  const std::uint64_t alpha = 1;
+  const std::uint64_t colour = 3;
+  const std::uint64_t scale = 3;
+  return packedPositionBytes() + alpha + colour + scale + rotation + packedShBytes(degree);
+}
+
+std::uint64_t SpzHeader::inflatedBytes() const {
+  return kPackedHeaderBytes + pointCount * packedBytesPerSplat(shDegree);
+}
+
+Result<SpzHeader> readSpzHeader(const std::uint8_t* data, std::size_t size) {
+  std::uint8_t bytes[kPackedHeaderBytes] = {};
+  SpzHeader header;
+  header.gzip = looksLikeGzip(data, size);
+  if (header.gzip) {
+    if (!inflatePrefix(data, size, bytes, kPackedHeaderBytes))
+      return Error{ErrorCode::corrupt, "SPZ gzip stream ends before its header"};
+  } else if (looksLikeNgsp(data, size)) {
+    if (size < kNgspHeaderBytes) return Error{ErrorCode::corrupt, "SPZ NGSP header is truncated"};
+    std::memcpy(bytes, data, kPackedHeaderBytes);
+  } else {
+    return Error{ErrorCode::unsupportedFormat, "not an SPZ container (expected gzip or NGSP)"};
+  }
+  header.version = readU32(bytes + kVersionOffset);
+  header.pointCount = readU32(bytes + kPointCountOffset);
+  header.shDegree = bytes[kShDegreeOffset];
+  const auto oldest =
+      static_cast<std::uint32_t>(header.gzip ? 1 : spz::MIN_ZSTD_SPZ_HEADER_VERSION);
+  const std::uint64_t ratio = header.gzip ? kMaxDeflateRatio : kMaxZstdRatio;
+  if (readU32(bytes) != spz::NGSP_MAGIC || header.version < oldest ||
+      header.version > static_cast<std::uint32_t>(spz::LATEST_SPZ_HEADER_VERSION) ||
+      header.pointCount == 0 ||
+      header.pointCount > static_cast<std::uint32_t>(std::numeric_limits<std::int32_t>::max()) ||
+      header.pointCount > size * ratio / kMinPackedBytesPerSplat || header.shDegree > kMaxShDegree)
+    return Error{ErrorCode::corrupt, "SPZ header is invalid"};
+  return header;
+}
+
 Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
                              const SpzDecodeOptions& options) {
   if (!looksLikeGzip(data, size) && !looksLikeNgsp(data, size)) {
@@ -194,7 +273,9 @@ Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
   unpack.to = toSpz(kInternalFrame);
   spz::GaussianCloud cloud;
   if (looksLikeGzip(data, size)) {
-    const auto packed = inflateGzip(data, size, options.maxDecodedBytes);
+    const auto header = readSpzHeader(data, size);
+    const std::uint64_t expected = header ? header.value().inflatedBytes() : 0;
+    const auto packed = inflateGzip(data, size, options.maxDecodedBytes, expected);
     if (!packed) {
       return Error{ErrorCode::corrupt,
                    "SPZ gzip stream is broken or exceeds the decoded size ceiling"};

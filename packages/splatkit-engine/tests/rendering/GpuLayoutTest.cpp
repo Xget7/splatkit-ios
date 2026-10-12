@@ -53,5 +53,28 @@ TEST(GpuLayout, HarmonicsArePackedTwoHalvesPerUintPerSplat) {
   EXPECT_EQ(sh[4] >> 16, 0u);  // the odd half of the last uint is padding
 }
 
+// The Metal renderer's buffers per splat: a 32 byte record, and for each splat a frame may
+// draw a 32 byte projection, a double buffered sort key and value, and a selected index.
+TEST(GpuLayout, AWorldOnTheGpuIsItsRecordsAndWhatAFrameMayDraw) {
+  splat::LoadCost cloud;
+  cloud.records = 1000;
+  cloud.drawCapacity = 1000;
+  EXPECT_EQ(gpuWorldBytes(cloud), 1000u * (32 + 52));
+
+  cloud.shDegree = 1;  // nine halves in five uints
+  EXPECT_EQ(gpuWorldBytes(cloud), 1000u * (32 + 5 * 4 + 52));
+}
+
+// A tree adds its clusters, each with the selection walk's packet, cost, offsets and two
+// frontier entries, and its leaf references.
+TEST(GpuLayout, ATreeOnTheGpuAddsItsSelectionData) {
+  splat::LoadCost tree;
+  tree.records = 1500;
+  tree.drawCapacity = 400;
+  tree.clusters = 500;
+  tree.leafRefs = 1000;
+  EXPECT_EQ(gpuWorldBytes(tree), 1500u * 32 + 400u * 52 + 500u * (64 + 48) + 1000u * 4);
+}
+
 }  // namespace
 }  // namespace splatkit
