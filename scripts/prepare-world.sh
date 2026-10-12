@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
-# Prepares a Gaussian splat scene for SplatKit. The engine reads only .spz and .lodsplat, so a
-# PLY is converted here, on a computer, never on the phone. The splat-core tools it runs are
-# built into build/world-tools on the first call and kept up to date on later ones.
+# Prepares a Gaussian splat scene for SplatKit. The engine reads only .spz, .lodsplat and
+# tilesets of .spz tiles, so a PLY is converted here, on a computer, never on the phone. The
+# splat-core tools it runs are built into build/world-tools on the first call and kept up to
+# date on later ones.
 #
 #   scripts/prepare-world.sh scene.ply out/              out/scene.spz
 #   scripts/prepare-world.sh scene.ply out/ --collider   + out/scene.collider.glb, to walk
 #   scripts/prepare-world.sh scene.ply out/ --lod        + out/scene.lodsplat, for huge scenes
+#   scripts/prepare-world.sh scene.ply out/ --tiles      + out/scene.tiles/, past phone memory
 #   scripts/prepare-world.sh scene.spz out/ --source-frame rub   normalizes Y-up SPZ for the SDK
 #
 # --sh N       keeps spherical harmonics up to degree N (0 to 3); the file's degree by default
@@ -13,6 +15,7 @@
 # --source-frame F  interprets input as rdf (default) or rub; SPZ output is always RDF
 # --collider   builds a walk collider; it assumes a space to walk through, not a lone object
 # --lod        builds the level-of-detail tree offline instead of on the phone at load time
+# --tiles      cuts the scene into tiles with coarser levels above them, streamed while walking
 #
 # Each tool takes more options than these; packages/splat-core/README.md lists them.
 set -euo pipefail
@@ -38,6 +41,8 @@ spz_version=""
 source_frame="rdf"
 collider=false
 lod=false
+tiles=false
+tileset=""
 while [ $# -gt 0 ]; do
   case "$1" in
     -h | --help) usage 0 ;;
@@ -58,6 +63,7 @@ while [ $# -gt 0 ]; do
       ;;
     --collider) collider=true ;;
     --lod) lod=true ;;
+    --tiles) tiles=true ;;
     -*) usage ;;
     *)
       if [ -z "$input" ]; then
@@ -100,7 +106,8 @@ cmake -S "$root/packages/splat-core" -B "$build" \
   -DSPLAT_CORE_BUILD_TESTS=OFF \
   -DSPLAT_CORE_BUILD_TOOLS=ON \
   > /dev/null
-cmake --build "$build" --parallel --target splat-convert splat_collider splat_lod_build > /dev/null
+cmake --build "$build" --parallel --target splat-convert splat_collider splat_lod_build splat-tile \
+  > /dev/null
 tools="$build/tools"
 
 mkdir -p "$out"
@@ -123,6 +130,13 @@ if [ "$lod" = true ]; then
   "$tools/splat_lod_build" "$spz" "$world" ${sh:+--sh "$sh"}
 fi
 
+if [ "$tiles" = true ]; then
+  echo "Partitioning into tiles"
+  tileset="$out/$name.tiles"
+  rm -rf "$tileset"  # a tile left from an earlier run would ship unreferenced
+  "$tools/splat-tile" "$spz" "$tileset" ${sh:+--sh "$sh"}
+fi
+
 if [ "$collider" = true ]; then
   echo "Building the walk collider"
   "$tools/splat_collider" "$spz" "$out/$name.collider.glb"
@@ -131,6 +145,10 @@ fi
 echo
 echo "Ready. Copy these to the device and pass their absolute paths:"
 echo "  world.filePath     $world"
+if [ -n "$tileset" ]; then
+  echo "  world.filePath     $tileset/tileset.json, with world.kind WorldKind.tileset;"
+  echo "                     copy the whole $name.tiles folder, the tiles load from beside it"
+fi
 if [ "$collider" = true ]; then
   echo "  collider.filePath  $out/$name.collider.glb"
 fi

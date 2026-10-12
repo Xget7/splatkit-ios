@@ -212,7 +212,7 @@
   "scripts/build-ios.sh": "c05feb1e381afb85054e4090551942fa7937e77ba43689ca1e4a70e8e9886bb9",
   "scripts/export-ios-source.py": "8eef88cc2bd56a9548d887d884d84b8ea161a6d1b5c65ceaf7c0c2bd7cb0fa7f",
   "scripts/package-ios.sh": "dc46aeae108de22505d863b02cf64128b8b2b199453f4cfeb63150cf396f5c90",
-  "scripts/prepare-world.sh": "1554c87b4be16a9f875cd76927a81c62cfb73a6dc8192f2d56ea456a4db380d9",
+  "scripts/prepare-world.sh": "e5422cefd9740ad623122bb74555fac3251a8fab563f85911875bf2e6f31164c",
   "scripts/sdk_harness.py": "b21a3f5123abf1504b7c3a87a325268a246cb340e07fbb67515a34cedaef4d21",
   "scripts/spz-interop/package-lock.json": "e023052f708290e49bd24c993133d4fee2135ed2c73f8b32dbd6b5b914367f16",
   "scripts/spz-interop/package.json": "b07b4d608addfd99af52d68fbb8186e096ad541230513b27cc289bf3fd11139a",
