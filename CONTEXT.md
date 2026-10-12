@@ -20,6 +20,15 @@ What a host asks the engine to show: a source of splats plus, optionally, a coll
 A world is one file or a tileset streamed in tiles.
 _Avoid_: scene, model, asset, map
 
+**World kind**:
+How a world loads: one file decoded whole, or a tileset streamed within the residency budget.
+_Avoid_: world type, mode
+
+**Format**:
+How a world's splats are stored: `.spz`, `.lodsplat` (the splats and their tree) or a tileset of `.spz` tiles.
+Both files are the file kind; the format a world needs follows from its size, as the React Native README's Preparing a world weighs.
+_Avoid_: kind (that is how it loads), encoding
+
 **Collider**:
 The triangle mesh the walk camera collides with; the world's floor and walls for navigation only, never drawn.
 _Avoid_: mesh, geometry, nav mesh
