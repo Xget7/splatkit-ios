@@ -19,6 +19,7 @@ add_executable(splat_core_tests
   diagnostics/TimingSummaryTest.cpp
   tiles/TilesetTest.cpp
   tiles/TileBuilderTest.cpp
+  tiles/TreeChunkerTest.cpp
   tiles/SlabAllocatorTest.cpp
   tiles/TileSchedulerTest.cpp
   tiles/TileStreamerTest.cpp

@@ -44,6 +44,7 @@ add_library(splat_core STATIC
   src/diagnostics/TimingSummary.cpp
   src/tiles/Tileset.cpp
   src/tiles/TileBuilder.cpp
+  src/tiles/TreeChunker.cpp
   src/tiles/SlabAllocator.cpp
   src/tiles/TileScheduler.cpp
   src/tiles/TileLoader.cpp
