@@ -7,14 +7,12 @@
 #include "splat/math/Frustum.h"
 #include "splat/tiles/TileStreamer.h"
 #include "splatkit/Log.h"
+#include "splatkit/loading/LoadReportLog.h"
 #include "splatkit/rendering/GpuLayout.h"
 
 namespace splatkit {
 namespace {
 
-constexpr float kFieldOfViewRadians = 65.0f * static_cast<float>(M_PI) / 180.0f;
-constexpr float kNearPlane = 0.05f;
-constexpr float kFarPlane = 200.0f;
 // A frame longer than this (a stall, a resume) steps the camera as if it were this long.
 constexpr float kMaxFrameSeconds = 0.1f;
 // How many pixels the splats a tile hides may cover before the tiles below are wanted.
@@ -22,27 +20,9 @@ constexpr float kTilePixels = 1.0f;
 constexpr float kRadiansPerDegree = static_cast<float>(M_PI) / 180.0f;
 // Decode threads a tiled world streams its tiles with.
 constexpr int kLoaderThreads = 2;
-// The default orbit frames the bounding sphere with 5% to spare, never closer than the minimum
-// radius, and treats an aspect below the minimum as that, so a zero-width view still frames.
-constexpr float kFramingPadding = 1.05f;
-constexpr float kMinFramingRadius = 0.05f;
-constexpr float kMinFramingAspect = 1e-3f;
 
 using splat::Clock;
 using splat::millisSince;
-
-float framingRadius(const splat::Bounds& bounds, Extent extent) {
-  const splat::Vec3 half{(bounds.max[0] - bounds.min[0]) * 0.5f,
-                         (bounds.max[1] - bounds.min[1]) * 0.5f,
-                         (bounds.max[2] - bounds.min[2]) * 0.5f};
-  const float sphere = splat::length(half);
-  const float aspect = extent.width > 0 && extent.height > 0
-                           ? static_cast<float>(extent.width) / extent.height
-                           : 1.0f;
-  const float halfY = kFieldOfViewRadians * 0.5f;
-  const float halfX = std::atan(std::tan(halfY) * std::max(aspect, kMinFramingAspect));
-  return std::max(kMinFramingRadius, sphere * kFramingPadding / std::sin(std::min(halfX, halfY)));
-}
 
 }  // namespace
 
@@ -50,6 +30,7 @@ SplatEngine::SplatEngine(std::unique_ptr<SplatRenderer> renderer) : renderer_(st
   // The backend's fallback is the policy in effect until the host sets one.
   policy_ = renderer_->deviceCapabilities().policy.fallback;
   loader_.setMemoryGuard({[this] { return renderer_->availableMemory(); }, &gpuWorldBytes});
+  camera_.setTeleportListener([this] { onTeleport(); });
 }
 
 RenderPolicyResolution SplatEngine::setRenderPolicy(const RenderPolicy& requested) {
@@ -122,19 +103,7 @@ void SplatEngine::reportWorld(const splat::Result<splat::SplatWorldLoader::World
     emit(Event::worldFailed, report.error().message);
     return;
   }
-  const auto& r = report.value();
-  LOGI("decoded %zu splats in %.0f ms, sh degree %d, bounds y [%.2f, %.2f], reordered in %.0f ms",
-       r.splatCount, r.decodeMillis, r.shDegree, r.bounds.min[1], r.bounds.max[1], r.reorderMillis);
-  if (r.nodeCount > 0) {
-    LOGI("level of detail tree: %zu nodes over %zu splats, built in %.0f ms", r.nodeCount,
-         r.splatCount, r.treeMillis);
-  }
-  if (r.tileCount > 0) LOGI("tiled world: %zu tiles", r.tileCount);
-  if (r.availableBytes > 0) {
-    LOGI("memory: the load needs about %llu MiB with headroom, %llu MiB free",
-         static_cast<unsigned long long>(r.neededBytes >> 20),
-         static_cast<unsigned long long>(r.availableBytes >> 20));
-  }
+  logWorldReport(report.value());
 }
 
 void SplatEngine::reportCollider(
@@ -144,12 +113,12 @@ void SplatEngine::reportCollider(
     emit(Event::colliderFailed, report.error().message);
     return;
   }
-  LOGI("collider: %zu triangles, grid built in %.0f ms", report.value().triangleCount,
-       report.value().millis);
+  logColliderReport(report.value());
 }
 
-// Uploads what the loader left. True when a new world is drawn from now on.
-bool SplatEngine::applyPendingLoads() {
+// Render thread, once per frame: puts to use what the loader finished decoding on the
+// caller's thread. True when a new world is drawn from now on.
+bool SplatEngine::uploadFinishedLoads() {
   if (auto collider = loader_.takeCollider()) {
     camera_.setCollider(std::move(collider));
     emit(Event::colliderReady);
@@ -208,7 +177,7 @@ bool SplatEngine::applyPendingLoads() {
                              (worldBounds.min[2] + worldBounds.max[2]) * 0.5f};
     framedBounds_ = worldBounds;
     framedExtent_ = renderer_->drawExtent();
-    camera_.setDefaultAnchor(centre, framingRadius(worldBounds, framedExtent_));
+    camera_.setDefaultAnchor(centre, lens_.framingRadius(worldBounds, framedExtent_));
   }
   const GpuWorldInfo gpu = renderer_->world().value_or(GpuWorldInfo{});
   LOGI("uploaded %u splats in %.0f ms, sh degree %d", gpu.count, millisSince(start), gpu.shDegree);
@@ -216,78 +185,50 @@ bool SplatEngine::applyPendingLoads() {
   return true;
 }
 
-// Camera.
+// Camera. A teleport needs a fresh sort, not a cull, and its pose is published now
+// rather than at the next frame: a host that sets and reads back before a world exists
+// would otherwise see the previous pose.
+void SplatEngine::onTeleport() {
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  publishPose();
+}
 
 void SplatEngine::setCameraPose(const CameraPose& pose) {
   camera_.setPosition({pose.x, pose.y, pose.z});
   camera_.setOrientation(pose.yaw, pose.pitch);
-  planner_.invalidate();  // a teleport needs a fresh sort, not a cull
-  redrawNeeded_ = true;
-  // Published now, not at the next frame: a host that sets and reads back before a
-  // world exists would otherwise see the previous pose.
-  publishPose();
 }
 
 void SplatEngine::setCameraLookAt(splat::Vec3 position, splat::Vec3 target, splat::Vec3 up) {
   camera_.setLookAt(position, target, up);
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
 }
 
 CameraResolution SplatEngine::applyCameraRequest(const CameraRequest& requested) {
-  CameraResolution resolution = camera_.applyCameraRequest(requested);
-  if (!resolution.accepted) return resolution;
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
-  return resolution;
+  return camera_.applyCameraRequest(requested);
 }
 
 void SplatEngine::setCameraAnchor(splat::Vec3 point) {
   camera_.setAnchor(point);
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
 }
 
 bool SplatEngine::orbit(float deltaAzimuth, float deltaElevation) {
-  if (!camera_.orbit(deltaAzimuth, deltaElevation)) return false;
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
-  return true;
+  return camera_.orbit(deltaAzimuth, deltaElevation);
 }
 
 bool SplatEngine::dolly(float deltaRadius) {
-  if (!camera_.dolly(deltaRadius)) return false;
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
-  return true;
+  return camera_.dolly(deltaRadius);
 }
 
 bool SplatEngine::focus(float x, float y) {
   const Extent extent = renderer_->drawExtent();
   if (extent.width == 0 || extent.height == 0) return false;
-  const float tanHalfY = std::tan(kFieldOfViewRadians * 0.5f);
-  const float tanHalfX = tanHalfY * static_cast<float>(extent.width) / extent.height;
-  if (!camera_.focus(x, y, tanHalfX, tanHalfY, kFarPlane)) return false;
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
-  return true;
+  const Lens::TanHalf tan = lens_.tanHalf(extent);
+  return camera_.focus(x, y, tan.x, tan.y, lens_.farPlane);
 }
 
 bool SplatEngine::startOrbitAnimation(float degrees, float degreesPerSecond, bool easeInOut) {
-  if (!camera_.animateOrbit(degrees * kRadiansPerDegree, degreesPerSecond * kRadiansPerDegree,
-                            easeInOut)) {
-    return false;
-  }
-  planner_.invalidate();
-  redrawNeeded_ = true;
-  publishPose();
-  return true;
+  return camera_.animateOrbit(degrees * kRadiansPerDegree, degreesPerSecond * kRadiansPerDegree,
+                              easeInOut);
 }
 
 bool SplatEngine::setCharacter(const splat::CharacterSettings& settings) {
@@ -302,7 +243,7 @@ void SplatEngine::reframeDefaultOrbit(Extent extent) {
   if (!framedBounds_ || extent.width == 0 || extent.height == 0) return;
   if (extent.width == framedExtent_.width && extent.height == framedExtent_.height) return;
   framedExtent_ = extent;
-  camera_.reframeDefaultAnchor(framingRadius(*framedBounds_, extent));
+  camera_.reframeDefaultAnchor(lens_.framingRadius(*framedBounds_, extent));
 }
 
 void SplatEngine::publishPose() {
@@ -312,8 +253,7 @@ void SplatEngine::publishPose() {
 SplatEngine::FrameCamera SplatEngine::frameCamera(Extent extent) const {
   FrameCamera c;
   c.view = camera_.viewMatrix();
-  const float aspect = static_cast<float>(extent.width) / static_cast<float>(extent.height);
-  c.proj = splat::Mat4::perspective(kFieldOfViewRadians, aspect, kNearPlane, kFarPlane);
+  c.proj = lens_.projection(extent);
   c.axes.position = camera_.position();
   c.axes.forward = {-c.view.at(2, 0), -c.view.at(2, 1), -c.view.at(2, 2)};
   c.axes.up = {c.view.at(1, 0), c.view.at(1, 1), c.view.at(1, 2)};
@@ -421,7 +361,7 @@ float SplatEngine::frameSeconds(int64_t frameTimeNanos) {
 // a still scene costs no GPU time and almost no battery.
 void SplatEngine::render(int64_t frameTimeNanos) {
   if (!renderer_->ready()) return;
-  if (applyPendingLoads()) redrawNeeded_ = true;
+  if (uploadFinishedLoads()) redrawNeeded_ = true;
 
   const Extent extent = renderer_->drawExtent();
   reframeDefaultOrbit(extent);

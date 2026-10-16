@@ -1,5 +1,6 @@
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -78,6 +79,12 @@ class WalkCamera {
   void setMotionEnabled(bool enabled);
   bool motionEnabled() const { return motion_; }
 
+  // Called once after each discontinuous pose change: a set position or orientation, a
+  // look-at, an anchor, an orbit, a dolly, a focus hit, an orbit animation start or an
+  // accepted camera request. Touch look and walk, joystick velocity and the per frame
+  // update are continuous and never call it. Refused input never calls it.
+  void setTeleportListener(std::function<void()> listener) { teleport_ = std::move(listener); }
+
   // Per frame: floor snapping and orbit animation. Returns whether orbit moved.
   bool update(float dtSeconds);
 
@@ -101,6 +108,10 @@ class WalkCamera {
     bool easeInOut = false;
   };
 
+  void teleported() {
+    if (teleport_) teleport_();
+  }
+  void place(splat::Vec3 position);
   void enterOrbit();
   void leaveOrbit();
   void applyOrbitPose();
@@ -124,6 +135,7 @@ class WalkCamera {
   splat::Mat4 referenceToWorld_;
   std::optional<Orbit> anchor_;
   std::optional<OrbitAnimation> animation_;
+  std::function<void()> teleport_;
   float orbitRadiansPerSecond_ = 0;
   bool anchorExplicit_ = false;
   float defaultRadius_ = 0;  // the framing that dolly offsets of the default anchor add to

@@ -439,6 +439,54 @@ TEST(WalkCamera, AnUnwalkableCharacterIsRefusedAsAWhole) {
   EXPECT_FLOAT_EQ(camera.character().eyeHeight, 1.2f);
 }
 
+TEST(WalkCamera, TeleportsReportThemselvesOnceAndContinuousInputDoesNot) {
+  WalkCamera camera;
+  int teleports = 0;
+  camera.setTeleportListener([&] { ++teleports; });
+  camera.look(0.1f, 0.1f);
+  camera.walk(1.0f, 0.0f);
+  camera.setVelocity(1.0f, 0.0f);
+  camera.update(1.0f / 60);
+  EXPECT_EQ(teleports, 0);
+  camera.setPosition({1, 2, 3});
+  EXPECT_EQ(teleports, 1);
+  camera.setOrientation(0.5f, 0.0f);
+  EXPECT_EQ(teleports, 2);
+  camera.setLookAt({0, 10, 0}, {0, 0, 0}, {0, 0, 1});
+  EXPECT_EQ(teleports, 3);
+  camera.setAnchor({0, 0, 0});
+  EXPECT_EQ(teleports, 4);
+  EXPECT_TRUE(camera.orbit(0.1f, 0.0f));
+  EXPECT_EQ(teleports, 5);
+  EXPECT_TRUE(camera.dolly(0.5f));
+  EXPECT_EQ(teleports, 6);
+  EXPECT_TRUE(camera.animateOrbit(kPi, 1.0f, false));
+  EXPECT_EQ(teleports, 7);
+  CameraRequest request;
+  request.mode = CameraMode::FirstPerson;
+  EXPECT_TRUE(camera.applyCameraRequest(request).accepted);
+  EXPECT_EQ(teleports, 8);
+  // Refused input is no teleport.
+  EXPECT_FALSE(camera.dolly(std::numeric_limits<float>::quiet_NaN()));
+  request.radius = -1;
+  request.mode = CameraMode::Orbit;
+  EXPECT_FALSE(camera.applyCameraRequest(request).accepted);
+  EXPECT_EQ(teleports, 8);
+}
+
+TEST(WalkCamera, AFocusHitTeleportsOnceAndAMissNotAtAll) {
+  WalkCamera camera;
+  int teleports = 0;
+  camera.setTeleportListener([&] { ++teleports; });
+  camera.setPosition({0, 1.5f, 0});
+  camera.setCollider(std::make_unique<splat::Collider>(floor()));
+  teleports = 0;
+  EXPECT_FALSE(camera.focus(0.5f, 0.0f, 1.0f, 1.0f, 100.0f));  // straight up, no floor
+  EXPECT_EQ(teleports, 0);
+  EXPECT_TRUE(camera.focus(0.5f, 1.0f, 1.0f, 1.0f, 100.0f));  // down at the floor
+  EXPECT_EQ(teleports, 1);
+}
+
 // A phone held upright facing north, in Android's East-North-Up frame: device x east,
 // device y up, device z south (out of the screen towards the user). The camera must
 // look north, which is -z in the engine's frame.

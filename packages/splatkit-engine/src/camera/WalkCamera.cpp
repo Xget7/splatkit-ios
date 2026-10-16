@@ -131,7 +131,7 @@ void WalkCamera::walk(float forward, float right) {
   }
 }
 
-void WalkCamera::setPosition(splat::Vec3 position) {
+void WalkCamera::place(splat::Vec3 position) {
   leaveOrbit();
   stopOrbitAnimation();
   if (player_) {
@@ -141,22 +141,29 @@ void WalkCamera::setPosition(splat::Vec3 position) {
   }
 }
 
+void WalkCamera::setPosition(splat::Vec3 position) {
+  place(position);
+  teleported();
+}
+
 void WalkCamera::setOrientation(float yaw, float pitch) {
   leaveOrbit();
   stopOrbitAnimation();
   scripted_ = false;
   yaw_ = yaw;
   pitch_ = std::clamp(pitch, -kMaxPitch, kMaxPitch);
+  teleported();
 }
 
 void WalkCamera::setLookAt(splat::Vec3 position, splat::Vec3 target, splat::Vec3 up) {
-  setPosition(position);
+  place(position);
   const splat::Vec3 forward = splat::normalize(target - position);
   scriptedRotation_ = lookAtRotation(position, target, up);
   scripted_ = true;
   // Yaw and pitch keep describing the view for whoever reads them.
   yaw_ = yawOf(forward);
   pitch_ = pitchOf(forward);
+  teleported();
 }
 
 void WalkCamera::setAnchor(splat::Vec3 point) {
@@ -175,6 +182,7 @@ void WalkCamera::setAnchor(splat::Vec3 point) {
   orbiting_ = true;
   stopOrbitAnimation();
   applyOrbitPose();
+  teleported();
 }
 
 CameraResolution WalkCamera::applyCameraRequest(const CameraRequest& requested) {
@@ -223,6 +231,7 @@ CameraResolution WalkCamera::applyCameraRequest(const CameraRequest& requested) 
   }
   result.effective = cameraState();
   result.accepted = true;
+  teleported();
   return result;
 }
 
@@ -305,6 +314,7 @@ bool WalkCamera::orbit(float deltaAzimuth, float deltaElevation) {
   anchor_->azimuth += deltaAzimuth;
   anchor_->elevation = std::clamp(anchor_->elevation + deltaElevation, -kMaxPitch, kMaxPitch);
   applyOrbitPose();
+  teleported();
   return true;
 }
 
@@ -314,6 +324,7 @@ bool WalkCamera::dolly(float deltaRadius) {
   stopOrbitAnimation();
   anchor_->radius = std::max(anchor_->radius + deltaRadius, kMinOrbitRadius);
   applyOrbitPose();
+  teleported();
   return true;
 }
 
@@ -326,6 +337,7 @@ bool WalkCamera::animateOrbit(float deltaAzimuth, float radiansPerSecond, bool e
   stopOrbitAnimation();
   animation_ = OrbitAnimation{anchor_->azimuth, deltaAzimuth, 0.0f,
                               std::fabs(deltaAzimuth) / radiansPerSecond, easeInOut};
+  teleported();
   return true;
 }
 

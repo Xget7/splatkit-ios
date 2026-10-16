@@ -15,6 +15,7 @@
 #include "splat/math/Mat4.h"
 #include "splat/sorting/VisibilityPlanner.h"
 #include "splat/tiles/TileStreamer.h"
+#include "splatkit/camera/Lens.h"
 #include "splatkit/camera/WalkCamera.h"
 #include "splatkit/diagnostics/Benchmark.h"
 #include "splatkit/diagnostics/StatsPublisher.h"
@@ -181,11 +182,12 @@ class SplatEngine {
   }
   void reportWorld(const splat::Result<splat::SplatWorldLoader::WorldReport>& report);
   void reportCollider(const splat::Result<splat::SplatWorldLoader::ColliderReport>& report);
-  bool applyPendingLoads();
+  bool uploadFinishedLoads();
   float frameSeconds(int64_t frameTimeNanos);
   void driveBenchmark(float dt, const GpuWorldInfo& world);
   FrameCamera frameCamera(Extent extent) const;
   void reframeDefaultOrbit(Extent extent);
+  void onTeleport();
   void publishPose();
   void requestVisible(const FrameCamera& camera, float dt, Extent extent);
   void streamTiles(const FrameCamera& camera, float pixelScale,
@@ -199,6 +201,7 @@ class SplatEngine {
   RenderPolicy policy_;
   splat::SplatWorldLoader loader_;
   WalkCamera camera_;
+  Lens lens_;
   // What the default orbit anchor frames and for which view shape; a rotation or the
   // first layout after the load reframes it.
   std::optional<splat::Bounds> framedBounds_;
