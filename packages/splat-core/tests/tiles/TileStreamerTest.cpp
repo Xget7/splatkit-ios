@@ -211,6 +211,45 @@ TEST(TileStreamer, TheRootStaysResidentWhileWalking) {
   }
 }
 
+// A refinement step swaps a tile for its visible children only when they fit the slab, so a
+// tile with a few children lets a residency far below the world's size leave the root.
+TEST(TileStreamer, RefinesStepByStepWithinAResidencyBelowTheWorld) {
+  const BuiltWorld built;
+  const Tileset& set = *built.world.tileset;
+  const Tile& root = set.tiles[set.root];
+  StreamOptions options;
+  options.residency = 64 * (4 + 2);
+  std::size_t worldSplats = 0;
+  for (const Tile& t : set.tiles) worldSplats += t.count;
+  ASSERT_LT(options.residency, worldSplats);
+
+  TileStreamer streamer(built.world, options);
+  const TileView view = from({0, 0, 3}, 0.0001f);
+  std::vector<std::uint32_t> previous;
+  for (int round = 0; round < 64; ++round) {
+    auto step = streamer.update(view);
+    for (const auto& a : step.arrived) streamer.commit(a.tile);
+    streamer.drawnNow();
+    if (step.loading == 0 && step.arrived.empty() && !step.drawChanged &&
+        streamer.drawn() == previous) {
+      break;
+    }
+    previous = streamer.drawn();
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  }
+
+  const std::vector<std::uint32_t> shown = streamer.drawn();
+  ASSERT_FALSE(shown.empty());
+  std::size_t drawnSplats = 0;
+  for (const std::uint32_t tile : shown) {
+    EXPECT_NE(tile, set.root);
+    EXPECT_LT(set.tiles[tile].level, root.level) << set.tiles[tile].file;
+    drawnSplats += set.tiles[tile].count;
+  }
+  EXPECT_LE(drawnSplats, options.residency);
+  EXPECT_LE(streamer.held(), options.residency);
+}
+
 TEST(TileStreamer, AMissingTileFileIsReportedAndItsParentStays) {
   const BuiltWorld built;
   const Tileset& set = *built.world.tileset;

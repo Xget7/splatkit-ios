@@ -98,6 +98,7 @@ A larger budget is not a quality guarantee.
 
 **Tile**:
 A chunk of the detail tree stored as its own spz file: a frontier of nodes drawn together, in spatial order.
+A tile has at most a few children, so one refinement step costs a few uploads.
 _Avoid_: cell, block, node (a node is inside a cloud, a tile is a cloud)
 
 **Screen tile**:
