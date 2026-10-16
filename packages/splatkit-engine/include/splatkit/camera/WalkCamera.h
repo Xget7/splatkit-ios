@@ -25,8 +25,10 @@ class WalkCamera {
   bool hasCollider() const { return collider_ != nullptr; }
 
   // The walker's shape: eye height, body radius and what it climbs. Applies at once when
-  // walking, and to the walker a later collider creates.
-  void setCharacter(const splat::CharacterSettings& settings);
+  // walking, and to the walker a later collider creates. Unwalkable values are refused as
+  // a whole: a walker needs finite non-negative lengths, an eye over its hips, a floor ray
+  // that reaches and an eye that settles.
+  bool setCharacter(const splat::CharacterSettings& settings);
   const splat::CharacterSettings& character() const { return character_; }
 
   // Touch: radians. Yaw/pitch poses clamp pitch; look-at poses turn in screen axes.

@@ -61,9 +61,21 @@ void WalkCamera::setCollider(std::unique_ptr<splat::Collider> collider) {
   }
 }
 
-void WalkCamera::setCharacter(const splat::CharacterSettings& settings) {
+bool WalkCamera::setCharacter(const splat::CharacterSettings& settings) {
+  const float values[] = {settings.eyeHeight,     settings.bodyRadius,     settings.hipHeight,
+                          settings.floorProbeUp,  settings.floorProbeDown, settings.stepHeight,
+                          settings.stepLookAhead, settings.stepOverHeight, settings.stepOverWidth,
+                          settings.snapRate};
+  for (const float value : values) {
+    if (!std::isfinite(value) || value < 0) return false;
+  }
+  if (settings.eyeHeight <= 0 || settings.hipHeight >= settings.eyeHeight ||
+      settings.floorProbeDown <= 0 || settings.snapRate <= 0) {
+    return false;
+  }
   character_ = settings;
   if (player_) player_->setSettings(settings);
+  return true;
 }
 
 void WalkCamera::look(float deltaYaw, float deltaPitch) {

@@ -413,6 +413,32 @@ TEST(WalkCamera, TheCharacterChangesTheWalkerAlreadyOnItsFeet) {
   EXPECT_NEAR(camera.position().y, 1.8f, 1e-3f);
 }
 
+TEST(WalkCamera, AnUnwalkableCharacterIsRefusedAsAWhole) {
+  WalkCamera camera;
+  const splat::CharacterSettings before = camera.character();
+  splat::CharacterSettings hipsOverEye;
+  hipsOverEye.hipHeight = hipsOverEye.eyeHeight;
+  EXPECT_FALSE(camera.setCharacter(hipsOverEye));
+  splat::CharacterSettings negative;
+  negative.bodyRadius = -0.1f;
+  EXPECT_FALSE(camera.setCharacter(negative));
+  splat::CharacterSettings nan;
+  nan.stepHeight = std::numeric_limits<float>::quiet_NaN();
+  EXPECT_FALSE(camera.setCharacter(nan));
+  splat::CharacterSettings noFloorRay;
+  noFloorRay.floorProbeDown = 0;
+  EXPECT_FALSE(camera.setCharacter(noFloorRay));
+  splat::CharacterSettings neverSettles;
+  neverSettles.snapRate = 0;
+  EXPECT_FALSE(camera.setCharacter(neverSettles));
+  EXPECT_FLOAT_EQ(camera.character().eyeHeight, before.eyeHeight);
+  EXPECT_FLOAT_EQ(camera.character().bodyRadius, before.bodyRadius);
+  splat::CharacterSettings walkable;
+  walkable.eyeHeight = 1.2f;
+  EXPECT_TRUE(camera.setCharacter(walkable));
+  EXPECT_FLOAT_EQ(camera.character().eyeHeight, 1.2f);
+}
+
 // A phone held upright facing north, in Android's East-North-Up frame: device x east,
 // device y up, device z south (out of the screen towards the user). The camera must
 // look north, which is -z in the engine's frame.

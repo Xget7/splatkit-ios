@@ -291,19 +291,7 @@ bool SplatEngine::startOrbitAnimation(float degrees, float degreesPerSecond, boo
 }
 
 bool SplatEngine::setCharacter(const splat::CharacterSettings& settings) {
-  const float values[] = {settings.eyeHeight,     settings.bodyRadius,     settings.hipHeight,
-                          settings.floorProbeUp,  settings.floorProbeDown, settings.stepHeight,
-                          settings.stepLookAhead, settings.stepOverHeight, settings.stepOverWidth,
-                          settings.snapRate};
-  for (const float value : values) {
-    if (!std::isfinite(value) || value < 0) return false;
-  }
-  // A walker needs an eye over its hips, a floor ray that reaches and an eye that settles.
-  if (settings.eyeHeight <= 0 || settings.hipHeight >= settings.eyeHeight ||
-      settings.floorProbeDown <= 0 || settings.snapRate <= 0) {
-    return false;
-  }
-  camera_.setCharacter(settings);
+  if (!camera_.setCharacter(settings)) return false;
   redrawNeeded_ = true;
   return true;
 }
