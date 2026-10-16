@@ -160,6 +160,26 @@ TEST(GlbDecoder, AppliesNodeTransformAndFrameConversion) {
   EXPECT_EQ(m.indices[2], 2u);
 }
 
+TEST(GlbDecoder, AppliesANodeRotationQuaternion) {
+  std::string json = withAccessorCount("3");
+  const auto at = json.find("\"translation\":[0,0,1]");
+  ASSERT_NE(at, std::string::npos);
+  // 90 degrees about +z turns vertex 0 at (0, 2, 0) into (-2, 0, 0), which RDF -> RUB
+  // then leaves alone.
+  json.replace(at, std::string("\"translation\":[0,0,1]").size(),
+               "\"rotation\":[0,0,0.7071068,0.7071068]");
+  auto glb = packGlb(json, triangleBin());
+  auto r = decodeGlb(glb.data(), glb.size());
+  ASSERT_TRUE(r.ok()) << r.error().message;
+  EXPECT_NEAR(r.value().positions[0], -2.0f, 1e-5f);
+  EXPECT_NEAR(r.value().positions[1], 0.0f, 1e-5f);
+  EXPECT_NEAR(r.value().positions[2], 0.0f, 1e-5f);
+  // Vertex 1 at (1, 2, 0) lands at (-2, 1, 0), then the flip makes it (-2, -1, 0).
+  EXPECT_NEAR(r.value().positions[3], -2.0f, 1e-5f);
+  EXPECT_NEAR(r.value().positions[4], -1.0f, 1e-5f);
+  EXPECT_NEAR(r.value().positions[5], 0.0f, 1e-5f);
+}
+
 TEST(GlbDecoder, ReadsUint32IndicesAndMeshesWithoutScene) {
   auto glb = oneTriangleGlb(false, false);
   auto r = decodeGlb(glb.data(), glb.size(), {CoordinateFrame::rub});

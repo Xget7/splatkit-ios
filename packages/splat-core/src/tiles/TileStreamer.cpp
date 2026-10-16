@@ -20,14 +20,11 @@ SplatDecodeOptions decodeOptions(const TiledWorld& world) {
 TileStreamer::TileStreamer(TiledWorld world, const StreamOptions& options)
     : world_(std::move(world)),
       scheduler_(world_.tileset, options.residency),
-      loader_(decodeOptions(world_), options.loaderThreads),
-      sorter_(options.residency),
-      cpuSort_(options.cpuSort) {}
+      loader_(decodeOptions(world_), options.loaderThreads) {}
 
 std::vector<std::uint32_t> TileStreamer::pinned() const {
   std::vector<std::uint32_t> out(shown_);
-  for (const Order& o : requested_) out.insert(out.end(), o.tiles.begin(), o.tiles.end());
-  for (const Order& o : retired_) out.insert(out.end(), o.tiles.begin(), o.tiles.end());
+  for (const Retired& r : retired_) out.insert(out.end(), r.tiles.begin(), r.tiles.end());
   std::sort(out.begin(), out.end());
   out.erase(std::unique(out.begin(), out.end()), out.end());
   return out;
@@ -36,7 +33,7 @@ std::vector<std::uint32_t> TileStreamer::pinned() const {
 TileStreamer::Step TileStreamer::update(const TileView& view) {
   Step step;
   ++updates_;
-  while (!retired_.empty() && retired_.front().request + kFramesInFlight <= updates_) {
+  while (!retired_.empty() && retired_.front().atUpdate + kFramesInFlight <= updates_) {
     retired_.pop_front();
   }
   for (TileLoader::Loaded& loaded : loader_.take()) {
@@ -79,7 +76,6 @@ TileStreamer::Step TileStreamer::update(const TileView& view) {
 void TileStreamer::commit(std::uint32_t tile) {
   auto it = arrived_.find(tile);
   if (it == arrived_.end()) return;
-  if (cpuSort_) sorter_.place(scheduler_.offset(tile), std::move(it->second->positions));
   arrived_.erase(it);
   scheduler_.markResident(tile);
 }
@@ -87,26 +83,6 @@ void TileStreamer::commit(std::uint32_t tile) {
 void TileStreamer::fail(std::uint32_t tile) {
   arrived_.erase(tile);
   scheduler_.markAbsent(tile);
-}
-
-void TileStreamer::requestVisible(const Frustum& frustum) {
-  const std::uint64_t id = sorter_.requestVisible(frustum, ranges_);
-  requested_.push_back({id, drawn_});
-}
-
-std::optional<SlabSorter::Result> TileStreamer::take() {
-  std::optional<SlabSorter::Result> result = sorter_.take();
-  if (!result) return result;
-  // Every request up to this one is answered or superseded; the order on the GPU is
-  // replaced, and the one it replaces may still be in flight for a couple of frames.
-  while (!requested_.empty() && requested_.front().request <= result->request) {
-    if (requested_.front().request == result->request) {
-      retired_.push_back({updates_, std::move(shown_)});
-      shown_ = std::move(requested_.front().tiles);
-    }
-    requested_.pop_front();
-  }
-  return result;
 }
 
 void TileStreamer::drawnNow() {

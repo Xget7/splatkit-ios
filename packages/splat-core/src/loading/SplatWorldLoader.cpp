@@ -1,10 +1,10 @@
 #include "splat/loading/SplatWorldLoader.h"
 
 #include <algorithm>
-#include <chrono>
 #include <cstdio>
 #include <utility>
 
+#include "splat/diagnostics/Stopwatch.h"
 #include "splat/formats/GlbDecoder.h"
 #include "splat/formats/SplatDecoder.h"
 #include "splat/io/MappedFile.h"
@@ -13,8 +13,6 @@
 
 namespace splat {
 namespace {
-
-using Clock = std::chrono::steady_clock;
 
 // A .lodsplat is already a tree, so it draws with a budget even if the caller set none.
 constexpr int kDefaultLodBudget = 1200000;
@@ -29,10 +27,6 @@ constexpr double kBytesPerGigabyte = 1e9;
 constexpr const char* kSplatFileAdvice = "prepare it as a .lodsplat or a tileset";
 constexpr const char* kLodSplatAdvice = "prepare it as a tileset";
 constexpr const char* kSlabAdvice = "lower the residency budget";
-
-double millisSince(Clock::time_point start) {
-  return std::chrono::duration<double, std::milli>(Clock::now() - start).count();
-}
 
 }  // namespace
 

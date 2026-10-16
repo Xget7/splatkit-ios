@@ -11,7 +11,7 @@ No graphics, no platform APIs, no React Native.
 | Loading | Map files, decode and prepare worlds for a render thread | `splat/io/*.h`, `splat/loading/*.h` |
 | Level of detail | Load-time trees, offline `.lodsplat` files and budgeted selection | `splat/lod/*.h` |
 | Tiles | Tilesets, tile loading and residency-bounded streaming | `splat/tiles/*.h` |
-| Sorting | Distance order on a background thread, spatial reorder and visibility planning | `splat/sorting/*.h` |
+| Sorting | Spatial reorder for GPU fetch locality and the tile streaming prefetch margin; splats are sorted and culled on the GPU | `splat/sorting/*.h` |
 | Math | Column major matrices, vectors and frusta shared by every renderer | `splat/math/*.h` |
 | Navigation | Collider grid, raycast, character controller, colliders built from splats | `splat/navigation/*.h` |
 | Diagnostics | Timing summaries with percentiles | `splat/diagnostics/*.h` |

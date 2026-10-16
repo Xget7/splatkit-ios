@@ -12,6 +12,7 @@
 #include <zlib.h>
 
 #include "load-spz.h"
+#include "splat/math/Covariance.h"
 
 // spz exposes only loadSpz, which inflates without a ceiling; these two are what it
 // runs after the inflate and are plain functions of its namespace (pinned version).
@@ -167,46 +168,6 @@ spz::CoordinateSystem toSpz(CoordinateFrame frame) {
   return spz::CoordinateSystem::UNSPECIFIED;
 }
 
-// Sigma = R * diag(s)^2 * R^T for a unit quaternion (x, y, z, w) and scales s.
-// Returns the upper triangle xx, xy, xz, yy, yz, zz.
-std::array<float, 6> covariance(const float* quaternion, const float* scale) {
-  const float x = quaternion[0];
-  const float y = quaternion[1];
-  const float z = quaternion[2];
-  const float w = quaternion[3];
-
-  // Rotation matrix, rXY = row X, column Y.
-  const float r00 = 1 - 2 * (y * y + z * z);
-  const float r01 = 2 * (x * y - w * z);
-  const float r02 = 2 * (x * z + w * y);
-  const float r10 = 2 * (x * y + w * z);
-  const float r11 = 1 - 2 * (x * x + z * z);
-  const float r12 = 2 * (y * z - w * x);
-  const float r20 = 2 * (x * z - w * y);
-  const float r21 = 2 * (y * z + w * x);
-  const float r22 = 1 - 2 * (x * x + y * y);
-
-  // M = R * S, so Sigma = M * M^T.
-  const float m00 = r00 * scale[0];
-  const float m01 = r01 * scale[1];
-  const float m02 = r02 * scale[2];
-  const float m10 = r10 * scale[0];
-  const float m11 = r11 * scale[1];
-  const float m12 = r12 * scale[2];
-  const float m20 = r20 * scale[0];
-  const float m21 = r21 * scale[1];
-  const float m22 = r22 * scale[2];
-
-  return {
-      m00 * m00 + m01 * m01 + m02 * m02,  // xx
-      m00 * m10 + m01 * m11 + m02 * m12,  // xy
-      m00 * m20 + m01 * m21 + m02 * m22,  // xz
-      m10 * m10 + m11 * m11 + m12 * m12,  // yy
-      m10 * m20 + m11 * m21 + m12 * m22,  // yz
-      m20 * m20 + m21 * m21 + m22 * m22,  // zz
-  };
-}
-
 }  // namespace
 
 std::uint64_t SpzHeader::packedPositionBytes() const {
@@ -337,7 +298,7 @@ Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
       out.bounds.min[k] = std::min(out.bounds.min[k], p);
       out.bounds.max[k] = std::max(out.bounds.max[k], p);
     }
-    const auto cov = covariance(&cloud.rotations[i * 4], scale);
+    const auto cov = covarianceFromQuaternionScale(&cloud.rotations[i * 4], scale);
     std::copy(cov.begin(), cov.end(), out.covariances.begin() + static_cast<std::ptrdiff_t>(i * 6));
     out.alphas[i] = 1.0f / (1.0f + std::exp(-cloud.alphas[i]));
   }

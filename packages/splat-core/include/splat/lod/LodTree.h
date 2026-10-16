@@ -5,7 +5,6 @@
 #include <vector>
 
 #include "splat/formats/SplatCloud.h"
-#include "splat/math/Vec3.h"
 
 namespace splat {
 
@@ -79,22 +78,5 @@ LodTree buildLodTree(SplatCloud cloud, const LodBuildOptions& options = {});
 
 // Offline metadata construction; requires a validated hierarchy. Does not alter splats.
 LodSelectionData buildLodSelectionData(const LodTree& tree);
-
-// Where the budget should go. Nodes within `fullCosine` of the forward direction count
-// at their screen size; from there to 90 degrees the weight falls linearly to
-// `behindWeight`, which holds behind the camera. Detail concentrates where the camera
-// looks while everything else stays covered coarsely, so a turn finds something drawn
-// at every edge until the next selection lands.
-struct LodView {
-  Vec3 forward{0, 0, -1};
-  float fullCosine = 0.77f;  // about 40 degrees off axis
-  float behindWeight = 0.02f;
-};
-
-// Picks the nodes to draw from `origin`. Refines the biggest on screen first until every
-// remaining node covers at most `pixelScaleLimit` world units per unit depth (the size of
-// a pixel at distance 1) or `budget` nodes are chosen. `out` receives node indices.
-void selectLodNodes(const LodTree& tree, Vec3 origin, const LodView& view, std::size_t budget,
-                    float pixelScaleLimit, std::vector<uint32_t>& out);
 
 }  // namespace splat

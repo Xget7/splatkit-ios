@@ -99,19 +99,8 @@ Mat4 nodeTransform(const Json& node) {
   }
   if (node.contains("rotation")) {
     const Json& q = node["rotation"];
-    const float x = q.at(0).get<float>();
-    const float y = q.at(1).get<float>();
-    const float z = q.at(2).get<float>();
-    const float w = q.at(3).get<float>();
-    r.at(0, 0) = 1 - 2 * (y * y + z * z);
-    r.at(0, 1) = 2 * (x * y - w * z);
-    r.at(0, 2) = 2 * (x * z + w * y);
-    r.at(1, 0) = 2 * (x * y + w * z);
-    r.at(1, 1) = 1 - 2 * (x * x + z * z);
-    r.at(1, 2) = 2 * (y * z - w * x);
-    r.at(2, 0) = 2 * (x * z - w * y);
-    r.at(2, 1) = 2 * (y * z + w * x);
-    r.at(2, 2) = 1 - 2 * (x * x + y * y);
+    r = Mat4::rotation(
+        {q.at(0).get<float>(), q.at(1).get<float>(), q.at(2).get<float>(), q.at(3).get<float>()});
   }
   if (node.contains("scale")) {
     const Json& v = node["scale"];

@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "load-spz.h"
+#include "splat/math/Covariance.h"
 #include "splat/sorting/SpatialOrder.h"
 
 namespace splat {
@@ -37,37 +38,21 @@ float logit(float p) {
   return std::log(p / (1.0f - p));
 }
 
-// Covariance R * S * S^T * R^T of a splat stored as log scales and an xyzw quaternion.
+// Covariance of a splat stored as log scales and an unnormalized xyzw quaternion.
 Gaussian decodeGaussian(const Cloud& c, std::size_t i) {
   Gaussian g;
   for (int k = 0; k < 3; ++k) g.position[k] = c.positions[i * 3 + k];
-  const float sx = std::exp(c.scales[i * 3]);
-  const float sy = std::exp(c.scales[i * 3 + 1]);
-  const float sz = std::exp(c.scales[i * 3 + 2]);
-  float x = c.rotations[i * 4];
-  float y = c.rotations[i * 4 + 1];
-  float z = c.rotations[i * 4 + 2];
-  float w = c.rotations[i * 4 + 3];
-  const float n = std::sqrt(x * x + y * y + z * z + w * w);
+  const float scale[3] = {std::exp(c.scales[i * 3]), std::exp(c.scales[i * 3 + 1]),
+                          std::exp(c.scales[i * 3 + 2])};
+  float q[4];
+  for (int k = 0; k < 4; ++k) q[k] = c.rotations[i * 4 + k];
+  const float n = std::sqrt(q[0] * q[0] + q[1] * q[1] + q[2] * q[2] + q[3] * q[3]);
   if (n > 0) {
-    x /= n;
-    y /= n;
-    z /= n;
-    w /= n;
+    for (float& v : q) v /= n;
   } else {
-    w = 1;
+    q[3] = 1;
   }
-  // Rotation matrix columns scaled by the axes: M = R * S.
-  const float m[3][3] = {
-      {(1 - 2 * (y * y + z * z)) * sx, 2 * (x * y - w * z) * sy, 2 * (x * z + w * y) * sz},
-      {2 * (x * y + w * z) * sx, (1 - 2 * (x * x + z * z)) * sy, 2 * (y * z - w * x) * sz},
-      {2 * (x * z - w * y) * sx, 2 * (y * z + w * x) * sy, (1 - 2 * (x * x + y * y)) * sz},
-  };
-  auto dotRow = [&](int a, int b) {
-    return m[a][0] * m[b][0] + m[a][1] * m[b][1] + m[a][2] * m[b][2];
-  };
-  g.covariance = {dotRow(0, 0), dotRow(0, 1), dotRow(0, 2),
-                  dotRow(1, 1), dotRow(1, 2), dotRow(2, 2)};
+  g.covariance = covarianceFromQuaternionScale(q, scale);
   g.alpha = sigmoid(c.alphas[i]);
   return g;
 }

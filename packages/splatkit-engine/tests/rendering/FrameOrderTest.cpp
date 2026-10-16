@@ -115,29 +115,38 @@ TEST(FrameOrder, CompletedScreenTileCountsReachPublishedStatsAndClearWhenUnavail
   EXPECT_EQ(stats.hardwareTileCount, 0u);
 }
 
-TEST(FrameOrder, CpuRendererKeepsTheCpuOrderContract) {
+TEST(FrameOrder, RendererWithoutGpuSortFailsTheLoadInsteadOfFallingBackToCpu) {
   auto renderer = std::make_unique<RecordingRenderer>(false);
   auto* observed = renderer.get();
   SplatEngine engine(std::move(renderer));
+  std::optional<std::string> failure;
+  engine.setEventSink([&](SplatEngine::Event event, const std::string& message, uint32_t) {
+    if (event == SplatEngine::Event::worldFailed) failure = message;
+  });
   const auto bytes = worldBytes();
   engine.loadWorld(bytes.data(), bytes.size());
   engine.render(16666667);
-  EXPECT_EQ(observed->source, SplatRenderer::OrderSource::cpu);
-  EXPECT_TRUE(observed->ranges.empty());
-  EXPECT_EQ(observed->frames, 1u);
+  ASSERT_TRUE(failure.has_value());
+  EXPECT_NE(failure->find("GPU sort"), std::string::npos) << *failure;
+  EXPECT_EQ(observed->world(), std::nullopt);
 }
 
-TEST(FrameOrder, LodWorldExplicitlyUsesCpuOrderOnAGpuCapableRenderer) {
-  auto renderer = std::make_unique<RecordingRenderer>(true);
+TEST(FrameOrder, LodWorldOnARendererWithoutGpuLodSelectionFailsWithADistinctMessage) {
+  auto renderer = std::make_unique<RecordingRenderer>(true);  // sorts on the GPU, but...
   auto* observed = renderer.get();
+  // gpuLod stays false: no native GPU level of detail selection.
   SplatEngine engine(std::move(renderer));
   engine.setSplatBudget(1);
+  std::optional<std::string> failure;
+  engine.setEventSink([&](SplatEngine::Event event, const std::string& message, uint32_t) {
+    if (event == SplatEngine::Event::worldFailed) failure = message;
+  });
   const auto bytes = worldBytes();
   engine.loadWorld(bytes.data(), bytes.size());
   engine.render(16666667);
-  EXPECT_EQ(observed->source, SplatRenderer::OrderSource::cpu);
-  EXPECT_TRUE(observed->ranges.empty());
-  EXPECT_EQ(observed->frames, 1u);
+  ASSERT_TRUE(failure.has_value());
+  EXPECT_NE(failure->find("level of detail"), std::string::npos) << *failure;
+  EXPECT_EQ(observed->world(), std::nullopt);
 }
 
 TEST(FrameOrder, NativeLodRendererReceivesHierarchyAndUsesGpuOrder) {

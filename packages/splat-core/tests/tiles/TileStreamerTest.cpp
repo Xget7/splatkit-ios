@@ -103,89 +103,15 @@ TEST(TileStreamer, StreamsDownToTheFinestTilesNearTheCamera) {
   EXPECT_LT(drawnSplats, 400u);
   EXPECT_EQ(streamer.drawnSplats(), drawnSplats);
   EXPECT_LE(streamer.held(), 1000u);
-
-  streamer.requestVisible(near.frustum);
-  std::optional<SlabSorter::Result> order;
-  for (int i = 0; i < 500 && !order; ++i) {
-    order = streamer.take();
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-  }
-  ASSERT_TRUE(order);
-  EXPECT_LE(order->order.size(), drawnSplats);
-  EXPECT_GT(order->order.size(), 100u);
-  EXPECT_LT(*std::max_element(order->order.begin(), order->order.end()), 1000u);
 }
 
-// A tile the order on the GPU still draws keeps its range until a newer order replaced it
-// and the frames that used it are done, however far the camera went.
-TEST(TileStreamer, TilesOfTheOrderOnTheGpuStayUntilANewerOrderIsTaken) {
-  const BuiltWorld built;
-  const Tileset& set = *built.world.tileset;
-  StreamOptions options;
-  options.residency = 500;  // one cluster's leaves and their parents, not both clusters'
-  TileStreamer streamer(built.world, options);
-  const TileView near = from({0, 0, 3}, 0.0001f);
-  ASSERT_GE(settle(streamer, near), 0);
-  const std::vector<std::uint32_t> shown = streamer.drawn();
-  ASSERT_GT(shown.size(), 1u);
-  for (const std::uint32_t tile : shown) ASSERT_EQ(set.tiles[tile].level, 0);
-  streamer.requestVisible(near.frustum);
-  std::optional<SlabSorter::Result> order;
-  for (int i = 0; i < 500 && !order; ++i) {
-    order = streamer.take();
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-  }
-  ASSERT_TRUE(order);
-
-  // Walk to the far cluster, which needs the room, without taking any order: what the
-  // GPU draws stays, and the far cluster makes do with what fits.
-  const TileView far = from({20, 0, 3}, 0.0001f);
-  for (int round = 0; round < 300; ++round) {
-    auto step = streamer.update(far);
-    for (const auto& a : step.arrived) streamer.commit(a.tile);
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
-  for (const std::uint32_t tile : shown) {
-    EXPECT_EQ(streamer.state(tile), TileState::resident) << set.tiles[tile].file;
-  }
-  // normal_distribution produces different tile populations across standard libraries.
-  // The invariant is the configured residency budget, not one platform's population.
-  EXPECT_LE(streamer.held(), options.residency);
-
-  // Once the order for the far view is taken and the frames that drew the old one are
-  // done, the near tiles may go and the far cluster refines all the way.
-  streamer.requestVisible(far.frustum);
-  order.reset();
-  for (int i = 0; i < 500 && !order; ++i) {
-    order = streamer.take();
-    std::this_thread::sleep_for(std::chrono::milliseconds(2));
-  }
-  ASSERT_TRUE(order);
-  // Orders keep flowing as the draw set refines, like the engine asks for them.
-  for (int pass = 0; pass < 3; ++pass) {
-    ASSERT_GE(settle(streamer, far), 0);
-    streamer.requestVisible(far.frustum);
-    order.reset();
-    for (int i = 0; i < 500 && !order; ++i) {
-      order = streamer.take();
-      std::this_thread::sleep_for(std::chrono::milliseconds(2));
-    }
-    ASSERT_TRUE(order);
-  }
-  for (const std::uint32_t tile : streamer.drawn()) {
-    EXPECT_EQ(set.tiles[tile].level, 0) << set.tiles[tile].file;
-  }
-  EXPECT_LE(streamer.held(), 500u);
-}
-
-// A renderer that orders the ranges itself has no order to take: `drawnNow` pins the
-// drawn tiles the same way, until the frames that may draw them are done.
+// The renderer sorts and draws the ranges itself: `drawnNow` pins the drawn tiles until
+// the frames that may still draw them are done.
 TEST(TileStreamer, TilesDrawnNowStayUntilTheFramesInFlightAreDone) {
   const BuiltWorld built;
   const Tileset& set = *built.world.tileset;
   StreamOptions options;
   options.residency = 500;
-  options.cpuSort = false;
   TileStreamer streamer(built.world, options);
   const TileView near = from({0, 0, 3}, 0.0001f);
   ASSERT_GE(settle(streamer, near), 0);

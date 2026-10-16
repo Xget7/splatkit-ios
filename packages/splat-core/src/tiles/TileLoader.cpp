@@ -1,9 +1,9 @@
 #include "splat/tiles/TileLoader.h"
 
 #include <algorithm>
-#include <chrono>
 #include <utility>
 
+#include "splat/diagnostics/Stopwatch.h"
 #include "splat/io/MappedFile.h"
 
 namespace splat {
@@ -53,7 +53,6 @@ std::size_t TileLoader::pending() const {
 }
 
 void TileLoader::run() {
-  using Clock = std::chrono::steady_clock;
   for (;;) {
     Request request;
     {
@@ -74,7 +73,7 @@ void TileLoader::run() {
     } else {
       cloud = file.error();
     }
-    const double millis = std::chrono::duration<double, std::milli>(Clock::now() - start).count();
+    const double millis = millisSince(start);
     const std::lock_guard<std::mutex> lock(mutex_);
     started_.erase(std::find(started_.begin(), started_.end(), request.tile));
     finished_.push_back({request.tile, std::move(cloud), millis});

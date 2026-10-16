@@ -13,7 +13,6 @@
 #include "splat/core/Result.h"
 #include "splat/loading/SplatWorldLoader.h"
 #include "splat/math/Mat4.h"
-#include "splat/sorting/AsyncSorter.h"
 #include "splat/sorting/VisibilityPlanner.h"
 #include "splat/tiles/TileStreamer.h"
 #include "splatkit/camera/WalkCamera.h"
@@ -23,10 +22,11 @@
 
 namespace splatkit {
 
-// The native engine behind one view. It owns the loader, the camera, the sorter and
-// the platform's renderer and runs them once per vsync: a frame steps the camera, asks
-// the sorter for the visible set when the view changed enough, and draws only when
-// something visible changed, so a still scene costs no GPU time.
+// The native engine behind one view. It owns the loader, the camera, the streamer (for a
+// tiled world) and the platform's renderer and runs them once per vsync: a frame steps
+// the camera and draws only when something visible changed, so a still scene costs no
+// GPU time. The renderer sorts and culls on the GPU every frame it draws; a renderer that
+// cannot do that fails the load instead of falling back to a CPU order.
 //
 // Rendering, input and settings run on the render thread. Loading may run on any
 // thread: it decodes there and leaves the result for the render thread to upload.
@@ -103,10 +103,11 @@ class SplatEngine {
   void setRenderScale(float scale) { renderer_->setRenderScale(scale); }
   float renderScale() const { return renderer_->renderScale(); }
 
-  // Base angular margin around the view, in degrees, that the cull keeps drawn so that
-  // what turns into view before the next cull lands is already there; a fast turn adds
-  // to it. Wider costs draws that are off screen, narrower risks an empty edge on a
-  // flick. Render thread.
+  // Base angular margin around the view, in degrees, that a tiled world's streaming keeps
+  // drawn so that what turns into view before a wider tile load lands is already there; a
+  // fast turn adds to it. Wider costs tiles loaded off screen, narrower risks an empty
+  // edge on a flick. No effect on a world loaded whole: the GPU re-sorts and re-culls it
+  // fresh every frame. Render thread.
   void setCullMargin(float degrees) { planner_.setBaseMargin(degrees); }
   float cullMargin() const { return planner_.baseMargin(); }
 
@@ -209,15 +210,12 @@ class SplatEngine {
 
   std::atomic<int> maxShDegree_{kMaxShDegree};
   int shDegree_ = kMaxShDegree;
-  // Render thread from here on. One of the two is up with a world: the sorter for a
-  // single file world, the streamer for a tiled one.
-  std::unique_ptr<splat::AsyncSorter> sorter_;
+  // Render thread from here on. Up only for a tiled world; a single file world uploads
+  // whole and the renderer sorts and culls it without the engine's help.
   std::unique_ptr<splat::TileStreamer> streamer_;
   int loadedBudget_ = 0;      // the budget of the world on the GPU, 0 without a tree
   uint32_t sourceCount_ = 0;  // splats in the loaded file, what hosts and the HUD count
-  uint32_t drawCount_ = 0;    // entries of the order buffer to draw: the visible splats
-  std::optional<std::vector<uint32_t>> pendingOrder_;  // sorted, waiting for a frame
-  bool gpuSort_ = false;  // the renderer orders the ranges of the loaded world itself
+  uint32_t drawCount_ = 0;    // splats the renderer drew last frame
   std::vector<SplatRenderer::Range> ranges_;  // what the GPU sort draws this frame
   struct SortTimings {
     double sortMillis = 0;

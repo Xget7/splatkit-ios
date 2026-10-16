@@ -51,6 +51,25 @@ struct Mat4 {
     return r;
   }
 
+  // Rotation of a unit quaternion (x, y, z, w).
+  static Mat4 rotation(const std::array<float, 4>& quaternion) {
+    const float x = quaternion[0];
+    const float y = quaternion[1];
+    const float z = quaternion[2];
+    const float w = quaternion[3];
+    Mat4 r = identity();
+    r.at(0, 0) = 1 - 2 * (y * y + z * z);
+    r.at(0, 1) = 2 * (x * y - w * z);
+    r.at(0, 2) = 2 * (x * z + w * y);
+    r.at(1, 0) = 2 * (x * y + w * z);
+    r.at(1, 1) = 1 - 2 * (x * x + z * z);
+    r.at(1, 2) = 2 * (y * z - w * x);
+    r.at(2, 0) = 2 * (x * z - w * y);
+    r.at(2, 1) = 2 * (y * z + w * x);
+    r.at(2, 2) = 1 - 2 * (x * x + y * y);
+    return r;
+  }
+
   // Perspective with vertical field of view, mapping z in [-near, -far] to depth [0, 1].
   static Mat4 perspective(float fovyRadians, float aspect, float near, float far) {
     const float ys = 1 / std::tan(fovyRadians * 0.5f);

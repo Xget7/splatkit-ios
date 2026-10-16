@@ -23,6 +23,17 @@ TEST(Mat4, RotationAboutYTurnsForwardToLeft) {
   EXPECT_NEAR(v[2], 0, 1e-6);
 }
 
+TEST(Mat4, QuaternionRotationMatchesAxisAngle) {
+  const float angle = 0.7f;
+  const Vec3 axis = {1.0f / 3.0f, 2.0f / 3.0f, 2.0f / 3.0f};
+  const float s = std::sin(angle / 2);
+  const std::array<float, 4> q = {axis.x * s, axis.y * s, axis.z * s, std::cos(angle / 2)};
+  const Mat4 fromQuaternion = Mat4::rotation(q);
+  const Mat4 fromAxisAngle = Mat4::rotation(angle, axis);
+  for (int r = 0; r < 4; ++r)
+    for (int c = 0; c < 4; ++c) EXPECT_NEAR(fromQuaternion.at(r, c), fromAxisAngle.at(r, c), 1e-6);
+}
+
 TEST(Mat4, PerspectiveMapsNearToZeroAndFarToOne) {
   const Mat4 p = Mat4::perspective(1.0f, 1.5f, 0.1f, 100.0f);
   auto n = p * std::array<float, 4>{0, 0, -0.1f, 1};

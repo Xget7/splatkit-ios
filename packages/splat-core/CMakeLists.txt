@@ -31,11 +31,9 @@ add_library(splat_core STATIC
   src/navigation/Collider.cpp
   src/navigation/CharacterController.cpp
   src/navigation/ColliderBuilder.cpp
-  src/sorting/DistanceSorter.cpp
-  src/sorting/AsyncSorter.cpp
   src/sorting/SpatialOrder.cpp
-  src/sorting/WorkerPool.cpp
   src/math/SymmetricEigen.cpp
+  src/math/Covariance.cpp
   src/lod/LodTree.cpp
   src/lod/LodSelection.cpp
   src/lod/LodFile.cpp
@@ -51,7 +49,6 @@ add_library(splat_core STATIC
   src/tiles/TileLoader.cpp
   src/tiles/TiledWorld.cpp
   src/tiles/TileStreamer.cpp
-  src/sorting/SlabSorter.cpp
 )
 target_include_directories(splat_core PUBLIC include)
 find_package(ZLIB REQUIRED)  # the SPZ gzip container is inflated here, with a ceiling

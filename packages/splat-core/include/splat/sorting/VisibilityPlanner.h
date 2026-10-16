@@ -7,11 +7,10 @@
 
 namespace splat {
 
-// Decides, frame by frame, whether the renderer asks the sorter for a new visible set
-// and how much wider than the view the cull keeps it. The distance order does
-// not depend on where the camera looks, so for a sorter that keeps its order (SlabSorter)
-// moving asks for a sort and turning only for a cull; the frames in between draw whatever
-// order they have.
+// Decides, frame by frame, how much wider than the view a tiled world's streaming plans
+// its tile fetch: a GPU sort re-sorts and re-culls every frame it draws, but loading a
+// tile the camera just turned toward takes time, so the view streaming plans against is
+// widened by a margin that anticipates the turn landing before the load does.
 //
 // The margin is a base angle, for splats whose centre is just outside the view but whose
 // extent is not, plus what the camera will turn before the result reaches the screen:
