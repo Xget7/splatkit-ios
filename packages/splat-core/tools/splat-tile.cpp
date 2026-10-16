@@ -1,14 +1,11 @@
 // splat-tile: partitions a Gaussian splat scene into tiles with offline levels of detail,
 // the form the engine streams.
 //
-//   splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--coarsen merge|select]
-//              [--prune-alpha T]
+//   splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--prune-alpha T]
 //
-// --tile N  the most splats per tile, 262144 by default. Leaves split until they fit and
-//           every level above coarsens back down to it.
+// --tile N  the most splats per tile, 262144 by default. Each tile is a chunk of the scene's
+//           detail tree.
 // --sh N    keeps spherical harmonics up to degree N before tiling.
-// --coarsen how a level is made from the tiles below it: `merge` (default) blends each
-//           grid cell into one covering splat; `select` keeps the cell's strongest splat.
 // --prune-alpha T  drops splats whose stored opacity is below T (0 to 1) before tiling.
 //           1/255 drops only what draws nothing; higher trades faint layers for speed.
 //
@@ -29,10 +26,8 @@
 namespace {
 
 int usage() {
-  std::fprintf(
-      stderr,
-      "usage: splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--coarsen merge|select]\n"
-      "                  [--prune-alpha T]\n");
+  std::fprintf(stderr,
+               "usage: splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--prune-alpha T]\n");
   return 2;
 }
 
@@ -53,15 +48,7 @@ int run(int argc, char** argv) {
       options.tileSplats = static_cast<uint32_t>(std::atoi(argv[++i]));
     else if (std::strcmp(argv[i], "--sh") == 0 && i + 1 < argc)
       sh = std::atoi(argv[++i]);
-    else if (std::strcmp(argv[i], "--coarsen") == 0 && i + 1 < argc) {
-      const char* how = argv[++i];
-      if (std::strcmp(how, "merge") == 0)
-        options.coarsening = splat::Coarsening::merge;
-      else if (std::strcmp(how, "select") == 0)
-        options.coarsening = splat::Coarsening::select;
-      else
-        return usage();
-    } else if (std::strcmp(argv[i], "--prune-alpha") == 0 && i + 1 < argc)
+    else if (std::strcmp(argv[i], "--prune-alpha") == 0 && i + 1 < argc)
       pruneAlpha = std::strtof(argv[++i], nullptr);
     else
       return usage();
@@ -92,6 +79,7 @@ int run(int argc, char** argv) {
   std::vector<std::size_t> tilesPerLevel;
   std::vector<std::size_t> splatsPerLevel;
   std::vector<std::uintmax_t> bytesPerLevel;
+  std::size_t treeNodes = 0;
   for (const splat::Tile& t : set.tiles) {
     const auto level = static_cast<std::size_t>(t.level);
     if (level >= tilesPerLevel.size()) {
@@ -101,11 +89,13 @@ int run(int argc, char** argv) {
     }
     ++tilesPerLevel[level];
     splatsPerLevel[level] += t.count;
+    treeNodes += t.count;
     bytesPerLevel[level] += std::filesystem::file_size(std::filesystem::path(out) / t.file);
   }
   const double seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
   std::printf("wrote %zu tiles in %.1f s\n", set.tiles.size(), seconds);
+  std::printf("%zu tree nodes over %zu leaves\n", treeNodes, set.splatCount);
   for (std::size_t level = 0; level < tilesPerLevel.size(); ++level) {
     std::printf("level %zu: %zu tiles, %zu splats, %.1f MB\n", level, tilesPerLevel[level],
                 splatsPerLevel[level], bytesPerLevel[level] / 1048576.0);

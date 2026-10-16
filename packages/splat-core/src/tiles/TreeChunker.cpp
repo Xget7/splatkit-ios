@@ -13,7 +13,7 @@ class Chunker {
       : layout_(layout), chunkSplats_(chunkSplats) {}
 
   std::vector<TreeChunk> run() {
-    if (!layout_.empty()) grow(0);
+    if (!layout_.empty()) list(grow(0));
     return std::move(chunks_);
   }
 
@@ -42,33 +42,63 @@ class Chunker {
                     children.end());
   }
 
-  // Builds the chunk grown from `start` after its descendants; returns its index.
-  uint32_t grow(uint32_t start) {
+  // Grows the chunk from `start`, listing the chunks below it first. The chunk itself is not listed
+  // yet: its parent may pack it with its siblings.
+  TreeChunk grow(uint32_t start) {
     std::vector<uint32_t> frontier{start};
     for (std::size_t next = nextToExpand(frontier); next != frontier.size();
          next = nextToExpand(frontier))
       expand(frontier, next);
 
     TreeChunk chunk;
-    chunk.root = start;
+    chunk.roots = {start};
+    std::vector<TreeChunk> parts;
     std::vector<uint32_t> leaves;
-    for (uint32_t node : frontier) {
+    for (const uint32_t node : frontier) {
       if (isLeaf(node)) {
         leaves.push_back(node);
         continue;
       }
-      chunk.children.push_back(grow(node));
-      chunk.level = std::max(chunk.level, chunks_[chunk.children.back()].level + 1);
+      parts.push_back(grow(node));
       chunk.error = std::max(chunk.error, layout_[node].size);
     }
-    if (!chunk.children.empty() && !leaves.empty()) {
+    if (!parts.empty() && !leaves.empty()) {
       TreeChunk remainder;
-      remainder.root = leaves.front();
-      remainder.nodes = leaves;
-      chunk.children.push_back(static_cast<uint32_t>(chunks_.size()));
-      chunks_.push_back(std::move(remainder));
+      remainder.nodes = std::move(leaves);
+      parts.push_back(std::move(remainder));
     }
+    chunk.children = pack(std::move(parts));
+    for (const uint32_t child : chunk.children)
+      chunk.level = std::max(chunk.level, chunks_[child].level + 1);
     chunk.nodes = std::move(frontier);
+    return chunk;
+  }
+
+  // Lists `parts` as chunks, merging neighbours while they fit the budget so that the chunk count
+  // follows the budget and not the number of small subtrees. Returns the indices, in order.
+  std::vector<uint32_t> pack(std::vector<TreeChunk> parts) {
+    std::vector<uint32_t> listed;
+    TreeChunk merged;
+    for (TreeChunk& part : parts) {
+      if (!merged.nodes.empty() && merged.nodes.size() + part.nodes.size() > chunkSplats_) {
+        listed.push_back(list(std::move(merged)));
+        merged = TreeChunk{};
+      }
+      append(merged, std::move(part));
+    }
+    if (!merged.nodes.empty()) listed.push_back(list(std::move(merged)));
+    return listed;
+  }
+
+  static void append(TreeChunk& into, TreeChunk&& part) {
+    into.roots.insert(into.roots.end(), part.roots.begin(), part.roots.end());
+    into.nodes.insert(into.nodes.end(), part.nodes.begin(), part.nodes.end());
+    into.children.insert(into.children.end(), part.children.begin(), part.children.end());
+    into.level = std::max(into.level, part.level);
+    into.error = std::max(into.error, part.error);
+  }
+
+  uint32_t list(TreeChunk&& chunk) {
     chunks_.push_back(std::move(chunk));
     return static_cast<uint32_t>(chunks_.size() - 1);
   }

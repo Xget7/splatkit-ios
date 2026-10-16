@@ -4,21 +4,22 @@
 #include <array>
 #include <cmath>
 #include <cstdio>
-#include <numeric>
-#include <unordered_set>
+#include <optional>
 #include <utility>
 #include <vector>
 
 #include "load-spz.h"
+#include "splat/lod/LodTree.h"
 #include "splat/math/Covariance.h"
 #include "splat/sorting/SpatialOrder.h"
+#include "splat/tiles/TreeChunker.h"
 
 namespace splat {
 namespace {
 
 using Cloud = spz::GaussianCloud;
 
-// A splat as the merge sees it: the spz fields decoded to what they mean.
+// A splat as the tree sees it: the spz fields decoded to what they mean.
 struct Gaussian {
   std::array<float, 3> position;
   std::array<float, 6> covariance;  // xx, xy, xz, yy, yz, zz
@@ -59,7 +60,7 @@ Gaussian decodeGaussian(const Cloud& c, std::size_t i) {
 
 // Eigenvalues and eigenvectors (columns) of a symmetric 3x3 matrix by cyclic Jacobi
 // rotations. Offline the cost does not matter; what matters is that the vectors are
-// orthonormal, since they become the rotation of the merged splat.
+// orthonormal, since they become the rotation of a node.
 void jacobiEigen(const std::array<float, 6>& upper, std::array<float, 3>& values,
                  float vectors[3][3]) {
   double a[3][3] = {{upper[0], upper[1], upper[2]},
@@ -104,23 +105,7 @@ void jacobiEigen(const std::array<float, 6>& upper, std::array<float, 3>& values
   }
 }
 
-// Surface of an ellipsoid with these semi axes (Knud Thomsen's approximation): what a
-// splat contributes to the image is its area times its opacity, its weight when merging.
-float ellipsoidArea(float a, float b, float c) {
-  constexpr float kP = 1.6075f;
-  const float sum = std::pow(a * b, kP) + std::pow(a * c, kP) + std::pow(b * c, kP);
-  return 4.0f * static_cast<float>(M_PI) * std::pow(sum / 3.0f, 1.0f / kP);
-}
-
-float area(const std::array<float, 6>& cov) {
-  std::array<float, 3> e;
-  float vectors[3][3];
-  jacobiEigen(cov, e, vectors);
-  return ellipsoidArea(std::sqrt(std::max(e[0], 0.0f)), std::sqrt(std::max(e[1], 0.0f)),
-                       std::sqrt(std::max(e[2], 0.0f)));
-}
-
-// Writes a merged covariance back as log scales and an xyzw quaternion.
+// Writes a covariance back as log scales and an xyzw quaternion.
 void encodeShape(const std::array<float, 6>& cov, float* scales, float* rotation) {
   std::array<float, 3> e;
   float r[3][3];
@@ -229,257 +214,118 @@ void orderSpatially(Cloud& c) {
   c = gather(c, order.data(), n);
 }
 
-// One splat that stands in for `members`, weighted by area times opacity: its covariance
-// is the members' plus their spread about the centre, so it covers what they covered
-// (Kerbl et al. 2024). One member merges into itself. Opacity keeps the members' total
-// contribution, clamped to what the file can hold: a tile is an spz file, and spz stores
-// an opacity in [0, 1].
-void merge(const Cloud& from, const std::vector<Gaussian>& decoded,
-           const std::vector<std::uint32_t>& members, Cloud& to) {
-  const std::size_t sh = shStride(from);
-  std::vector<float> weights(members.size());
-  float total = 0.0f;
-  for (std::size_t k = 0; k < members.size(); ++k) {
-    const Gaussian& g = decoded[members[k]];
-    weights[k] = area(g.covariance) * g.alpha;
-    total += weights[k];
-  }
-  total = std::max(total, 1e-30f);
-  for (float& w : weights) w /= total;
+// Local copy of the SH DC constant: colour = 0.5 + kShC0 * dc.
+constexpr float kShC0 = 0.282095f;
 
-  std::array<float, 3> center{0, 0, 0};
-  std::array<float, 3> rgb{0, 0, 0};
-  std::vector<float> shSum(sh, 0.0f);
-  for (std::size_t k = 0; k < members.size(); ++k) {
-    const std::uint32_t i = members[k];
-    for (int c = 0; c < 3; ++c) {
-      center[c] += weights[k] * decoded[i].position[c];
-      rgb[c] += weights[k] * from.colors[i * 3 + c];
-    }
-    for (std::size_t c = 0; c < sh; ++c) shSum[c] += weights[k] * from.sh[i * sh + c];
-  }
-  std::array<float, 6> cov{0, 0, 0, 0, 0, 0};
-  for (std::size_t k = 0; k < members.size(); ++k) {
-    const Gaussian& g = decoded[members[k]];
-    const float dx = g.position[0] - center[0];
-    const float dy = g.position[1] - center[1];
-    const float dz = g.position[2] - center[2];
-    const float w = weights[k];
-    cov[0] += w * (dx * dx + g.covariance[0]);
-    cov[1] += w * (dx * dy + g.covariance[1]);
-    cov[2] += w * (dx * dz + g.covariance[2]);
-    cov[3] += w * (dy * dy + g.covariance[3]);
-    cov[4] += w * (dy * dz + g.covariance[4]);
-    cov[5] += w * (dz * dz + g.covariance[5]);
-  }
-  const float alpha = std::min(1.0f, total / std::max(area(cov), 1e-30f));
-
-  float scales[3];
-  float rotation[4];
-  encodeShape(cov, scales, rotation);
-  to.positions.insert(to.positions.end(), center.begin(), center.end());
-  to.scales.insert(to.scales.end(), scales, scales + 3);
-  to.rotations.insert(to.rotations.end(), rotation, rotation + 4);
-  to.colors.insert(to.colors.end(), rgb.begin(), rgb.end());
-  to.alphas.push_back(logit(alpha));
-  to.sh.insert(to.sh.end(), shSum.begin(), shSum.end());
-  ++to.numPoints;
-}
-
-// The member contributing most stands for `members`, as it is except for its size: its
-// axes grow so that its area is the members' total, and its opacity keeps their total
-// contribution like a merge does. Position, orientation, colour and harmonics are one
-// real splat's, so the level keeps the edges and colours the leaves have.
-void select(const Cloud& from, const std::vector<Gaussian>& decoded,
-            const std::vector<std::uint32_t>& members, Cloud& to) {
-  std::uint32_t best = members[0];
-  float bestWeight = -1.0f;
-  float totalArea = 0.0f;
-  float totalWeight = 0.0f;
-  for (const std::uint32_t i : members) {
-    const Gaussian& g = decoded[i];
-    const float a = area(g.covariance);
-    const float w = a * g.alpha;
-    totalArea += a;
-    totalWeight += w;
-    if (w > bestWeight) {
-      bestWeight = w;
-      best = i;
-    }
-  }
-  const float ownArea = std::max(area(decoded[best].covariance), 1e-30f);
-  const float grow = std::sqrt(std::max(totalArea / ownArea, 1.0f));  // area scales squared
-  const float alpha = std::min(1.0f, totalWeight / std::max(totalArea, 1e-30f));
-  const std::size_t sh = shStride(from);
-  to.positions.insert(to.positions.end(), &from.positions[best * 3], &from.positions[best * 3] + 3);
-  for (int k = 0; k < 3; ++k) to.scales.push_back(from.scales[best * 3 + k] + std::log(grow));
-  to.rotations.insert(to.rotations.end(), &from.rotations[best * 4], &from.rotations[best * 4] + 4);
-  to.colors.insert(to.colors.end(), &from.colors[best * 3], &from.colors[best * 3] + 3);
-  to.alphas.push_back(logit(alpha));
-  if (sh > 0) to.sh.insert(to.sh.end(), &from.sh[best * sh], &from.sh[best * sh] + sh);
-  ++to.numPoints;
-}
-
-std::uint64_t cellKey(const float* p, const Bounds& cube, float cell) {
-  std::uint64_t key = 0;
-  for (int k = 0; k < 3; ++k) {
-    const float t = std::max(0.0f, (p[k] - cube.min[k]) / cell);
-    key = key * 2097152u + static_cast<std::uint64_t>(std::min(t, 2097151.0f));
-  }
-  return key;
-}
-
-// Coarsens `from` down to at most `budget` splats on the finest grid over `cube` that
-// gets there. Returns the cloud and the cell size used, the error of the tile it becomes.
-std::pair<Cloud, float> coarsen(const Cloud& from, const Bounds& cube, std::uint32_t budget,
-                                Coarsening how) {
-  const auto n = static_cast<std::size_t>(from.numPoints);
-  const float edge = cube.max[0] - cube.min[0];
-  float cell = edge / std::max(4.0f, 4.0f * std::cbrt(static_cast<float>(budget)));
-  std::unordered_set<std::uint64_t> occupied;
-  for (;; cell *= 1.25f) {
-    occupied.clear();
-    for (std::size_t i = 0; i < n && occupied.size() <= budget; ++i) {
-      occupied.insert(cellKey(&from.positions[i * 3], cube, cell));
-    }
-    if (occupied.size() <= budget || cell >= edge) break;
-  }
-
-  std::vector<Gaussian> decoded(n);
-  for (std::size_t i = 0; i < n; ++i) decoded[i] = decodeGaussian(from, i);
-  std::vector<std::pair<std::uint64_t, std::uint32_t>> keyed(n);
+// The file's splats as the tree builder takes them, in the file's own frame.
+SplatCloud toSplatCloud(const Cloud& c) {
+  const auto n = static_cast<std::size_t>(c.numPoints);
+  SplatCloud out;
+  out.shDegree = c.shDegree;
+  out.sh = c.sh;
+  out.positions = c.positions;
+  out.covariances.reserve(n * 6);
+  out.colors.reserve(n * 3);
+  out.alphas.reserve(n);
   for (std::size_t i = 0; i < n; ++i) {
-    keyed[i] = {cellKey(&from.positions[i * 3], cube, cell), static_cast<std::uint32_t>(i)};
-  }
-  std::sort(keyed.begin(), keyed.end());
-  Cloud out = emptyLike(from);
-  std::vector<std::uint32_t> members;
-  for (std::size_t i = 0; i < n;) {
-    members.clear();
-    const std::uint64_t key = keyed[i].first;
-    for (; i < n && keyed[i].first == key; ++i) members.push_back(keyed[i].second);
-    if (how == Coarsening::select) {
-      select(from, decoded, members, out);
-    } else {
-      merge(from, decoded, members, out);
+    const Gaussian g = decodeGaussian(c, i);
+    out.covariances.insert(out.covariances.end(), g.covariance.begin(), g.covariance.end());
+    for (std::size_t k = 0; k < 3; ++k) {
+      out.colors.push_back(std::clamp(0.5f + kShC0 * c.colors[i * 3 + k], 0.0f, 1.0f));
     }
+    out.alphas.push_back(g.alpha);
   }
-  return {std::move(out), cell};
+  out.bounds = boundsOf(c);
+  return out;
 }
 
-struct Builder {
-  const Cloud& cloud;
-  const std::string& directory;
-  const TileBuildOptions& options;
-  Tileset set;
-  Error* failure = nullptr;
-  Error stored;
-
-  bool fail(const std::string& message) {
-    if (failure == nullptr) {
-      stored = Error{ErrorCode::unreadable, message};
-      failure = &stored;
+// The tree nodes `nodes` as a file's splats. Merged nodes can be brighter than 1, which an spz
+// file cannot hold, so opacity is clamped.
+Cloud toSpzCloud(const LodTree& tree, const std::vector<std::uint32_t>& nodes) {
+  const SplatCloud& src = tree.nodes;
+  const std::size_t sh = src.count() > 0 ? src.sh.size() / src.count() : 0;
+  Cloud out;
+  out.shDegree = src.shDegree;
+  out.numPoints = static_cast<int>(nodes.size());
+  for (const std::uint32_t node : nodes) {
+    const std::size_t i = node;
+    out.positions.insert(out.positions.end(), &src.positions[i * 3], &src.positions[i * 3] + 3);
+    std::array<float, 6> cov;
+    std::copy_n(&src.covariances[i * 6], 6, cov.begin());
+    float scales[3];
+    float rotation[4];
+    encodeShape(cov, scales, rotation);
+    out.scales.insert(out.scales.end(), scales, scales + 3);
+    out.rotations.insert(out.rotations.end(), rotation, rotation + 4);
+    for (std::size_t k = 0; k < 3; ++k) {
+      out.colors.push_back((src.colors[i * 3 + k] - 0.5f) / kShC0);
     }
-    return false;
+    out.alphas.push_back(logit(std::min(1.0f, src.alphas[i])));
+    if (sh > 0) out.sh.insert(out.sh.end(), &src.sh[i * sh], &src.sh[i * sh] + sh);
   }
+  return out;
+}
 
-  // Writes `tile` and appends its entry; returns its index.
+// Writes tiles into a directory and collects their entries.
+struct TileWriter {
+  const std::string& directory;
+  Tileset set;
+  std::optional<Error> failure;
+
+  // Writes `tile` and appends its entry; its bounds cover its splats and its children's
+  // bounds. Returns its index.
   std::uint32_t emit(Cloud& tile, int level, float error, std::vector<std::uint32_t> children) {
     orderSpatially(tile);
     Tile entry;
     entry.file = "tile_" + std::to_string(set.tiles.size()) + ".spz";
     entry.level = level;
     entry.bounds = boundsOf(tile);
+    for (const std::uint32_t child : children) {
+      const Bounds& b = set.tiles[child].bounds;
+      for (std::size_t k = 0; k < 3; ++k) {
+        entry.bounds.min[k] = std::min(entry.bounds.min[k], b.min[k]);
+        entry.bounds.max[k] = std::max(entry.bounds.max[k], b.max[k]);
+      }
+    }
     entry.count = static_cast<std::uint32_t>(tile.numPoints);
     entry.error = error;
     entry.children = std::move(children);
     spz::PackOptions pack;
     pack.version = 2;  // gzip container, the one every reader supports
-    if (!spz::saveSpz(tile, pack, directory + "/" + entry.file))
-      fail("could not write " + entry.file);
+    if (!spz::saveSpz(tile, pack, directory + "/" + entry.file) && !failure) {
+      failure = Error{ErrorCode::unreadable, "could not write " + entry.file};
+    }
     set.tiles.push_back(std::move(entry));
     return static_cast<std::uint32_t>(set.tiles.size() - 1);
   }
-
-  // Builds the tile over `cube` holding `indices` and returns its index and its splats,
-  // which the parent coarsens. A leaf is written as it is; an interior tile splits into
-  // octants and is written as the coarsening of what came back from them.
-  std::pair<std::uint32_t, Cloud> build(std::uint32_t* indices, std::size_t n, const Bounds& cube,
-                                        int depth) {
-    if (n <= options.tileSplats || depth >= 24) {
-      Cloud tile = gather(cloud, indices, n);
-      const std::uint32_t index = emit(tile, 0, 0.0f, {});
-      return {index, std::move(tile)};
-    }
-    std::array<float, 3> mid;
-    for (int k = 0; k < 3; ++k) mid[k] = 0.5f * (cube.min[k] + cube.max[k]);
-    // Partition in place by octant: x, then y within each half, then z.
-    std::array<std::uint32_t*, 9> edges;
-    edges[0] = indices;
-    edges[8] = indices + n;
-    auto splitAt = [&](int axis, std::uint32_t* first, std::uint32_t* last) {
-      return std::partition(first, last, [&](std::uint32_t i) {
-        return cloud.positions[static_cast<std::size_t>(i) * 3 + axis] < mid[axis];
-      });
-    };
-    edges[4] = splitAt(0, edges[0], edges[8]);
-    edges[2] = splitAt(1, edges[0], edges[4]);
-    edges[6] = splitAt(1, edges[4], edges[8]);
-    for (int o = 0; o < 8; o += 2) edges[o + 1] = splitAt(2, edges[o], edges[o + 2]);
-
-    Cloud merged = emptyLike(cloud);
-    std::vector<std::uint32_t> children;
-    int level = 0;
-    for (int o = 0; o < 8; ++o) {
-      const auto count = static_cast<std::size_t>(edges[o + 1] - edges[o]);
-      if (count == 0) continue;
-      Bounds child;
-      for (int k = 0; k < 3; ++k) {
-        const bool high = (o >> (2 - k)) & 1;
-        child.min[k] = high ? mid[k] : cube.min[k];
-        child.max[k] = high ? cube.max[k] : mid[k];
-      }
-      auto [index, tile] = build(edges[o], count, child, depth + 1);
-      children.push_back(index);
-      level = std::max(level, set.tiles[index].level + 1);
-      for (std::size_t i = 0; i < static_cast<std::size_t>(tile.numPoints); ++i)
-        append(merged, tile, i);
-    }
-    auto [tile, cell] = coarsen(merged, cube, options.tileSplats, options.coarsening);
-    merged = Cloud{};
-    const std::uint32_t index = emit(tile, level, cell, std::move(children));
-    return {index, std::move(tile)};
-  }
 };
-
 }  // namespace
 
 Result<Tileset> buildTiles(const Cloud& cloud, const std::string& directory,
                            const TileBuildOptions& options) {
   if (cloud.numPoints <= 0) return Error{ErrorCode::corrupt, "buildTiles: empty cloud"};
   if (options.tileSplats == 0) return Error{ErrorCode::corrupt, "buildTiles: tileSplats is 0"};
-  const auto n = static_cast<std::size_t>(cloud.numPoints);
-  // The root cube: the bounds grown to a cube so every octant is a cube too.
-  Bounds tight = boundsOf(cloud);
-  float edge = 0.0f;
-  for (int k = 0; k < 3; ++k) edge = std::max(edge, tight.max[k] - tight.min[k]);
-  edge = std::max(edge, 1e-6f) * 1.0001f;
-  Bounds cube;
-  for (int k = 0; k < 3; ++k) {
-    const float mid = 0.5f * (tight.min[k] + tight.max[k]);
-    cube.min[k] = mid - 0.5f * edge;
-    cube.max[k] = mid + 0.5f * edge;
+
+  const LodTree tree = buildLodTree(toSplatCloud(cloud), options.lod);
+  auto chunks = chunkTree(tree, options.tileSplats);
+  if (!chunks.ok()) return chunks.error();
+
+  TileWriter writer{directory, {}, std::nullopt};
+  writer.set.shDegree = cloud.shDegree;
+  writer.set.splatCount = tree.leafCount;
+  std::vector<std::uint32_t> tileOfChunk;  // chunks come children first
+  tileOfChunk.reserve(chunks.value().size());
+  for (const TreeChunk& chunk : chunks.value()) {
+    Cloud tile = toSpzCloud(tree, chunk.nodes);
+    std::vector<std::uint32_t> children;
+    children.reserve(chunk.children.size());
+    for (const std::uint32_t child : chunk.children) children.push_back(tileOfChunk[child]);
+    tileOfChunk.push_back(writer.emit(tile, chunk.level, chunk.error, std::move(children)));
   }
-  std::vector<std::uint32_t> indices(n);
-  std::iota(indices.begin(), indices.end(), 0u);
+  if (writer.failure) return *writer.failure;
+  writer.set.root = tileOfChunk.back();
 
-  Builder builder{cloud, directory, options, {}, nullptr, {}};
-  builder.set.shDegree = cloud.shDegree;
-  builder.set.splatCount = n;
-  builder.set.root = builder.build(indices.data(), n, cube, 0).first;
-  if (builder.failure != nullptr) return *builder.failure;
-
-  const std::string json = writeTileset(builder.set);
+  const std::string json = writeTileset(writer.set);
   const std::string path = directory + "/tileset.json";
   FILE* f = std::fopen(path.c_str(), "wb");
   if (f == nullptr || std::fwrite(json.data(), 1, json.size(), f) != json.size()) {
@@ -487,7 +333,7 @@ Result<Tileset> buildTiles(const Cloud& cloud, const std::string& directory,
     return Error{ErrorCode::unreadable, "could not write " + path};
   }
   std::fclose(f);
-  return builder.set;
+  return writer.set;
 }
 
 }  // namespace splat
