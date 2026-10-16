@@ -337,4 +337,16 @@ TEST(TileBuilder, RefusesAnEmptyCloud) {
   EXPECT_FALSE(buildTiles(spz::GaussianCloud{}, dir.string()).ok());
 }
 
+TEST(TileBuilder, RefusesChunkOptionsBeforeWritingAnything) {
+  constexpr uint32_t kFanOutOfOne = 1;
+  const TempPath dir("splat-tiles", TempKind::directory);
+  TileBuildOptions options;
+  options.chunks.fanOut = kFanOutOfOne;
+  const auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.string(), options);
+  ASSERT_FALSE(built.ok());
+  EXPECT_EQ(built.error().code, splat::ErrorCode::corrupt);
+  EXPECT_NE(built.error().message.find("fanOut"), std::string::npos);
+  EXPECT_TRUE(fs::is_empty(dir.path()));
+}
+
 }  // namespace

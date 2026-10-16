@@ -312,6 +312,8 @@ struct TileWriter {
 Result<Tileset> buildTiles(const Cloud& cloud, const std::string& directory,
                            const TileBuildOptions& options) {
   if (cloud.numPoints <= 0) return Error{ErrorCode::corrupt, "buildTiles: empty cloud"};
+  const auto validOptions = validateChunkOptions(options.chunks);
+  if (!validOptions.ok()) return validOptions.error();
 
   const LodTree tree = buildLodTree(toSplatCloud(cloud), options.lod);
   auto chunks = chunkTree(tree, options.chunks);

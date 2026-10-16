@@ -1,6 +1,8 @@
 #include "splat/tiles/TreeChunker.h"
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <functional>
 #include <random>
 #include <set>
@@ -29,6 +31,7 @@ constexpr int kNoShDegree = 0;
 constexpr uint32_t kClusterLeaves = 8;
 // 64 leaves most chunks as one level above the leaves; 16 makes chunks nest.
 constexpr uint32_t kBudgets[] = {64, 16};
+constexpr uint32_t kFanOuts[] = {2, 4, 8};
 
 // How the groups fall against the budget depends on the subtree sizes, so the invariants are swept
 // over seeds, sizes, layouts and budgets.
@@ -39,6 +42,13 @@ constexpr float kCubeHalfExtent = 2.0f;
 constexpr float kClusterSpread = 0.4f;
 constexpr float kClusterOffset = 1.2f;
 constexpr float kSplatLogScale = -3.0f;
+
+constexpr int kBigSplats = 12;
+constexpr float kBigSplatLogScale = 0.5f;
+constexpr float kMixedLogScaleMin = -6.0f;
+constexpr float kMixedLogScaleMax = -1.0f;
+constexpr int kCantorLevels = 10;
+constexpr std::array<double, 8> kOctantWeights = {0.45, 0.2, 0.1, 0.1, 0.05, 0.05, 0.03, 0.02};
 
 LodTree treeOf(const spz::GaussianCloud& source) {
   const auto bytes = splat::encodeSpz(source);
@@ -77,6 +87,32 @@ spz::GaussianCloud sweepCloud(int points, unsigned seed, Layout layout) {
   return cloud;
 }
 
+// Splats scattered over a skewed multi-scale pattern, so some regions are far denser than others,
+// with log-uniform sizes and every (points / kBigSplats)th splat very large: the large ones join
+// the tree high up.
+spz::GaussianCloud mixedSizeCloud(int points, unsigned seed) {
+  std::mt19937 rng(seed);
+  std::discrete_distribution<int> octant{kOctantWeights.begin(), kOctantWeights.end()};
+  std::uniform_real_distribution<float> logScale(kMixedLogScaleMin, kMixedLogScaleMax);
+  spz::GaussianCloud cloud = sweepCloud(points, seed, Layout::uniform);
+  for (int i = 0; i < points; ++i) {
+    const bool big = i % (points / kBigSplats) == 0;
+    float at[3] = {0.0f, 0.0f, 0.0f};
+    float half = kCubeHalfExtent;
+    for (int level = 0; level < kCantorLevels; ++level) {
+      const int o = octant(rng);
+      half *= 0.5f;
+      for (int k = 0; k < 3; ++k) at[k] += ((o >> k) & 1) != 0 ? half : -half;
+    }
+    const float s = logScale(rng);
+    for (int k = 0; k < 3; ++k) {
+      cloud.positions[3 * static_cast<std::size_t>(i) + k] = at[k];
+      cloud.scales[3 * static_cast<std::size_t>(i) + k] = big ? kBigSplatLogScale : s;
+    }
+  }
+  return cloud;
+}
+
 // Calls `check` with every swept tree and budget, with the case named in the failure trace.
 void forEverySweptCase(const std::function<void(const LodTree&, uint32_t)>& check) {
   for (const Layout layout : {Layout::uniform, Layout::twoClusters}) {
@@ -108,42 +144,47 @@ bool isLeaf(const LodTree& tree, uint32_t node) {
 
 TEST(TreeChunker, EveryLeafIsInExactlyOneLevelZeroChunk) {
   forEverySweptCase([](const LodTree& tree, uint32_t budget) {
-    const auto chunks = chunksOf(tree, budget);
-    std::vector<uint32_t> listed;
-    for (const TreeChunk& chunk : chunks)
-      if (chunk.level == 0) listed.insert(listed.end(), chunk.nodes.begin(), chunk.nodes.end());
-    std::sort(listed.begin(), listed.end());
-
     std::vector<uint32_t> leaves;
     for (uint32_t n = 0; n < tree.layout.size(); ++n)
       if (isLeaf(tree, n)) leaves.push_back(n);
     ASSERT_EQ(leaves.size(), tree.leafCount);
-    EXPECT_EQ(listed, leaves);
+
+    for (const uint32_t fanOut : kFanOuts) {
+      SCOPED_TRACE(fanOut);
+      const auto chunks = chunkTree(tree, {budget, fanOut}).value();
+      std::vector<uint32_t> listed;
+      for (const TreeChunk& chunk : chunks)
+        if (chunk.level == 0) listed.insert(listed.end(), chunk.nodes.begin(), chunk.nodes.end());
+      std::sort(listed.begin(), listed.end());
+      EXPECT_EQ(listed, leaves);
+    }
   });
 }
 
 TEST(TreeChunker, NoChunkExceedsTheBudget) {
   const LodTree tree = fixtureTree();
   for (const uint32_t budget : kBudgets) {
-    SCOPED_TRACE(budget);
-    const auto chunks = chunksOf(tree, budget);
-    ASSERT_GT(chunks.size(), 1u);
-    std::set<uint32_t> listedAsChild;
-    for (const TreeChunk& chunk : chunks) {
-      EXPECT_LE(chunk.nodes.size(), budget);
-      listedAsChild.insert(chunk.children.begin(), chunk.children.end());
+    for (const uint32_t fanOut : kFanOuts) {
+      SCOPED_TRACE(::testing::Message() << "budget " << budget << ", fanOut " << fanOut);
+      const auto chunks = chunkTree(tree, {budget, fanOut}).value();
+      ASSERT_GT(chunks.size(), 1u);
+      std::set<uint32_t> listedAsChild;
+      for (const TreeChunk& chunk : chunks) {
+        EXPECT_LE(chunk.nodes.size(), budget);
+        listedAsChild.insert(chunk.children.begin(), chunk.children.end());
+      }
+      std::vector<uint32_t> orphans;
+      for (uint32_t c = 0; c < chunks.size(); ++c)
+        if (listedAsChild.count(c) == 0) orphans.push_back(c);
+      EXPECT_EQ(orphans, std::vector<uint32_t>{static_cast<uint32_t>(chunks.size() - 1)});
+      EXPECT_EQ(chunks.back().roots, std::vector<uint32_t>{0});
     }
-    std::vector<uint32_t> orphans;
-    for (uint32_t c = 0; c < chunks.size(); ++c)
-      if (listedAsChild.count(c) == 0) orphans.push_back(c);
-    EXPECT_EQ(orphans, std::vector<uint32_t>{static_cast<uint32_t>(chunks.size() - 1)});
-    EXPECT_EQ(chunks.back().roots, std::vector<uint32_t>{0});
   }
 }
 
 TEST(TreeChunker, ChildrenStandForExactlyTheParentContent) {
   forEverySweptCase([](const LodTree& tree, uint32_t budget) {
-    for (const uint32_t fanOut : {2u, 4u, 8u}) {
+    for (const uint32_t fanOut : kFanOuts) {
       const auto chunks = chunkTree(tree, {budget, fanOut}).value();
       for (uint32_t c = 0; c < chunks.size(); ++c) {
         const TreeChunk& parent = chunks[c];
@@ -170,7 +211,7 @@ TEST(TreeChunker, ChildrenStandForExactlyTheParentContent) {
 
 TEST(TreeChunker, AChunkHasAtMostFanOutChildrenAndNoEmptyOnes) {
   forEverySweptCase([](const LodTree& tree, uint32_t budget) {
-    for (const uint32_t fanOut : {2u, 4u, 8u}) {
+    for (const uint32_t fanOut : kFanOuts) {
       const auto chunks = chunkTree(tree, {budget, fanOut}).value();
       for (const TreeChunk& c : chunks) {
         EXPECT_LE(c.children.size(), fanOut);
@@ -186,12 +227,31 @@ TEST(TreeChunker, TheChunkCountFollowsTheBudget) {
   constexpr uint32_t kBudget = 64;
   constexpr uint32_t kFanOut = 4;
   constexpr int kLeastRootLevel = 3;
-  constexpr std::size_t kChunksPerBudgetOfNodes = 3;
+  constexpr std::size_t kChunksPerBudgetOfNodes = 4;
   const LodTree tree = treeOf(sweepCloud(kLeaves, 1, Layout::uniform));
   const auto chunks = chunkTree(tree, {kBudget, kFanOut}).value();
   const std::size_t budgets = (tree.nodeCount() + kBudget - 1) / kBudget;
   EXPECT_LE(chunks.size(), kChunksPerBudgetOfNodes * budgets);
   EXPECT_GE(chunks.back().level, kLeastRootLevel);
+}
+
+// Groups of equal node counts leave one child holding most of a world whose density varies, and
+// the hierarchy then thins out far slower than by `fanOut` per level.
+TEST(TreeChunker, TheHierarchyStaysShallowWithMixedSplatSizes) {
+  constexpr int kPoints = 20000;
+  constexpr uint32_t kBudget = 32;
+  constexpr uint32_t kFanOut = 4;
+  constexpr std::size_t kLeastChunks = 24;
+  constexpr int kSlackLevels = 2;
+  for (const unsigned seed : kSweepSeeds) {
+    SCOPED_TRACE(seed);
+    const LodTree tree = treeOf(mixedSizeCloud(kPoints, seed));
+    const auto chunks = chunkTree(tree, {kBudget, kFanOut}).value();
+    ASSERT_GE(chunks.size(), kLeastChunks);
+    const double budgets = static_cast<double>(tree.nodeCount()) / kBudget;
+    const int perfect = static_cast<int>(std::ceil(std::log(budgets) / std::log(kFanOut)));
+    EXPECT_LE(chunks.back().level, perfect + kSlackLevels);
+  }
 }
 
 TEST(TreeChunker, ASingleLeafIsOneChunk) {
@@ -221,6 +281,26 @@ TEST(TreeChunker, RefusesAFanOutBelowTwo) {
   ASSERT_FALSE(chunks.ok());
   EXPECT_EQ(chunks.error().code, ErrorCode::corrupt);
   EXPECT_NE(chunks.error().message.find("fanOut"), std::string::npos);
+}
+
+TEST(TreeChunker, RefusesChildrenListedBeforeTheirParent) {
+  constexpr uint32_t kBudget = 64;
+  LodTree tree = fixtureTree();
+  tree.layout[0].childStart = 0;  // the root claims itself as its first child
+  const auto chunks = chunkTree(tree, {kBudget});
+  ASSERT_FALSE(chunks.ok());
+  EXPECT_EQ(chunks.error().code, ErrorCode::corrupt);
+  EXPECT_NE(chunks.error().message.find("layout"), std::string::npos);
+}
+
+TEST(TreeChunker, ValidatesTheOptionsWithoutATree) {
+  constexpr uint32_t kBudget = 64;
+  constexpr uint32_t kFanOutOfOne = 1;
+  EXPECT_TRUE(splat::validateChunkOptions({}).ok());
+  EXPECT_FALSE(splat::validateChunkOptions({0, 4}).ok());
+  const auto fanOut = splat::validateChunkOptions({kBudget, kFanOutOfOne});
+  ASSERT_FALSE(fanOut.ok());
+  EXPECT_NE(fanOut.error().message.find("fanOut"), std::string::npos);
 }
 
 TEST(TreeChunker, LevelAndErrorFollowTheTree) {

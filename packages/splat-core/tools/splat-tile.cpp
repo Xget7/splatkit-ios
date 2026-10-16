@@ -30,6 +30,9 @@
 
 namespace {
 
+constexpr uint32_t kLeastTile = 1;
+constexpr uint32_t kLeastFanOut = 2;
+
 int usage() {
   std::fprintf(stderr,
                "usage: splat-tile in.ply|in.spz out_dir [--tile N] [--fan-out N] [--sh N] "
@@ -42,15 +45,15 @@ bool endsWith(const std::string& s, const char* suffix) {
   return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0;
 }
 
-// Reads a whole number of at least 1 that fits `value`; false for anything else, a minus sign
+// Reads a whole number of at least `least` that fits `value`; false for anything else, a minus sign
 // included.
-bool parseCount(const char* flag, const char* text, uint32_t& value) {
+bool parseCount(const char* flag, const char* text, uint32_t least, uint32_t& value) {
   char* end = nullptr;
   errno = 0;
   const int64_t parsed = std::strtoll(text, &end, 10);
-  if (end == text || *end != '\0' || errno == ERANGE || parsed < 1 ||
+  if (end == text || *end != '\0' || errno == ERANGE || parsed < least ||
       parsed > std::numeric_limits<uint32_t>::max()) {
-    std::fprintf(stderr, "%s needs a whole number of at least 1, got '%s'\n", flag, text);
+    std::fprintf(stderr, "%s needs a whole number of at least %u, got '%s'\n", flag, least, text);
     return false;
   }
   value = static_cast<uint32_t>(parsed);
@@ -66,10 +69,12 @@ int run(int argc, char** argv) {
   float pruneAlpha = -1.0f;
   for (int i = 3; i < argc; ++i) {
     if (std::strcmp(argv[i], "--tile") == 0 && i + 1 < argc) {
-      if (!parseCount("--tile", argv[i + 1], options.chunks.chunkSplats)) return usage();
+      if (!parseCount("--tile", argv[i + 1], kLeastTile, options.chunks.chunkSplats))
+        return usage();
       ++i;
     } else if (std::strcmp(argv[i], "--fan-out") == 0 && i + 1 < argc) {
-      if (!parseCount("--fan-out", argv[i + 1], options.chunks.fanOut)) return usage();
+      if (!parseCount("--fan-out", argv[i + 1], kLeastFanOut, options.chunks.fanOut))
+        return usage();
       ++i;
     } else if (std::strcmp(argv[i], "--sh") == 0 && i + 1 < argc)
       sh = std::atoi(argv[++i]);

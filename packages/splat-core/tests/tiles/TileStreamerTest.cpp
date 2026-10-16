@@ -47,12 +47,15 @@ TileView from(Vec3 origin, float limit) {
 }
 
 // Runs updates, committing every arrival, until nothing is loading and the draw set is
-// still for a few rounds. Returns the rounds it took.
-int settle(TileStreamer& streamer, const TileView& view) {
+// still for a few rounds. With `drawEachRound` the renderer draws after every update, so
+// `drawnNow` releases what the earlier frames pinned. Returns the rounds it took, -1 if it
+// never settled.
+int settle(TileStreamer& streamer, const TileView& view, bool drawEachRound = false) {
   int quiet = 0;
   for (int round = 0; round < 2000; ++round) {
     auto step = streamer.update(view);
     for (const auto& a : step.arrived) streamer.commit(a.tile);
+    if (drawEachRound) streamer.drawnNow();
     if (step.loading == 0 && step.arrived.empty() && !step.drawChanged) {
       if (++quiet == 5) return round;
     } else {
@@ -219,24 +222,11 @@ TEST(TileStreamer, RefinesStepByStepWithinAResidencyBelowTheWorld) {
   const Tile& root = set.tiles[set.root];
   StreamOptions options;
   options.residency = 64 * (4 + 2);
-  std::size_t worldSplats = 0;
-  for (const Tile& t : set.tiles) worldSplats += t.count;
-  ASSERT_LT(options.residency, worldSplats);
+  ASSERT_LT(options.residency, set.splatCount);
 
   TileStreamer streamer(built.world, options);
   const TileView view = from({0, 0, 3}, 0.0001f);
-  std::vector<std::uint32_t> previous;
-  for (int round = 0; round < 64; ++round) {
-    auto step = streamer.update(view);
-    for (const auto& a : step.arrived) streamer.commit(a.tile);
-    streamer.drawnNow();
-    if (step.loading == 0 && step.arrived.empty() && !step.drawChanged &&
-        streamer.drawn() == previous) {
-      break;
-    }
-    previous = streamer.drawn();
-    std::this_thread::sleep_for(std::chrono::milliseconds(1));
-  }
+  ASSERT_GE(settle(streamer, view, true), 0);
 
   const std::vector<std::uint32_t> shown = streamer.drawn();
   ASSERT_FALSE(shown.empty());
@@ -248,6 +238,14 @@ TEST(TileStreamer, RefinesStepByStepWithinAResidencyBelowTheWorld) {
   }
   EXPECT_LE(drawnSplats, options.residency);
   EXPECT_LE(streamer.held(), options.residency);
+  // The slab holds a visible leaf tile, so refinement reaches the leaves near the camera.
+  bool leafDrawn = false;
+  for (const std::uint32_t tile : shown) {
+    const Tile& drawn = set.tiles[tile];
+    leafDrawn = leafDrawn ||
+                (drawn.level == 0 && view.frustum.intersects(drawn.bounds.min, drawn.bounds.max));
+  }
+  EXPECT_TRUE(leafDrawn);
 }
 
 TEST(TileStreamer, AMissingTileFileIsReportedAndItsParentStays) {

@@ -1,6 +1,7 @@
 #include "splat/tiles/TreeChunker.h"
 
 #include <algorithm>
+#include <cmath>
 #include <queue>
 #include <string>
 #include <unordered_set>
@@ -15,7 +16,19 @@ constexpr uint32_t kMinFanOut = 2;
 class Chunker {
  public:
   Chunker(const std::vector<LodNode>& layout, const TreeChunkOptions& options)
-      : layout_(layout), chunkSplats_(options.chunkSplats), fanOut_(options.fanOut) {}
+      : layout_(layout),
+        chunkSplats_(options.chunkSplats),
+        fanOut_(options.fanOut),
+        leaves_(layout.size(), 1) {
+    // Children sit after their parents in the layout, so a reverse pass has every child's count
+    // before its parent needs it.
+    for (std::size_t n = layout_.size(); n-- > 0;) {
+      if (isLeaf(static_cast<uint32_t>(n))) continue;
+      leaves_[n] = 0;
+      for (uint32_t k = 0; k < layout_[n].childCount; ++k)
+        leaves_[n] += leaves_[layout_[n].childStart + k];
+    }
+  }
 
   std::vector<TreeChunk> run() {
     if (!layout_.empty()) grow({0});
@@ -65,6 +78,40 @@ class Chunker {
     return frontier;
   }
 
+  // The end of each of the at most `fanOut_` non-empty consecutive groups the frontier is cut
+  // into. Each group aims at an equal share of the leaves still unassigned, and takes the next
+  // node only if that lands it nearer its share. Groups of equal node counts would let one child
+  // carry most of a world whose density varies, and the hierarchy would not shrink by `fanOut_`
+  // per level.
+  std::vector<std::size_t> cutPoints(const std::vector<uint32_t>& frontier) const {
+    const std::size_t groups = std::min<std::size_t>(fanOut_, frontier.size());
+    double remaining = 0.0;
+    for (const uint32_t node : frontier) remaining += static_cast<double>(leaves_[node]);
+
+    std::vector<std::size_t> ends;
+    ends.reserve(groups);
+    std::size_t end = 0;
+    for (std::size_t g = 0; g < groups; ++g) {
+      const std::size_t groupsLeft = groups - g;
+      if (groupsLeft == 1) {
+        end = frontier.size();
+      } else {
+        const double target = remaining / static_cast<double>(groupsLeft);
+        const std::size_t limit = frontier.size() - (groupsLeft - 1);  // one node per later group
+        auto weight = static_cast<double>(leaves_[frontier[end++]]);
+        while (end < limit) {
+          const double next = weight + static_cast<double>(leaves_[frontier[end]]);
+          if (std::abs(next - target) >= std::abs(weight - target)) break;
+          weight = next;
+          ++end;
+        }
+        remaining -= weight;
+      }
+      ends.push_back(end);
+    }
+    return ends;
+  }
+
   // Lists the chunk standing for `roots`, after the chunks below it, and returns its index. The
   // frontier is cut into consecutive groups, one child chunk each, so the children's roots in
   // order are exactly this chunk's nodes. The recursion is as deep as the chunk hierarchy, which
@@ -80,13 +127,8 @@ class Chunker {
       chunk.error = std::max(chunk.error, layout_[node].size);
     }
     if (hasInterior) {
-      const std::size_t groups = std::min<std::size_t>(fanOut_, frontier.size());
-      const std::size_t base = frontier.size() / groups;
-      const std::size_t longer =
-          frontier.size() % groups;  // the first `longer` groups take one more
       std::size_t begin = 0;
-      for (std::size_t g = 0; g < groups; ++g) {
-        const std::size_t end = begin + base + (g < longer ? 1 : 0);
+      for (const std::size_t end : cutPoints(frontier)) {
         chunk.children.push_back(grow({frontier.begin() + static_cast<std::ptrdiff_t>(begin),
                                        frontier.begin() + static_cast<std::ptrdiff_t>(end)}));
         chunk.level = std::max(chunk.level, chunks_[chunk.children.back()].level + 1);
@@ -102,18 +144,31 @@ class Chunker {
   const std::vector<LodNode>& layout_;
   uint32_t chunkSplats_;
   uint32_t fanOut_;
+  std::vector<uint32_t> leaves_;  // the tree leaves under each node, a leaf counting itself
   std::vector<TreeChunk> chunks_;
 };
 
 }  // namespace
 
-Result<std::vector<TreeChunk>> chunkTree(const LodTree& tree, const TreeChunkOptions& options) {
-  const uint32_t chunkSplats = options.chunkSplats;
-  if (chunkSplats == 0) return Error{ErrorCode::corrupt, "chunkSplats must be at least 1"};
+Result<Ok> validateChunkOptions(const TreeChunkOptions& options) {
+  if (options.chunkSplats == 0) return Error{ErrorCode::corrupt, "chunkSplats must be at least 1"};
   if (options.fanOut < kMinFanOut)
     return Error{ErrorCode::corrupt, "fanOut must be at least " + std::to_string(kMinFanOut)};
+  return Ok{};
+}
+
+Result<std::vector<TreeChunk>> chunkTree(const LodTree& tree, const TreeChunkOptions& options) {
+  const auto valid = validateChunkOptions(options);
+  if (!valid.ok()) return valid.error();
+  const uint32_t chunkSplats = options.chunkSplats;
   for (std::size_t n = 0; n < tree.layout.size(); ++n) {
-    if (tree.layout[n].childCount > chunkSplats)
+    const LodNode& node = tree.layout[n];
+    // The leaf-weight pass walks the layout backwards, so children must sit after their parent.
+    if (node.childCount > 0 &&
+        (node.childStart <= n || node.childStart + node.childCount > tree.layout.size()))
+      return Error{ErrorCode::corrupt,
+                   "node " + std::to_string(n) + " has children outside the layout after it"};
+    if (node.childCount > chunkSplats)
       return Error{ErrorCode::corrupt, "node " + std::to_string(n) + " has " +
                                            std::to_string(tree.layout[n].childCount) +
                                            " children, more than chunkSplats " +
