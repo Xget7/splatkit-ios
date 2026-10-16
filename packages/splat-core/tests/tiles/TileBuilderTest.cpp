@@ -15,7 +15,10 @@
 
 #include "load-spz.h"
 #include "splat/formats/SpzDecoder.h"
+#include "splat/lod/LodTree.h"
+#include "splat/tiles/TreeChunker.h"
 #include "support/TempPath.h"
+#include "support/TestWorlds.h"
 
 using splat::buildTiles;
 using splat::readTileset;
@@ -85,7 +88,7 @@ std::vector<Point> pointsOf(const spz::GaussianCloud& c) {
 TEST(TileBuilder, LeafTilesHoldEveryFileSplatOnce) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 500;
+  options.chunks.chunkSplats = 500;
   const spz::GaussianCloud source = clusters(1200, 0.05f, 20.0f);
   auto built = buildTiles(source, dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
@@ -119,10 +122,43 @@ TEST(TileBuilder, LeafTilesHoldEveryFileSplatOnce) {
   EXPECT_EQ(std::count(taken.begin(), taken.end(), true), 2400);
 }
 
+TEST(TileBuilder, LeafTileCountsSumToSplatCountAtASmallBudget) {
+  constexpr int kSplats = 20000;
+  constexpr std::uint32_t kTileSplats = 40;
+  constexpr std::uint32_t kClusterLeaves = 32;
+  constexpr float kHalfExtent = 2.0f;
+  constexpr float kSplatRadius = 0.01f;
+  constexpr float kLogitAlpha = 1.0f;
+  std::mt19937 rng(1);
+  std::uniform_real_distribution<float> u(-kHalfExtent, kHalfExtent);
+  spz::GaussianCloud source;
+  source.numPoints = kSplats;
+  for (int i = 0; i < kSplats; ++i) {
+    for (int k = 0; k < 3; ++k) source.positions.push_back(u(rng));
+    source.scales.insert(source.scales.end(), 3, std::log(kSplatRadius));
+    source.rotations.insert(source.rotations.end(), {0.0f, 0.0f, 0.0f, 1.0f});
+    source.alphas.push_back(kLogitAlpha);
+    source.colors.insert(source.colors.end(), 3, 0.0f);
+  }
+
+  const TempPath dir("splat-tiles", TempKind::directory);
+  TileBuildOptions options;
+  options.chunks.chunkSplats = kTileSplats;
+  options.lod.clusterLeaves = kClusterLeaves;
+  auto built = buildTiles(source, dir.string(), options);
+  ASSERT_TRUE(built.ok()) << built.error().message;
+  const Tileset& set = built.value();
+  std::size_t leafSplats = 0;
+  for (const Tile& t : set.tiles)
+    if (t.level == 0) leafSplats += t.count;
+  EXPECT_EQ(set.splatCount, static_cast<std::uint32_t>(kSplats));
+  EXPECT_EQ(leafSplats, static_cast<std::size_t>(kSplats));
+}
+
 TEST(TileBuilder, InteriorTilesAreTreeNodesWithinBudget) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 500;
+  options.chunks.chunkSplats = 500;
   auto built = buildTiles(clusters(1200, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const Tileset& set = built.value();
@@ -130,6 +166,7 @@ TEST(TileBuilder, InteriorTilesAreTreeNodesWithinBudget) {
   int deepest = 0;
   for (const Tile& t : set.tiles) {
     EXPECT_LE(t.count, 500u) << t.file;
+    EXPECT_LE(t.children.size(), options.chunks.fanOut) << t.file;
     EXPECT_TRUE(fs::exists(dir.path() / t.file));
     if (t.level == 0) {
       EXPECT_EQ(t.error, 0.0f);
@@ -152,7 +189,7 @@ TEST(TileBuilder, InteriorTilesAreTreeNodesWithinBudget) {
 TEST(TileBuilder, ASmallCloudIsOneLeafTile) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 500;
+  options.chunks.chunkSplats = 500;
   auto built = buildTiles(clusters(100, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const Tileset& set = built.value();
@@ -165,7 +202,7 @@ TEST(TileBuilder, ASmallCloudIsOneLeafTile) {
 TEST(TileBuilder, MergedOpacityIsClampedToOne) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 50;
+  options.chunks.chunkSplats = 50;
   auto built = buildTiles(clusters(1200, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const Tileset& set = built.value();
@@ -181,10 +218,79 @@ TEST(TileBuilder, MergedOpacityIsClampedToOne) {
   EXPECT_GE(largest, 0.9f);
 }
 
+// Determinant of the symmetric matrix with upper triangle xx, xy, xz, yy, yz, zz.
+double determinant(const float* c) {
+  return static_cast<double>(c[0]) *
+             (static_cast<double>(c[3]) * c[5] - static_cast<double>(c[4]) * c[4]) -
+         static_cast<double>(c[1]) *
+             (static_cast<double>(c[1]) * c[5] - static_cast<double>(c[4]) * c[2]) +
+         static_cast<double>(c[2]) *
+             (static_cast<double>(c[1]) * c[4] - static_cast<double>(c[3]) * c[2]);
+}
+
+// How far the splat reaches on the screen from any direction: the cube root of the covariance's
+// determinant is the geometric mean of the three axis variances, and a splat of opacity `alpha`
+// covers `alpha` times that much.
+double coverageProxy(float alpha, const float* covariance) {
+  return alpha * std::cbrt(determinant(covariance));
+}
+
+// The tree renderer draws a node of opacity A > 1 as min(1, A * G), which covers 1 + ln A times the
+// area of the same splat at opacity 1. A tile file cannot hold A > 1, so it must carry that
+// excess in the splat's extent.
+TEST(TileBuilder, MergedCoverageSurvivesTheOpacityClamp) {
+  constexpr std::uint32_t kTileSplats = 50;
+  constexpr double kCoverageTolerance = 0.02;
+  constexpr float kAlphaTolerance = 1e-3f;
+  const spz::GaussianCloud source = clusters(1200, 0.05f, 20.0f);
+
+  // Both sides start from the cloud as the file holds it, in the file's own frame.
+  const std::vector<std::uint8_t> bytes = splat::encodeSpz(source);
+  const spz::GaussianCloud stored = spz::loadSpz(bytes, {});
+  splat::SpzDecodeOptions inFileFrame;
+  inFileFrame.sourceFrame = splat::kInternalFrame;
+  auto decoded = splat::decodeSpz(bytes.data(), bytes.size(), inFileFrame);
+  ASSERT_TRUE(decoded.ok());
+
+  const TempPath dir("splat-tiles", TempKind::directory);
+  TileBuildOptions options;
+  options.chunks.chunkSplats = kTileSplats;
+  auto built = buildTiles(stored, dir.string(), options);
+  ASSERT_TRUE(built.ok()) << built.error().message;
+  const Tile& root = built.value().tiles[built.value().root];
+  const splat::SplatCloud written = decodeTile(dir.path(), root);
+
+  const splat::LodTree tree = splat::buildLodTree(std::move(decoded.value()), options.lod);
+  auto chunks = splat::chunkTree(tree, options.chunks);
+  ASSERT_TRUE(chunks.ok());
+  const splat::TreeChunk& rootChunk = chunks.value().back();
+  ASSERT_EQ(rootChunk.nodes.size(), written.count());
+
+  double expected = 0.0;
+  std::size_t mergedAboveOne = 0;
+  for (const std::uint32_t node : rootChunk.nodes) {
+    const float alpha = tree.nodes.alphas[node];
+    const float extentGrowth = alpha > 1.0f ? 1.0f + std::log(alpha) : 1.0f;
+    expected += std::min(1.0f, alpha) * extentGrowth *
+                coverageProxy(1.0f, &tree.nodes.covariances[node * 6]);
+    if (alpha > 1.0f) ++mergedAboveOne;
+  }
+  ASSERT_GT(mergedAboveOne, 0u);
+
+  double actual = 0.0;
+  std::size_t saturated = 0;
+  for (std::size_t i = 0; i < written.count(); ++i) {
+    actual += coverageProxy(written.alphas[i], &written.covariances[i * 6]);
+    if (std::abs(written.alphas[i] - 1.0f) <= kAlphaTolerance) ++saturated;
+  }
+  EXPECT_NEAR(actual, expected, kCoverageTolerance * expected);
+  EXPECT_GE(saturated, mergedAboveOne);
+}
+
 TEST(TileBuilder, TileFilesDecodeWithTheEngineDecoder) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 300;
+  options.chunks.chunkSplats = 300;
   auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   for (const Tile& t : built.value().tiles) {
@@ -198,7 +304,7 @@ TEST(TileBuilder, TileFilesDecodeWithTheEngineDecoder) {
 TEST(TileBuilder, TileFilesHoldWhatTheIndexSaysInsideTheirBounds) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 300;
+  options.chunks.chunkSplats = 300;
   auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   for (const Tile& t : built.value().tiles) {
@@ -214,7 +320,7 @@ TEST(TileBuilder, TileFilesHoldWhatTheIndexSaysInsideTheirBounds) {
 TEST(TileBuilder, WritesAnIndexTheReaderAccepts) {
   const TempPath dir("splat-tiles", TempKind::directory);
   TileBuildOptions options;
-  options.tileSplats = 300;
+  options.chunks.chunkSplats = 300;
   auto built = buildTiles(clusters(400, 0.05f, 20.0f), dir.string(), options);
   ASSERT_TRUE(built.ok()) << built.error().message;
   const std::ifstream in(dir.path() / "tileset.json");

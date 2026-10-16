@@ -10,16 +10,17 @@
 
 namespace splat {
 
-// One tile of a tiled world: a cube of the world at one level, stored as its own spz file.
+// One tile of a tiled world: a chunk of the detail tree stored as its own spz file, a frontier of
+// nodes drawn together.
 struct Tile {
   std::string file;  // relative to the tileset
-  int level = 0;     // 0 holds the file's splats; each level up stands in for the tiles below
+  int level = 0;     // 0 holds the file's splats; each level up holds nodes standing in for the
+                     // tiles below
   Bounds bounds;     // tight bounds of the splats in the file
   std::uint32_t count = 0;
-  // World size of the smallest splat this tile stands in for: the cell the level below was
-  // merged at, 0 at level 0. Divided by the distance to the camera it is the world units
-  // per unit depth the tile hides, which streaming compares with the size of a pixel to
-  // decide whether the tiles below are needed.
+  // The largest LodNode::size among the tile's merged nodes, 0 at level 0. Divided by the
+  // distance to the camera it is the world units per unit depth the tile hides, which
+  // streaming compares with the size of a pixel to decide whether the tiles below are needed.
   float error = 0.0f;
   std::vector<std::uint32_t> children;  // indices into Tileset::tiles
 };

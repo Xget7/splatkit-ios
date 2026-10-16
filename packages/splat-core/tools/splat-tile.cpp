@@ -1,21 +1,26 @@
 // splat-tile: partitions a Gaussian splat scene into tiles with offline levels of detail,
 // the form the engine streams.
 //
-//   splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--prune-alpha T]
+//   splat-tile in.ply|in.spz out_dir [--tile N] [--fan-out N] [--sh N] [--prune-alpha T]
 //
-// --tile N  the most splats per tile, 262144 by default. Each tile is a chunk of the scene's
+// --tile N  the most splats per tile, 65536 by default. Each tile is a chunk of the scene's
 //           detail tree.
+// --fan-out N  the most children per tile, 4 by default, at least 2. A refinement step swaps a tile
+//           for at most this many.
 // --sh N    keeps spherical harmonics up to degree N before tiling.
 // --prune-alpha T  drops splats whose stored opacity is below T (0 to 1) before tiling.
 //           1/255 drops only what draws nothing; higher trades faint layers for speed.
 //
 // Writes out_dir/tileset.json and one spz per tile. Coordinates are written as they are.
+#include <cerrno>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <exception>
 #include <filesystem>
+#include <limits>
 #include <string>
 #include <vector>
 
@@ -27,13 +32,29 @@ namespace {
 
 int usage() {
   std::fprintf(stderr,
-               "usage: splat-tile in.ply|in.spz out_dir [--tile N] [--sh N] [--prune-alpha T]\n");
+               "usage: splat-tile in.ply|in.spz out_dir [--tile N] [--fan-out N] [--sh N] "
+               "[--prune-alpha T]\n");
   return 2;
 }
 
 bool endsWith(const std::string& s, const char* suffix) {
   const size_t n = std::strlen(suffix);
   return s.size() >= n && s.compare(s.size() - n, n, suffix) == 0;
+}
+
+// Reads a whole number of at least 1 that fits `value`; false for anything else, a minus sign
+// included.
+bool parseCount(const char* flag, const char* text, uint32_t& value) {
+  char* end = nullptr;
+  errno = 0;
+  const int64_t parsed = std::strtoll(text, &end, 10);
+  if (end == text || *end != '\0' || errno == ERANGE || parsed < 1 ||
+      parsed > std::numeric_limits<uint32_t>::max()) {
+    std::fprintf(stderr, "%s needs a whole number of at least 1, got '%s'\n", flag, text);
+    return false;
+  }
+  value = static_cast<uint32_t>(parsed);
+  return true;
 }
 
 int run(int argc, char** argv) {
@@ -44,16 +65,20 @@ int run(int argc, char** argv) {
   int sh = -1;
   float pruneAlpha = -1.0f;
   for (int i = 3; i < argc; ++i) {
-    if (std::strcmp(argv[i], "--tile") == 0 && i + 1 < argc)
-      options.tileSplats = static_cast<uint32_t>(std::atoi(argv[++i]));
-    else if (std::strcmp(argv[i], "--sh") == 0 && i + 1 < argc)
+    if (std::strcmp(argv[i], "--tile") == 0 && i + 1 < argc) {
+      if (!parseCount("--tile", argv[i + 1], options.chunks.chunkSplats)) return usage();
+      ++i;
+    } else if (std::strcmp(argv[i], "--fan-out") == 0 && i + 1 < argc) {
+      if (!parseCount("--fan-out", argv[i + 1], options.chunks.fanOut)) return usage();
+      ++i;
+    } else if (std::strcmp(argv[i], "--sh") == 0 && i + 1 < argc)
       sh = std::atoi(argv[++i]);
     else if (std::strcmp(argv[i], "--prune-alpha") == 0 && i + 1 < argc)
       pruneAlpha = std::strtof(argv[++i], nullptr);
     else
       return usage();
   }
-  if (sh > 3 || options.tileSplats == 0 || pruneAlpha > 1.0f) return usage();
+  if (sh > 3 || pruneAlpha > 1.0f) return usage();
 
   const auto start = std::chrono::steady_clock::now();
   spz::GaussianCloud cloud =

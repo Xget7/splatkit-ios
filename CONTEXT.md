@@ -97,14 +97,14 @@ A larger budget is not a quality guarantee.
 ### Scale
 
 **Tile**:
-A cube of the world at one level, stored as its own spz file, with its splats in spatial order.
-_Avoid_: chunk, cell, block, node (a node is inside a cloud, a tile is a cloud)
+A chunk of the detail tree stored as its own spz file: a frontier of nodes drawn together, in spatial order.
+_Avoid_: cell, block, node (a node is inside a cloud, a tile is a cloud)
 
 **Screen tile**:
 A rectangular group of image pixels composited together; unrelated to a world's streaming tiles.
 
 **Level**:
-How coarse a tile is: level 0 is the file's splats, each level up stands in for the eight tiles below it with fewer, larger splats.
+How deep a tile's content sits in the tree: level 0 holds the file's splats, each level up holds nodes that stand in for the tiles below it.
 Made offline, never on the phone.
 _Avoid_: LOD, mip, layer
 

@@ -250,7 +250,7 @@ TEST(SplatWorldLoader, ATiledWorldIsPricedByItsResidency) {
     cloud.colors.insert(cloud.colors.end(), {0.0f, 0.0f, 0.0f});
   }
   TileBuildOptions options;
-  options.tileSplats = 64;
+  options.chunks.chunkSplats = 64;
   ASSERT_TRUE(buildTiles(cloud, dir.string(), options).ok());
   const std::string index = (dir.path() / "tileset.json").string();
 

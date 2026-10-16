@@ -6,6 +6,7 @@
 #include "splat/core/Result.h"
 #include "splat/lod/LodTree.h"
 #include "splat/tiles/Tileset.h"
+#include "splat/tiles/TreeChunker.h"
 
 namespace spz {
 struct GaussianCloud;
@@ -22,17 +23,18 @@ inline LodBuildOptions octreeLodOptions() {
 }
 
 struct TileBuildOptions {
-  // The most splats a tile holds, at any level.
-  std::uint32_t tileSplats = 262144;
+  // How the detail tree is cut into tiles: the most splats a tile holds, at any level, and the most
+  // children a tile has.
+  TreeChunkOptions chunks;
   // How the detail tree the tiles are cut from is built.
   LodBuildOptions lod = octreeLodOptions();
 };
 
-// Builds the detail tree of a cloud and writes each chunk of it (see `chunkTree`) as one tile,
-// offline: the leaves are the file's splats, the levels above are the tree's merged nodes. Writes
-// one spz file per tile and `tileset.json` into `directory`, which must exist. The cloud is left as
-// it is. Its coordinates are written as they are, so a tiled world stands in the frame of the file
-// it came from.
+// Tiles are chunks of the detail tree: `buildLodTree` builds the tree of a cloud and `chunkTree`
+// cuts it into chunks, each written as one spz file with the tree's merged nodes above the leaves.
+// Writes one spz file per tile and `tileset.json` into `directory`, which must exist. The cloud is
+// left as it is. Its coordinates are written as they are, so a tiled world stands in the frame of
+// the file it came from.
 Result<Tileset> buildTiles(const spz::GaussianCloud& cloud, const std::string& directory,
                            const TileBuildOptions& options = {});
 

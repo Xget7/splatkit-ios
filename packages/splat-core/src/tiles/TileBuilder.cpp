@@ -239,8 +239,14 @@ SplatCloud toSplatCloud(const Cloud& c) {
   return out;
 }
 
+// A node of opacity A > 1 draws as min(1, A * G), which covers 2 pi s1 s2 (1 + ln A); at opacity
+// 1 it covers 2 pi s1 s2. Scaling every axis by sqrt(1 + ln A) restores the area from any view.
+float coverageScale(float alpha) {
+  return alpha > 1.0f ? std::sqrt(1.0f + std::log(alpha)) : 1.0f;
+}
+
 // The tree nodes `nodes` as a file's splats. Merged nodes can be brighter than 1, which an spz
-// file cannot hold, so opacity is clamped.
+// file cannot hold, so their opacity is clamped and the excess coverage goes into their extent.
 Cloud toSpzCloud(const LodTree& tree, const std::vector<std::uint32_t>& nodes) {
   const SplatCloud& src = tree.nodes;
   const std::size_t sh = src.count() > 0 ? src.sh.size() / src.count() : 0;
@@ -255,6 +261,8 @@ Cloud toSpzCloud(const LodTree& tree, const std::vector<std::uint32_t>& nodes) {
     float scales[3];
     float rotation[4];
     encodeShape(cov, scales, rotation);
+    const float logGrowth = std::log(coverageScale(src.alphas[i]));
+    for (float& scale : scales) scale += logGrowth;
     out.scales.insert(out.scales.end(), scales, scales + 3);
     out.rotations.insert(out.rotations.end(), rotation, rotation + 4);
     for (std::size_t k = 0; k < 3; ++k) {
@@ -304,10 +312,9 @@ struct TileWriter {
 Result<Tileset> buildTiles(const Cloud& cloud, const std::string& directory,
                            const TileBuildOptions& options) {
   if (cloud.numPoints <= 0) return Error{ErrorCode::corrupt, "buildTiles: empty cloud"};
-  if (options.tileSplats == 0) return Error{ErrorCode::corrupt, "buildTiles: tileSplats is 0"};
 
   const LodTree tree = buildLodTree(toSplatCloud(cloud), options.lod);
-  auto chunks = chunkTree(tree, options.tileSplats);
+  auto chunks = chunkTree(tree, options.chunks);
   if (!chunks.ok()) return chunks.error();
 
   TileWriter writer{directory, {}, std::nullopt};

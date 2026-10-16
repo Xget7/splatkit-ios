@@ -19,14 +19,22 @@ struct TreeChunk {
   float error = 0.0f;  // max LodNode::size over the interior nodes in `nodes`; 0 at level 0
 };
 
-// Partitions the tree into chunks of at most `chunkSplats` nodes. A chunk grows from a node by
-// replacing its coarsest interior node with that node's children while the frontier still fits;
-// the interior nodes left over each start a child chunk, and the tree leaves left over share one
-// more at level 0. Sibling chunks are then packed in frontier order into merged chunks of at
-// most `chunkSplats` nodes, so the chunk count follows the budget, not the number of clusters.
+struct TreeChunkOptions {
+  uint32_t chunkSplats = 65536;  // the most nodes a chunk holds
+  uint32_t fanOut =
+      4;  // the most children a chunk has; one refinement step costs at most this many
+};
+
+// Partitions the tree into chunks of at most `chunkSplats` nodes. A chunk grows from its roots by
+// replacing its coarsest interior node with that node's children while the frontier still fits.
+// The frontier, tree leaves included, is then cut into at most `fanOut` consecutive groups of
+// near-equal length, and each group is the roots of a child chunk. So a chunk's children, in
+// order, stand for exactly its nodes, and replacing a chunk by its children costs at most `fanOut`
+// chunks. A chunk whose frontier holds no interior node is at level 0 and has no children.
 // Reads `layout` only.
 // Chunks are listed children before parents; the root chunk is the last entry.
-// Fails as `corrupt` when a node has more children than `chunkSplats`.
-Result<std::vector<TreeChunk>> chunkTree(const LodTree& tree, uint32_t chunkSplats);
+// Fails as `corrupt` when `chunkSplats` is 0, `fanOut` is below 2, or a node has more children
+// than `chunkSplats`.
+Result<std::vector<TreeChunk>> chunkTree(const LodTree& tree, const TreeChunkOptions& options = {});
 
 }  // namespace splat

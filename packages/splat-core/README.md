@@ -10,7 +10,7 @@ No graphics, no platform APIs, no React Native.
 | Formats | Decode `.spz` worlds and `.glb` colliders into library-owned types in the internal frame, and encode `.glb` colliders | `splat/formats/*.h`, `splat/core/*.h` |
 | Loading | Map files, decode and prepare worlds for a render thread | `splat/io/*.h`, `splat/loading/*.h` |
 | Level of detail | Load-time trees, offline `.lodsplat` files and budgeted selection | `splat/lod/*.h` |
-| Tiles | Tilesets, tile loading and residency-bounded streaming | `splat/tiles/*.h` |
+| Tiles | Tilesets of tree chunks, tile loading and residency-bounded streaming | `splat/tiles/*.h` |
 | Sorting | Spatial reorder for GPU fetch locality and the tile streaming prefetch margin; splats are sorted and culled on the GPU | `splat/sorting/*.h` |
 | Math | Column major matrices, vectors and frusta shared by every renderer | `splat/math/*.h` |
 | Navigation | Collider grid, raycast, character controller, colliders built from splats | `splat/navigation/*.h` |
