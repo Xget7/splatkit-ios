@@ -16,7 +16,7 @@ jobs:
   test:
     runs-on: macos-15
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure (macOS, tests)
         run: cmake -S packages/splatkit-ios -B build/ios-mac -DCMAKE_BUILD_TYPE=Release
       - name: Build

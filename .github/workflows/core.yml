@@ -18,7 +18,7 @@ jobs:
       matrix:
         sanitize: ["", "thread", "address"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Configure
         run: >
           cmake -S packages/splat-core -B build/splat-core
@@ -34,7 +34,7 @@ jobs:
   prepare-world:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Prepare a room from a PLY
         run: |
           python3 scripts/tests/make_room_ply.py "$RUNNER_TEMP/room.ply"
@@ -65,7 +65,7 @@ jobs:
       matrix:
         tree: [checkout, ios-export]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Select the source tree
         id: source
         run: |
@@ -77,7 +77,7 @@ jobs:
               | python3 -c "import json,sys; print(json.load(sys.stdin)['directory'])")
           fi
           echo "directory=$directory" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
