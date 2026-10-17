@@ -18,31 +18,18 @@ splat::SplatCloud cloud() {
   return c;
 }
 
-TEST(MetalWorldTest, PrivateUploadMatchesSharedCorePackingAndAcceptsCpuOrder) {
+TEST(MetalWorldTest, SharedUploadMatchesCorePackingAndAcceptsCpuOrder) {
   auto& gpu = test::Gpu::get();
   const auto source = cloud();
-  auto world = MetalWorld::upload(gpu.device, gpu.queue, source, 3);
+  auto world = MetalWorld::upload(gpu.device, source, 3);
   ASSERT_NE(world, nullptr);
   EXPECT_EQ(world->info().count, 2u);
   EXPECT_EQ(world->info().shDegree, 0);
-  EXPECT_EQ(world->splats().storageMode, MTLStorageModePrivate);
+  EXPECT_EQ(world->splats().storageMode, MTLStorageModeShared);
   EXPECT_EQ(world->order(), nil);
   const auto packed = packSplats(source);
   const size_t bytes = packed.size() * sizeof(GpuSplat);
-  id<MTLBuffer> readback = [gpu.device newBufferWithLength:bytes
-                                                   options:MTLResourceStorageModeShared];
-  id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
-  id<MTLBlitCommandEncoder> copy = [cmd blitCommandEncoder];
-  [copy copyFromBuffer:world->splats()
-           sourceOffset:0
-               toBuffer:readback
-      destinationOffset:0
-                   size:bytes];
-  [copy endEncoding];
-  [cmd commit];
-  [cmd waitUntilCompleted];
-  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
-  EXPECT_EQ(std::memcmp(readback.contents, packed.data(), bytes), 0);
+  EXPECT_EQ(std::memcmp(world->splats().contents, packed.data(), bytes), 0);
   const uint32_t order[2] = {1, 0};
   ASSERT_TRUE(world->writeOrder(order, 2));
   id<MTLBuffer> previous = world->order();
@@ -78,7 +65,7 @@ TEST(MetalWorldTest, TileUpdatesStayInTheirSlabRangeAndClearMissingHarmonics) {
 
 TEST(MetalWorldTest, EmptyUploadsAndInvalidRequestsHaveDefinedOutcomes) {
   auto& gpu = test::Gpu::get();
-  auto world = MetalWorld::upload(gpu.device, gpu.queue, {}, 0);
+  auto world = MetalWorld::upload(gpu.device, {}, 0);
   ASSERT_NE(world, nullptr);
   EXPECT_EQ(world->info().count, 0u);
   EXPECT_TRUE(world->writeOrder(nullptr, 0));
@@ -86,7 +73,7 @@ TEST(MetalWorldTest, EmptyUploadsAndInvalidRequestsHaveDefinedOutcomes) {
   EXPECT_EQ(MetalWorld::slab(gpu.device, 0, 0), nullptr);
   auto malformed = cloud();
   malformed.alphas.clear();
-  EXPECT_EQ(MetalWorld::upload(gpu.device, gpu.queue, malformed, 0), nullptr);
+  EXPECT_EQ(MetalWorld::upload(gpu.device, malformed, 0), nullptr);
 }
 
 TEST(MetalWorldTest, ChunkedUploadPreservesSHAndRecordsAcrossStagingBoundary) {
@@ -100,7 +87,7 @@ TEST(MetalWorldTest, ChunkedUploadPreservesSHAndRecordsAcrossStagingBoundary) {
     source.alphas.push_back(i == 65536 ? 2.0f : 0.5f);
     for (int j = 0; j < 9; ++j) source.sh.push_back(static_cast<float>((i + j) % 17) / 32);
   }
-  auto world = MetalWorld::upload(gpu.device, gpu.queue, source, 1);
+  auto world = MetalWorld::upload(gpu.device, source, 1);
   ASSERT_TRUE(world);
   const auto packed = packSplats(source);
   const auto harmonics = packSh(source, 1);

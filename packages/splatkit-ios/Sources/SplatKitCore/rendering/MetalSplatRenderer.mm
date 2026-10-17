@@ -400,7 +400,7 @@ std::optional<std::uint64_t> MetalSplatRenderer::availableMemory() const {
 // Worlds.
 
 bool MetalSplatRenderer::uploadWorld(const splat::SplatCloud& cloud, int maxShDegree) {
-  auto world = MetalWorld::upload(device_, queue_, cloud, maxShDegree);
+  auto world = MetalWorld::upload(device_, cloud, maxShDegree);
   if (!world) return false;
   waitIdle();
   if (gpuSort_ && !visibility_.reserve(world->info().count)) return false;
@@ -431,7 +431,7 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
     buffer = metal::buffer(device_, 6 * sizeof(uint32_t));
     if (!buffer) return false;
   }
-  auto world = MetalWorld::upload(device_, queue_, tree.nodes, maxShDegree);
+  auto world = MetalWorld::upload(device_, tree.nodes, maxShDegree);
   if (!world) return false;
   visibility_ = std::move(visibility);
   lod_ = std::move(lod);

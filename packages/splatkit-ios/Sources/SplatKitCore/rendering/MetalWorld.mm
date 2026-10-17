@@ -18,68 +18,28 @@ bool validCloud(const splat::SplatCloud& cloud) {
          cloud.alphas.size() == n;
 }
 
-id<MTLBuffer> privateBuffer(id<MTLDevice> device, size_t bytes) {
-  if (bytes > device.maxBufferLength) return nil;
-  return [device newBufferWithLength:std::max<size_t>(bytes, 4)
-                             options:MTLResourceStorageModePrivate];
-}
-
 }  // namespace
 
-std::unique_ptr<MetalWorld> MetalWorld::upload(id<MTLDevice> device, id<MTLCommandQueue> queue,
-                                               const splat::SplatCloud& cloud, int maxShDegree) {
+std::unique_ptr<MetalWorld> MetalWorld::upload(id<MTLDevice> device, const splat::SplatCloud& cloud,
+                                               int maxShDegree) {
   if (!validCloud(cloud)) return nullptr;
   auto world = std::unique_ptr<MetalWorld>(new MetalWorld(device));
   world->count_ = static_cast<uint32_t>(cloud.count());
   const int degree = std::clamp(std::min(cloud.shDegree, maxShDegree), 0, 3);
   world->shDegree_ = carriesSh(cloud, degree) ? degree : 0;
-  const size_t splatBytes = cloud.count() * sizeof(GpuSplat);
   const size_t stride = world->shDegree_ > 0 ? shStride(world->shDegree_) : 0;
-  const size_t shBytes = std::max(size_t{4}, cloud.count() * stride * sizeof(uint32_t));
-  world->splats_ = privateBuffer(device, splatBytes);
-  world->sh_ = privateBuffer(device, shBytes);
-  constexpr size_t chunk = 65536;
-  id<MTLBuffer> stagingSplats =
-      metal::buffer(device, std::min(size_t{world->count_}, chunk) * sizeof(GpuSplat));
-  id<MTLBuffer> stagingSh =
-      metal::buffer(device, std::min(size_t{world->count_}, chunk) * stride * 4);
-  if (world->splats_ == nil || world->sh_ == nil || stagingSplats == nil || stagingSh == nil) {
-    return nullptr;
-  }
-  // Pack directly into a bounded staging window, not full-size packed + staging copies.
-  for (size_t offset = 0; offset < std::max(size_t{1}, cloud.count()); offset += chunk) {
-    const size_t count = std::min(chunk, cloud.count() - offset);
-    packSplatRange(cloud, offset, count, static_cast<GpuSplat*>(stagingSplats.contents));
-    if (stride)
-      packShRange(cloud, world->shDegree_, offset, count,
-                  static_cast<uint32_t*>(stagingSh.contents));
-    id<MTLCommandBuffer> upload = [queue commandBuffer];
-    id<MTLBlitCommandEncoder> blit = [upload blitCommandEncoder];
-    if (upload == nil || blit == nil) return nullptr;
-    upload.label = @"Splat world upload";
-    if (count > 0) {
-      [blit copyFromBuffer:stagingSplats
-               sourceOffset:0
-                   toBuffer:world->splats_
-          destinationOffset:offset * sizeof(GpuSplat)
-                       size:count * sizeof(GpuSplat)];
-    }
-    if (stride > 0 && count > 0) {
-      [blit copyFromBuffer:stagingSh
-               sourceOffset:0
-                   toBuffer:world->sh_
-          destinationOffset:offset * stride * 4
-                       size:count * stride * 4];
-    } else if (offset == 0) {
-      [blit fillBuffer:world->sh_ range:NSMakeRange(0, 4) value:0];
-    }
-    [blit endEncoding];
-    [upload commit];
-    [upload waitUntilCompleted];
-    if (upload.status != MTLCommandBufferStatusCompleted) {
-      LOGE("world upload failed: %s", upload.error.localizedDescription.UTF8String);
-      return nullptr;
-    }
+  world->splats_ = metal::buffer(device, cloud.count() * sizeof(GpuSplat));
+  world->sh_ =
+      metal::buffer(device, std::max(size_t{4}, cloud.count() * stride * sizeof(uint32_t)));
+  if (world->splats_ == nil || world->sh_ == nil) return nullptr;
+  // Unified memory: the pack writes the GPU's bytes in place, so a load is one pass over the
+  // cloud with no staging copy. Shared storage is coherent by the time a command buffer commits.
+  packSplatRange(cloud, 0, cloud.count(), static_cast<GpuSplat*>(world->splats_.contents));
+  if (stride > 0) {
+    packShRange(cloud, world->shDegree_, 0, cloud.count(),
+                static_cast<uint32_t*>(world->sh_.contents));
+  } else {
+    std::memset(world->sh_.contents, 0, sizeof(uint32_t));
   }
   return world;
 }
@@ -105,15 +65,15 @@ bool MetalWorld::uploadTile(uint32_t offset, const splat::SplatCloud& cloud) {
   const size_t n = cloud.count();
   if (offset > count_ || n > count_ - offset) return false;
   if (n == 0) return true;
-  const auto packed = packSplats(cloud);
-  std::memcpy(static_cast<GpuSplat*>(splats_.contents) + offset, packed.data(),
-              packed.size() * sizeof(GpuSplat));
+  packSplatRange(cloud, 0, n, static_cast<GpuSplat*>(splats_.contents) + offset);
   if (shDegree_ == 0) return true;
   const size_t stride = shStride(shDegree_);
-  const auto sh =
-      carriesSh(cloud, shDegree_) ? packSh(cloud, shDegree_) : std::vector<uint32_t>(n * stride, 0);
-  std::memcpy(static_cast<uint32_t*>(sh_.contents) + size_t{offset} * stride, sh.data(),
-              sh.size() * sizeof(uint32_t));
+  uint32_t* sh = static_cast<uint32_t*>(sh_.contents) + size_t{offset} * stride;
+  if (carriesSh(cloud, shDegree_)) {
+    packShRange(cloud, shDegree_, 0, n, sh);
+  } else {
+    std::memset(sh, 0, n * stride * sizeof(uint32_t));
+  }
   return true;
 }
 

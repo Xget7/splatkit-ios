@@ -10,12 +10,13 @@
 namespace splatkit {
 
 // GPU residency of one world, independent of its camera and rendering pipelines.
-// Static worlds upload once into private memory; slabs accept incremental tile writes.
+// Static worlds are packed once, in place, into shared memory; slabs accept incremental tile
+// writes the same way.
 // The renderer guarantees no frame reads a slab range or order slot while it is written.
 class MetalWorld {
  public:
-  static std::unique_ptr<MetalWorld> upload(id<MTLDevice> device, id<MTLCommandQueue> queue,
-                                            const splat::SplatCloud& cloud, int maxShDegree);
+  static std::unique_ptr<MetalWorld> upload(id<MTLDevice> device, const splat::SplatCloud& cloud,
+                                            int maxShDegree);
   static std::unique_ptr<MetalWorld> slab(id<MTLDevice> device, uint32_t capacity, int shDegree);
   bool uploadTile(uint32_t offset, const splat::SplatCloud& cloud);
   // CPU-order compatibility, allocated lazily even when the device supports GPU sort.
