@@ -16,8 +16,8 @@ class MetalLOD {
   static constexpr uint32_t kMaxBudget = 4'000'000;
 
   bool create(id<MTLDevice> device, id<MTLLibrary> library);
-  bool upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uint32_t budget,
-              float pixelLimit = 1.0f, float colorWeight = 4.0f, bool frustumCull = true);
+  bool upload(const splat::LodTree& tree, uint32_t budget, float pixelLimit = 1.0f,
+              float colorWeight = 4.0f, bool frustumCull = true);
   void encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms);
   id<MTLBuffer> indices() const { return indices_; }
   // State words 4/5 contain denied refinements/evaluated interior nodes.

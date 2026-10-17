@@ -417,8 +417,7 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
   if (!gpuSort_) return false;
   waitIdle();
   auto lod = std::make_unique<MetalLOD>();
-  if (!lod->create(device_, library_) || !lod->upload(queue_, tree, budget, lodErrorPixels_))
-    return false;
+  if (!lod->create(device_, library_) || !lod->upload(tree, budget, lodErrorPixels_)) return false;
   lod->setSplatLimit(lodSplatLimit_);
   // Compact projections and radix scratch scale with the cut, not all resident nodes.
   // The cut is tightly culled.

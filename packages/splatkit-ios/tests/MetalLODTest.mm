@@ -83,7 +83,7 @@ TEST(MetalLODTest, BudgetCutsCoverEveryLeafExactlyOnceAndAreDeterministic) {
   for (uint32_t budget : {1u, 7u, 31u, 32u, 33u, 64u, 257u, 400u, 515u}) {
     MetalLOD lod;
     ASSERT_TRUE(lod.create(gpu.device, gpu.library));
-    ASSERT_TRUE(lod.upload(gpu.queue, tree, budget, 0));
+    ASSERT_TRUE(lod.upload(tree, budget, 0));
     EXPECT_EQ(lod.indices().storageMode, MTLStorageModePrivate);
     auto cut = select(lod, camera());
     EXPECT_EQ(cut, select(lod, camera()));
@@ -105,7 +105,7 @@ TEST(MetalLODTest, DistanceChangesCutAndIndexedVisibilitySortsOnlyThatCut) {
   const auto tree = hierarchy();
   MetalLOD lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 400, 1));
+  ASSERT_TRUE(lod.upload(tree, 400, 1));
   EXPECT_GT(select(lod, camera()).size(), 1u);
   EXPECT_EQ(select(lod, camera(1000000)).size(), 1u);
   auto world = MetalWorld::upload(gpu.device, tree.nodes, 0);
@@ -261,7 +261,7 @@ TEST(MetalLODTest, QualityRefinesColorVariationWithoutFillingCapacity) {
   MetalLOD lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   // Uniform pair may collapse at this distance; the varying pair must stay fine.
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 4, 1, 4, false));
+  ASSERT_TRUE(lod.upload(tree, 4, 1, 4, false));
   std::array<uint32_t, 6> stats{};
   const auto cut = select(lod, camera(100), &stats);
   EXPECT_EQ(std::set<uint32_t>(cut.begin(), cut.end()), (std::set<uint32_t>{1, 5, 6}));
@@ -275,12 +275,12 @@ TEST(MetalLODTest, PacketExpansionDoesNotEvaluateLeavesAndReportsCapacityPressur
   tree.selection = splat::buildLodSelectionData(tree);
   MetalLOD lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 515, 0, 4, false));
+  ASSERT_TRUE(lod.upload(tree, 515, 0, 4, false));
   std::array<uint32_t, 6> stats{};
   EXPECT_EQ(select(lod, camera(), &stats).size(), 515u);
   EXPECT_EQ(stats[4], 0u);
   EXPECT_EQ(stats[5], tree.selection.clusters.size());
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 33, 0, 4, false));
+  ASSERT_TRUE(lod.upload(tree, 33, 0, 4, false));
   EXPECT_LE(select(lod, camera(), &stats).size(), 33u);
   EXPECT_GT(stats[4], 0u);
 }
@@ -289,7 +289,7 @@ TEST(MetalLODTest, EmptyViewEmitsNothingAndSingleLeafRootEmitsOne) {
   auto& gpu = test::Gpu::get();
   MetalLOD lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
-  ASSERT_TRUE(lod.upload(gpu.queue, hierarchy(), 515, 0));
+  ASSERT_TRUE(lod.upload(hierarchy(), 515, 0));
   EXPECT_TRUE(select(lod, camera(-100)).empty());
   splat::SplatCloud cloud;
   cloud.positions = {0, 0, -2};
@@ -297,7 +297,7 @@ TEST(MetalLODTest, EmptyViewEmitsNothingAndSingleLeafRootEmitsOne) {
   cloud.alphas = {0.5f};
   cloud.covariances = {0.001f, 0, 0, 0.001f, 0, 0.001f};
   auto tree = splat::buildLodTree(std::move(cloud));
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 1));
+  ASSERT_TRUE(lod.upload(tree, 1));
   EXPECT_EQ(select(lod, camera()), (std::vector<uint32_t>{0}));
 }
 
@@ -319,7 +319,7 @@ TEST(MetalLODTest, ParallelScanCrossesBlocksWithoutHolesOrDuplicates) {
   MetalLOD lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   for (uint32_t capacity : {20000u, count}) {
-    ASSERT_TRUE(lod.upload(gpu.queue, tree, capacity, 0, 4, false));
+    ASSERT_TRUE(lod.upload(tree, capacity, 0, 4, false));
     std::array<uint32_t, 6> stats{};
     auto cut = select(lod, camera(), &stats);
     EXPECT_EQ(cut, select(lod, camera()));
@@ -351,14 +351,14 @@ TEST(MetalLODTest, LargeLeafPacketUsesCooperativeEmissionWithoutOverflow) {
   auto& gpu = test::Gpu::get();
   MetalLOD lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 513, 0));
+  ASSERT_TRUE(lod.upload(tree, 513, 0));
   std::array<uint32_t, 6> stats{};
   auto cut = select(lod, camera(), &stats);
   ASSERT_EQ(cut.size(), 513u);
   for (uint32_t i = 0; i < 513; ++i) EXPECT_EQ(cut[i], i + 1);
   EXPECT_EQ(stats[5], 1u);
   EXPECT_EQ(stats[4], 0u);
-  ASSERT_TRUE(lod.upload(gpu.queue, tree, 512, 0));
+  ASSERT_TRUE(lod.upload(tree, 512, 0));
   EXPECT_EQ(select(lod, camera(), &stats), (std::vector<uint32_t>{0}));
   EXPECT_EQ(stats[4], 1u);
 }

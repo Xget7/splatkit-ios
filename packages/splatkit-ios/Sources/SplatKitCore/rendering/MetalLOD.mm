@@ -43,8 +43,8 @@ bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
       return false;
   return true;
 }
-bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uint32_t capacity,
-                      float pixelLimit, float colorWeight, bool frustumCull) {
+bool MetalLOD::upload(const splat::LodTree& tree, uint32_t capacity, float pixelLimit,
+                      float colorWeight, bool frustumCull) {
   auto valid = splat::validateLodTree(tree);
   if (!valid) LOGE("invalid LOD hierarchy: %s", valid.error().message.c_str());
   if (!valid || capacity == 0 || !std::isfinite(pixelLimit) || pixelLimit < 0 ||
@@ -61,26 +61,11 @@ bool MetalLOD::upload(id<MTLCommandQueue> queue, const splat::LodTree& tree, uin
   const size_t frontierCapacity = std::min(size_t{capacity}, data->clusters.size());
   const size_t groupCount = (frontierCapacity + kSimdWidth - 1) / kSimdWidth;
   constexpr auto storage = MTLResourceStorageModePrivate;
+  // Unified memory: the tree is written straight into the GPU's bytes. The buffers the
+  // selection writes stay private.
   auto upload = [&](const void* source, size_t bytes) -> id<MTLBuffer> {
-    auto buffer = metal::buffer(device_, std::max(bytes, size_t{4}), storage);
-    constexpr size_t chunkBytes = 4u << 20;
-    auto staging = metal::buffer(device_, std::max(size_t{4}, std::min(chunkBytes, bytes)));
-    if (!buffer || !staging) return nil;
-    for (size_t offset = 0; offset < bytes; offset += chunkBytes) {
-      const size_t count = std::min(chunkBytes, bytes - offset);
-      std::memcpy(staging.contents, static_cast<const uint8_t*>(source) + offset, count);
-      auto command = [queue commandBuffer];
-      auto blit = [command blitCommandEncoder];
-      [blit copyFromBuffer:staging
-               sourceOffset:0
-                   toBuffer:buffer
-          destinationOffset:offset
-                       size:count];
-      [blit endEncoding];
-      [command commit];
-      [command waitUntilCompleted];
-      if (command.status == MTLCommandBufferStatusError) return nil;
-    }
+    auto buffer = metal::buffer(device_, std::max(bytes, size_t{4}));
+    if (buffer) std::memcpy(buffer.contents, source, bytes);
     return buffer;
   };
   nodes_ = upload(data->clusters.data(), data->clusters.size() * sizeof(splat::LodCluster));
