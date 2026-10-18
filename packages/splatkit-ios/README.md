@@ -30,6 +30,7 @@ view.resume()
 ```
 
 Forward `resume()`, `pause()` and `release()` from the host's lifecycle; the layer follows the view's window.
+The display link asks for 120 Hz, which an iPhone grants only when the host's Info.plist sets `CADisableMinimumFrameDurationOnPhone` to true.
 A world the app cannot hold calls `worldFailed` before it decodes, with the memory it needs and the format to prepare it as, instead of iOS ending the app; [LoadCost.cpp](../splat-core/src/loading/LoadCost.cpp) holds the estimate.
 A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xget7/splatkit/blob/main/scripts/prepare-world.sh), which also builds `.lodsplat` trees and colliders.
 
@@ -48,6 +49,7 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `focus(x:y:)` | Pick an anchor through normalized view coordinates against the collider; false keeps the previous anchor |
 | `animateOrbit(degrees:degreesPerSecond:easeInOut:)` | Run a finite engine-driven orbit and idle again when it finishes |
 | `renderScale` | Fraction of the view's resolution the splats are drawn at, 0.1 to 2 |
+| `spatialUpscaling` | Below a render scale of 1, upscale with MetalFX instead of a linear blit; on by default |
 | `cullMarginDegrees` | Angular margin kept drawn around the view |
 | `linearBlending` | Blend in linear light instead of the encoded colour space |
 | `splatBudget`, `residencyBudget` | Most splats drawn per frame, most splats resident on the GPU; a tiled scene that fits the residency whole is fetched whole, so turning never meets a coarse stand-in |
@@ -55,30 +57,20 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `setWalkVelocity(forward:right:)`, `walk(forward:right:)` | Continuous walking in meters per second, or a single step in meters; the host draws its own control and drives these |
 | `look(deltaYaw:deltaPitch:)` | Turns the camera by radians, for a look pad or mouse |
 | `setCharacter(_:)`, `character` | The walker's shape in walk mode: `CharacterSettings(eyeHeight:bodyRadius:stepHeight:)` |
+| `setLens(_:)`, `lens` | Vertical `fieldOfViewDegrees` (10-120) and `depthRange` (near and far planes, at most 100,000:1) in `LensSettings`; nil keeps the default 65 degrees and 0.05-200. Applies at once and reframes the default orbit; false keeps the previous lens. |
 | `touchLookEnabled`, `lookSensitivity` | Whether a one-finger drag turns the camera, and radians per point dragged |
 | `setMotionEnabled(_:)`, `isMotionEnabled` | Gyroscope driven camera |
 | `cameraPoseInterval` | Seconds between `cameraPoseChanged` delegate calls; 0, the default, never |
 | `startBenchmark(seconds:)` | A reproducible turn with the frame time distribution logged |
 | `captureFrame(to:completion:)` | The next frame as a PNG |
-| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth, the raster strategy, the LOD error threshold and the LOD splat limit apply with GPU sort, the sub-pixel threshold only under the tight-culling experiment |
+| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth, the LOD error threshold and the LOD splat limit apply with GPU sort, the sub-pixel threshold is fixed and a different request resolves to it with a warning |
 | `readStats()`, `gpuDescription` | Frame, GPU and sort times, splats drawn, device name |
 | `delegate` | World, collider and camera pose outcomes, on the main thread |
 
 ## Raster strategy
 
-Hardware rasterization is the default and the fastest choice for most scenes.
-Hybrid screen tiles are an experimental opt-in for scenes where many large translucent splats overlap each pixel, such as close-up interiors:
-
-```swift
-var policy = splatView.renderPolicy
-policy.raster = 2  // hybrid; 0 restores hardware
-splatView.renderPolicy = policy
-```
-
-They composite 16×16 tiles in compute on top of the GPU's own tiling, so on distant or sparse scenes they only add work.
-ISS at a 45 m orbit on an iPhone 17 Pro drew the same 1.98M splats at 18.9 FPS with tiles and 23.1 FPS without.
-The first request builds the tile pipelines; switching back to hardware frees the tile scratch.
-`computeTile` is not built and falls back to hardware with a warning.
+Hardware rasterization is the only strategy Metal builds.
+A policy that asks for `computeTile` or `hybrid` resolves to hardware with a warning, and `deviceCapabilities.supportsComputeTiles` is false.
 
 Touch: a one-finger drag looks around.
 The view ships no walking control; the host draws its own, wherever it likes, and drives it with `setWalkVelocity` or `walk`.
@@ -87,7 +79,7 @@ The view ships no walking control; the host draws its own, wherever it likes, an
 ## Layout
 
 ```
-Sources/SplatKitCore/rendering/    renderer, world, visibility, radix, LOD, tiles; shaders/ contains MSL
+Sources/SplatKitCore/rendering/    renderer, world, visibility, radix, LOD; shaders/ contains MSL
 Sources/SplatKitCore/engine/       SKSplatEngine, the Objective-C boundary over the shared engine
 Sources/SplatKitCore/include/      the public header Swift imports
 Sources/SplatKit/                  RenderThread, MotionInput, SplatMetalView
@@ -107,21 +99,19 @@ Colours blend in the encoded space by default, on a `bgra8Unorm` layer; `linearB
 Start motion after `splatView(_:worldFrameReady:)`, not upload-only `worldReady`.
 Keep the view attached/resumed while loading; readiness means GPU completion, not visual acceptance.
 
-Dev-only switches; `--quality`, `--min-pixel-radius`, `--depth-key-bits`, `--lod-error-pixels`, `--lod-splat-limit` and `--tile-raster` set the view's `renderPolicy`, the rest apply before renderer creation:
+Dev-only switches; `--quality`, `--depth-key-bits`, `--lod-error-pixels` and `--lod-splat-limit` set the view's `renderPolicy`, the rest apply before renderer creation:
 
 | Switch | Effect |
 |---|---|
-| `--metal-culling 1 --min-pixel-radius 1` | Covariance bounds, opacity/subpixel rejection |
 | `--depth-key-bits 16` | Two radix passes; uint32 storage unchanged; ties may shimmer |
-| `--tile-raster 1` | Hybrid raster: 16×16 tiles, compute ≤512 candidates, dense/large-footprint tiles use hardware |
 | `--budget 4000000` | LOD capacity, at most 4M; not guaranteed quality |
 | `--quality ultra` | Starting level of the on-screen picker: `ultra`, `high` (default), `balanced`, `fast` |
 | `--shot tour` | ISS camera, +Y up: `overview`, `orbit` (default), `detail`, `flyby`, `tour` |
 | `--run-seconds 20` | Bounded run with resource monitoring |
+| `--metalfx 0` | Upscales a `--scale` below 1 with the linear blit instead of MetalFX |
 
 Defaults: 32-bit sorting, hardware raster.
 Culling, LOD and depth quantization are approximations pending visual acceptance.
-Tile termination uses transmittance ≤0.0001; hardware geometry submission remains.
 Private allocations still consume unified memory.
 The dev memory guard cannot cancel in-flight work or prevent allocation spikes.
 
@@ -136,6 +126,5 @@ Selection feeds visibility → radix → raster; denied refinements retain paren
 The hierarchy stays resident, without Hi-Z or temporal transitions.
 
 Stats: `loadedSplatCount` counts source splats; `drawnSplatCount` counts completed draw candidates.
-Tile counts distinguish compute, nonempty compute and hardware screen tiles.
 Command timings overlap; HUD sort includes visibility/radix.
 [Phone measurements](../../docs/BENCHMARKS.md) record settings, evidence and visual limitations.

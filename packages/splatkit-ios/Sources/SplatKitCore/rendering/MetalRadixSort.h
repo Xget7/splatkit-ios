@@ -9,14 +9,14 @@ namespace splatkit {
 
 // Stable ascending sort of uint32 key/value pairs. No camera or splat knowledge.
 // Call reserve while idle, fill keys()/values(), then encode on the render queue.
-// The GPU-written count must not exceed capacity(). Results are in the same buffers.
+// The GPU-written count must not exceed capacity(). The sorted values land in values();
+// keys() is scratch afterwards, since the last pass skips the key write nobody reads.
 // Scratch is shared across frames: all encodes and their consumers use one queue.
 class MetalRadixSort {
  public:
   // Low16 requires zero upper bits. Keys remain uint32 storage in both modes.
   enum class KeyBits : uint32_t { Low16 = 16, Full32 = 32 };
-  bool create(id<MTLDevice> device, id<MTLLibrary> library,
-              MTLResourceOptions storage = MTLResourceStorageModeShared);
+  bool create(id<MTLDevice> device, id<MTLLibrary> library);
   // Transactional allocation: failure preserves the previous buffers and capacity.
   bool reserve(uint32_t capacity);
   uint32_t capacity() const { return capacity_; }
@@ -34,11 +34,10 @@ class MetalRadixSort {
                 "Both key widths must finish in the input buffers");
 
   id<MTLDevice> device_ = nil;
-  MTLResourceOptions storage_ = MTLResourceStorageModeShared;
   id<MTLComputePipelineState> prepare_ = nil;
   id<MTLComputePipelineState> histogram_ = nil;
   id<MTLComputePipelineState> scan_ = nil;
-  id<MTLComputePipelineState> scatter_ = nil;
+  id<MTLComputePipelineState> scatter_ = nil, scatterLast_ = nil;
   uint32_t capacity_ = 0;
   std::array<id<MTLBuffer>, 2> keys_{};
   std::array<id<MTLBuffer>, 2> values_{};

@@ -19,7 +19,28 @@ float aspectOf(Extent extent) {
              : 1.0f;
 }
 
+constexpr float kRadiansPerDegree = 3.14159265358979f / 180.0f;
+
 }  // namespace
+
+std::optional<Lens> Lens::with(const LensSettings& settings) {
+  Lens lens;
+  // Each test passes only for a number in range, so NaN fails all of them.
+  if (const auto degrees = settings.fieldOfViewDegrees) {
+    const bool inRange = *degrees >= kMinFieldOfViewDegrees && *degrees <= kMaxFieldOfViewDegrees;
+    if (!inRange) return std::nullopt;
+    lens.fieldOfViewRadians = *degrees * kRadiansPerDegree;
+  }
+  if (const auto range = settings.depthRange) {
+    const bool inRange = range->nearPlane > 0 && std::isfinite(range->farPlane) &&
+                         range->farPlane > range->nearPlane &&
+                         range->farPlane / range->nearPlane <= kMaxDepthRatio;
+    if (!inRange) return std::nullopt;
+    lens.nearPlane = range->nearPlane;
+    lens.farPlane = range->farPlane;
+  }
+  return lens;
+}
 
 Lens::TanHalf Lens::tanHalf(Extent extent) const {
   const float y = std::tan(fieldOfViewRadians * 0.5f);

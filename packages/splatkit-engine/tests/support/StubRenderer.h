@@ -41,6 +41,7 @@ class StubRenderer : public SplatRenderer {
   bool draw(const Frame& frame) override {
     ranges.clear();
     for (uint32_t i = 0; i < frame.rangeCount; ++i) ranges.push_back(frame.ranges[i]);
+    proj = frame.proj;
     ++frames;
     return true;
   }
@@ -50,6 +51,8 @@ class StubRenderer : public SplatRenderer {
   std::vector<Range> ranges;  // what the last draw was given
   uint32_t frames = 0;        // draws accepted so far
   uint32_t lodBudget = 0;     // the budget the last uploadLodWorld carried
+  // The projection the last draw was given.
+  splat::Mat4 proj = splat::Mat4::identity();
 
  private:
   std::optional<GpuWorldInfo> world_;

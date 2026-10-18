@@ -13,8 +13,8 @@ vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[in
     // z beyond w is outside clip space, so the quad is discarded.
     SplatVertex out;
     out.position = float4(0.0, 0.0, 2.0, 1.0);
-    out.relativePosition = float2(0.0);
-    out.color = float4(0.0);
+    out.gaussian = half2(0.0);
+    out.color = half4(0.0);
     return out;
   }
   return expandQuad(cam, p, vertexId);
@@ -28,19 +28,16 @@ vertex SplatVertex projectedVertex(uint vertexId [[vertex_id]], uint instanceId 
   return expandQuad(cam, projected[order[instanceId]], vertexId);
 }
 
-fragment float4 splatFragment(SplatVertex in [[stage_in]]) {
-  float alpha = splatAlpha(in);
-  if (alpha < 1.0 / 255.0) discard_fragment();
-  return float4(in.color.rgb, alpha);
+fragment half4 splatFragment(SplatVertex in [[stage_in]]) {
+  half power = splatPower(in);
+  if (power < kLog2MinAlpha) discard_fragment();
+  return half4(in.color.rgb, exp2(min(power, 0.0h)));
 }
 
-fragment float4 splatFragmentUnder(SplatVertex in [[stage_in]]) {
-  half2 relative = half2(in.relativePosition);
-  half r2 = dot(relative, relative);
-  half alpha = min(exp(half(-0.5) * r2) * half(in.color.a), half(1.0));
-  if (alpha < half(1.0 / 255.0)) discard_fragment();
-  half3 rgb = half3(in.color.rgb) * alpha;
-  return float4(float3(rgb), float(alpha));
+fragment half4 splatFragmentUnder(SplatVertex in [[stage_in]]) {
+  half power = splatPower(in);
+  if (power < kLog2MinAlpha) discard_fragment();
+  return half4(in.color.rgb, 1.0h) * exp2(min(power, 0.0h));
 }
 
 // One oversized triangle covers the screen.

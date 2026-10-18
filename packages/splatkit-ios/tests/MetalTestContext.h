@@ -1,7 +1,7 @@
 #pragma once
 
 #import <Metal/Metal.h>
-#include "SplatShaderSource.h"
+#include "rendering/MetalCompute.h"
 
 namespace splatkit::test {
 
@@ -12,7 +12,7 @@ struct Gpu {
   id<MTLLibrary> library = nil;
   Gpu() {
     NSError* error = nil;
-    library = [device newLibraryWithSource:@(SplatShaderSource) options:nil error:&error];
+    library = metal::shaderLibrary(device, &error);
     if (library == nil) NSLog(@"Splat test shader compilation: %@", error);
   }
   static Gpu& get() {

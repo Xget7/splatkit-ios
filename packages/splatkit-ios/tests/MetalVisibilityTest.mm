@@ -208,9 +208,97 @@ TEST_F(MetalVisibilityTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
   EXPECT_EQ(visibility.count(0), 1u);
 }
 
-// Tight culling keeps all intermediate buffers private. Read them only through
-// explicit blits, just as an offline diagnostic would, never through .contents.
-TEST(MetalVisibilityTightCullingTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
+TEST_F(MetalVisibilityTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSplats) {
+  Gpu& gpu = Gpu::get();
+  VisibilityInput input(4);
+  auto* camera = static_cast<const CameraUniform*>(input.uniforms.contents);
+  auto* source = static_cast<GpuSplat*>(input.splats.contents);
+  // Depth is 2, so a splat at x sits at clip x / w = x * proj(0,0) / 2.
+  const float edge = 2.0f / camera->proj.at(0, 0);
+  struct Case {
+    float centre, sigma;
+    uint32_t rgba8;
+  };
+  const Case cases[] = {
+      {1.25f * edge, 0.3f, 0xffffffffu},   // centre off screen, quad reaches 187 px into it
+      {1.25f * edge, 0.05f, 0xffffffffu},  // same centre, quad ends 100 px short of the edge
+      {0.0f, 0.1f, 0x00ffffffu},           // opacity 0
+      {0.0f, 0.1f, 0xffffffffu},
+  };
+  for (uint32_t i = 0; i < 4; ++i) {
+    const uint32_t variance = splat::toHalf(cases[i].sigma * cases[i].sigma);
+    source[i].position[0] = cases[i].centre;
+    source[i].rgba8 = cases[i].rgba8;
+    source[i].cov[0] = variance;
+    source[i].cov[1] = variance << 16;
+    source[i].cov[2] = variance << 16;
+  }
+  ASSERT_TRUE(visibility.reserve(4));
+  const SplatRenderer::Range range{0, 4};
+  id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
+  ASSERT_TRUE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1));
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  ASSERT_EQ(visibility.count(0), 2u);
+  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
+  std::vector<uint32_t> kept = {projected[0].index, projected[1].index};
+  std::sort(kept.begin(), kept.end());
+  EXPECT_EQ(kept, (std::vector<uint32_t>{0, 3}));
+}
+
+TEST_F(MetalVisibilityTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadius) {
+  Gpu& gpu = Gpu::get();
+  VisibilityInput input(6);
+  auto* source = static_cast<GpuSplat*>(input.splats.contents);
+  // Depth 2 and focal 500: a world sigma of s projects to 250 s pixels. The quad reaches
+  // 2.5 sigma of the source after the 0.3 px^2 low-pass and ellipseAxes' 0.1 px^2 eigenvalue
+  // floor are taken off, so a 0.6 px sigma leaves a 1.7 px footprint and 0.2 px leaves 0.94 px.
+  struct Case {
+    float z, sigma;
+    uint32_t rgba8, lodAlpha;
+  };
+  const uint32_t two = 0x40000000u;  // float bits of 2.0
+  const Case cases[] = {
+      {-2.0f, 0.0024f, 0xffffffffu, 0},  // 0.6 px sigma, 1.7 px footprint: kept
+      {-2.0f, 0.0008f, 0xffffffffu, 0},  // 0.2 px sigma, 0.94 px footprint: culled
+      {-0.05f, 0.1f, 0xffffffffu, 0},    // centre inside the 0.1 near plane: culled
+      {-150.0f, 1.0f, 0xffffffffu, 0},   // centre past the 100 far plane: culled
+      {-2.0f, 0.1f, 0x00000000u, two},   // black and transparent, LOD opacity 2: kept
+      {-2.0f, 1.6f, 0xffffffffu, 0},     // 400 px sigma, 1000 px quad: kept, cut at 512 px
+  };
+  for (uint32_t i = 0; i < 6; ++i) {
+    const uint32_t variance = splat::toHalf(cases[i].sigma * cases[i].sigma);
+    source[i].position[2] = cases[i].z;
+    source[i].rgba8 = cases[i].rgba8;
+    source[i].lodAlpha = cases[i].lodAlpha;
+    source[i].cov[0] = variance;
+    source[i].cov[1] = variance << 16;
+    source[i].cov[2] = variance << 16;
+  }
+  ASSERT_TRUE(visibility.reserve(6));
+  const SplatRenderer::Range range{0, 6};
+  id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
+  ASSERT_TRUE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1));
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  const uint32_t count = visibility.count(0);
+  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
+  std::vector<uint32_t> kept;
+  const ProjectedSplat* huge = nullptr;
+  for (uint32_t i = 0; i < count; ++i) {
+    kept.push_back(projected[i].index);
+    if (projected[i].index == 5) huge = &projected[i];
+  }
+  std::sort(kept.begin(), kept.end());
+  EXPECT_EQ(kept, (std::vector<uint32_t>{0, 4, 5}));
+  ASSERT_NE(huge, nullptr);
+  // The radius is in sigmas; 512 px over a 400 px sigma, within half precision of the axes.
+  EXPECT_NEAR(huge->radius, 512.0f / 400.0f, 0.02f);
+}
+
+TEST(MetalVisibilityKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
   Gpu& gpu = Gpu::get();
   constexpr uint32_t n = 8;
   VisibilityInput input(n);
@@ -229,110 +317,75 @@ TEST(MetalVisibilityTightCullingTest, QuantizesCameraDepthAndSortsBothSourceAndL
   auto count = [gpu.device newBufferWithBytes:&n
                                        length:sizeof(n)
                                       options:MTLResourceStorageModeShared];
-  auto readback = [gpu.device newBufferWithLength:n * (8 + sizeof(ProjectedSplat))
-                                          options:MTLResourceStorageModeShared];
   for (bool indexed : {false, true}) {
     SCOPED_TRACE(indexed);
     MetalVisibility visibility;
-    ASSERT_TRUE(
-        visibility.create(gpu.device, gpu.library, true, 0, MetalRadixSort::KeyBits::Low16));
+    ASSERT_TRUE(visibility.create(gpu.device, gpu.library, MetalRadixSort::KeyBits::Low16));
     ASSERT_TRUE(visibility.reserve(n));
     const SplatRenderer::Range range{0, n};
     auto cmd = [gpu.queue commandBuffer];
     ASSERT_TRUE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0,
                                   indexed ? nullptr : &range, indexed ? 0 : 1,
                                   indexed ? indices : nil, indexed ? count : nil));
-    auto blit = [cmd blitCommandEncoder];
-    [blit copyFromBuffer:visibility.depthKeys()
-             sourceOffset:0
-                 toBuffer:readback
-        destinationOffset:0
-                     size:n * 4];
-    [blit copyFromBuffer:visibility.order()
-             sourceOffset:0
-                 toBuffer:readback
-        destinationOffset:n * 4
-                     size:n * 4];
-    [blit copyFromBuffer:visibility.projected()
-             sourceOffset:0
-                 toBuffer:readback
-        destinationOffset:n * 8
-                     size:n * sizeof(ProjectedSplat)];
-    [blit endEncoding];
     [cmd commit];
     [cmd waitUntilCompleted];
     ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
     ASSERT_EQ(visibility.count(0), 6u);
-    const auto* keys = static_cast<const uint32_t*>(readback.contents);
-    const auto* order = keys + n;
-    const auto* projected = reinterpret_cast<const ProjectedSplat*>(order + n);
+    const auto* keys = static_cast<const uint32_t*>(visibility.depthKeys().contents);
+    const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
+    const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
     // Same quantization bin keeps 1 before 2 within this single SIMD group, even
     // though 2 is slightly nearer. Float32 ordering would reverse them.
     const uint32_t expected[n - 2] = {4, 1, 2, 3, 0, 5};
+    // The sort leaves the keys as the cull wrote them; sorted here they must be the
+    // quantized depths of the expected order.
+    std::vector<uint32_t> sortedKeys(keys, keys + (n - 2));
+    std::sort(sortedKeys.begin(), sortedKeys.end());
     for (uint32_t i = 0; i < n - 2; ++i) {
       ASSERT_LT(order[i], n);
       EXPECT_EQ(projected[order[i]].index, expected[i]);
       const auto key = static_cast<uint32_t>((depths[expected[i]] - 1) / 256 * 65535);
-      EXPECT_EQ(keys[i], key);
-      EXPECT_LE(keys[i], 65535u);
+      EXPECT_EQ(sortedKeys[i], key);
+      EXPECT_LE(sortedKeys[i], 65535u);
     }
-    EXPECT_EQ(keys[0], 0u);
-    EXPECT_EQ(keys[5], 65535u);
+    EXPECT_EQ(sortedKeys[0], 0u);
+    EXPECT_EQ(sortedKeys[5], 65535u);
   }
 }
 
-TEST(MetalVisibilityTightCullingTest, CompactsSimdTailsAndClearsReusedSlots) {
+TEST_F(MetalVisibilityTest, CompactsSimdTailsAndClearsReusedSlots) {
   Gpu& gpu = Gpu::get();
-  MetalVisibility visibility;
-  ASSERT_TRUE(visibility.create(gpu.device, gpu.library, true));
   constexpr uint32_t capacity = 513;
   VisibilityInput input(capacity);
   ASSERT_TRUE(visibility.reserve(capacity));
-  EXPECT_EQ(visibility.order().storageMode, MTLStorageModePrivate);
-  EXPECT_EQ(visibility.projected().storageMode, MTLStorageModePrivate);
-  EXPECT_EQ(visibility.drawArguments(0).storageMode, MTLStorageModePrivate);
-  EXPECT_EQ(visibility.countBuffer(0).storageMode, MTLStorageModeShared);
   auto* source = static_cast<GpuSplat*>(input.splats.contents);
   for (uint32_t i = 0; i < capacity; ++i) {
     if (i % 3 == 0) source[i].position[2] = 2;  // mixed live/dead lanes
   }
-  id<MTLBuffer> orderReadback = [gpu.device newBufferWithLength:capacity * sizeof(uint32_t)
-                                                        options:MTLResourceStorageModeShared];
-  id<MTLBuffer> drawReadback = [gpu.device newBufferWithLength:visibility.drawArguments(0).length
-                                                       options:MTLResourceStorageModeShared];
+  const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
+  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
   for (uint32_t n : {1u, 31u, 32u, 33u, 255u, 256u, 257u, 513u, 0u}) {
     const uint32_t slot = n % MetalVisibility::kSlots;
     const SplatRenderer::Range range{0, n};
     id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
     ASSERT_TRUE(visibility.encode(cmd, slot, input.uniforms, input.splats, nil, 0,
                                   n == 0 ? nullptr : &range, n == 0 ? 0 : 1));
-    id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-    [blit copyFromBuffer:visibility.order()
-             sourceOffset:0
-                 toBuffer:orderReadback
-        destinationOffset:0
-                     size:capacity * sizeof(uint32_t)];
-    [blit copyFromBuffer:visibility.drawArguments(slot)
-             sourceOffset:0
-                 toBuffer:drawReadback
-        destinationOffset:0
-                     size:drawReadback.length];
-    [blit endEncoding];
     [cmd commit];
     [cmd waitUntilCompleted];
     ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
     const uint32_t expected = n - (n + 2) / 3;
     ASSERT_EQ(visibility.count(slot), expected);
-    const auto* order = static_cast<const uint32_t*>(orderReadback.contents);
     std::vector<bool> seen(n, false);
     for (uint32_t i = 0; i < expected; ++i) {
-      ASSERT_LT(order[i], n);
-      EXPECT_NE(order[i] % 3, 0u);
-      EXPECT_FALSE(seen[order[i]]);
-      seen[order[i]] = true;
+      ASSERT_LT(order[i], expected);
+      const uint32_t id = projected[order[i]].index;
+      ASSERT_LT(id, n);
+      EXPECT_NE(id % 3, 0u);
+      EXPECT_FALSE(seen[id]);
+      seen[id] = true;
     }
-    const auto* draws =
-        static_cast<const MTLDrawPrimitivesIndirectArguments*>(drawReadback.contents);
+    const auto* draws = static_cast<const MTLDrawPrimitivesIndirectArguments*>(
+        visibility.drawArguments(slot).contents);
     uint32_t next = 0;
     for (uint32_t b = 0; b < MetalVisibility::kDrawBatches; ++b) {
       EXPECT_EQ(draws[b].vertexCount, 4u);
@@ -341,75 +394,6 @@ TEST(MetalVisibilityTightCullingTest, CompactsSimdTailsAndClearsReusedSlots) {
       next += draws[b].instanceCount;
     }
     EXPECT_EQ(next, expected);
-  }
-}
-
-TEST(MetalVisibilityTightCullingTest, KeepsEdgeFootprintsAndSortsByCameraDepth) {
-  Gpu& gpu = Gpu::get();
-  MetalVisibility visibility;
-  ASSERT_TRUE(visibility.create(gpu.device, gpu.library, true));
-  constexpr uint32_t n = 9;
-  VisibilityInput input(n);
-  auto* source = static_cast<GpuSplat*>(input.splats.contents);
-  const float positions[n][3] = {{0, 0, -4}, {100, 0, -4}, {0, 0, 4},  {0, 0, -0.05f}, {0, 0, -120},
-                                 {0, 0, -4}, {3, 0, -4},   {2, 0, -3}, {0, 0, -3.5f}};
-  for (uint32_t i = 0; i < n; ++i) {
-    std::copy(std::begin(positions[i]), std::end(positions[i]), source[i].position);
-  }
-  // Source 5 is sub-pixel even though the raster's low-pass filter has a footprint.
-  source[5].cov[0] = source[5].cov[1] = source[5].cov[2] = 0;
-  // Source 6's centre is outside the view, but its large quad crosses the view.
-  ASSERT_TRUE(visibility.reserve(n));
-  // Nonzero range offset verifies that output values refer to original source slots.
-  const SplatRenderer::Range range{1, n - 1};
-  id<MTLBuffer> readback = [gpu.device newBufferWithLength:n * sizeof(uint32_t)
-                                                   options:MTLResourceStorageModeShared];
-  id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
-  ASSERT_TRUE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1));
-  id<MTLBlitCommandEncoder> blit = [cmd blitCommandEncoder];
-  [blit copyFromBuffer:visibility.order()
-           sourceOffset:0
-               toBuffer:readback
-      destinationOffset:0
-                   size:n * sizeof(uint32_t)];
-  [blit endEncoding];
-  [cmd commit];
-  [cmd waitUntilCompleted];
-  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
-  ASSERT_EQ(visibility.count(0), 3u);
-  const auto* order = static_cast<const uint32_t*>(readback.contents);
-  // Distance would put source 8 before source 7; camera depth must do the reverse.
-  EXPECT_EQ((std::vector<uint32_t>(order, order + 3)), (std::vector<uint32_t>{7, 8, 6}));
-}
-
-TEST(MetalVisibilityTightCullingTest, ConfigurableCutoffKeepsLargerFootprintsAndLodOpacity) {
-  auto& gpu = Gpu::get();
-  VisibilityInput input(5);
-  auto* source = static_cast<GpuSplat*>(input.splats.contents);
-  const float radii[] = {0.75f, 1.1f, 1.5f, 1.5f, 1.5f};
-  for (uint32_t i = 0; i < 5; ++i) {
-    // focal=500, depth=2, support radius=3: sigmaWorld = radiusPx / 750.
-    const float sigma = radii[i] / 750.0f;
-    const uint32_t variance = splat::toHalf(sigma * sigma);
-    source[i].cov[0] = variance;
-    source[i].cov[1] = variance << 16;
-    source[i].cov[2] = variance << 16;
-  }
-  source[3].rgba8 = 0x00ffffff;  // zero opacity must not survive
-  source[4].rgba8 = 0;           // dark opaque LoD splats must not be mistaken for transparent
-  const float lodOpacity = 2;
-  std::memcpy(&source[4].lodAlpha, &lodOpacity, sizeof(lodOpacity));
-  for (float cutoff : {0.5f, 1.0f, 1.2f}) {
-    MetalVisibility visibility;
-    ASSERT_TRUE(visibility.create(gpu.device, gpu.library, true, cutoff));
-    ASSERT_TRUE(visibility.reserve(5));
-    const SplatRenderer::Range range{0, 5};
-    auto cmd = [gpu.queue commandBuffer];
-    ASSERT_TRUE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1));
-    [cmd commit];
-    [cmd waitUntilCompleted];
-    ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
-    EXPECT_EQ(visibility.count(0), cutoff < 1 ? 4u : (cutoff < 1.2f ? 3u : 2u));
   }
 }
 

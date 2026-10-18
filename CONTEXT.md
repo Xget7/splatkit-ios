@@ -52,6 +52,10 @@ A picked anchor is a collider ray hit; without a collider the default is the cen
 Camera movement around an anchor by azimuth, elevation and radius.
 Orbit is fly mode; first-person input resumes walking from the same pose.
 
+**Lens**:
+The view's vertical field of view and depth range; the engine draws, picks and frames the default orbit through it.
+_Avoid_: projection (that is the matrix it makes), frustum, camera settings
+
 **Sort**:
 Ordering splats by camera depth in the direction required by compositing.
 _Avoid_: depth sort, z-order
@@ -100,9 +104,6 @@ A larger budget is not a quality guarantee.
 A chunk of the detail tree stored as its own spz file: a frontier of nodes drawn together, in spatial order.
 A tile has at most a few children, so one refinement step costs a few uploads.
 _Avoid_: cell, block, node (a node is inside a cloud, a tile is a cloud)
-
-**Screen tile**:
-A rectangular group of image pixels composited together; unrelated to a world's streaming tiles.
 
 **Level**:
 How deep a tile's content sits in the tree: level 0 holds the file's splats, each level up holds nodes that stand in for the tiles below it.

@@ -100,6 +100,13 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
   return out;
 }
 
+splatkit::LensSettings lensSettings(const SKLensSettings& s) {
+  splatkit::LensSettings out;
+  if (s.hasFieldOfView) out.fieldOfViewDegrees = s.fieldOfViewDegrees;
+  if (s.hasDepthRange) out.depthRange = splatkit::DepthRange{s.nearPlane, s.farPlane};
+  return out;
+}
+
 }  // namespace
 
 @implementation SKSplatEngine {
@@ -317,6 +324,14 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
   return SKCharacterSettings{character.eyeHeight, character.bodyRadius, character.stepHeight};
 }
 
+- (BOOL)setLens:(SKLensSettings)settings {
+  return _engine->setLens(lensSettings(settings)) ? YES : NO;
+}
+
++ (BOOL)acceptsLens:(SKLensSettings)settings {
+  return splatkit::Lens::with(lensSettings(settings)).has_value() ? YES : NO;
+}
+
 - (void)setAttitude:(const float*)rowMajor {
   _engine->setAttitude(rowMajor);
 }
@@ -327,6 +342,10 @@ SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
 
 - (void)setRenderScale:(float)scale {
   _engine->setRenderScale(scale);
+}
+
+- (void)setSpatialUpscaling:(BOOL)enabled {
+  _engine->setSpatialUpscaling(enabled);
 }
 
 - (void)setCullMargin:(float)degrees {

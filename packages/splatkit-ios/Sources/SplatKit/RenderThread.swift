@@ -162,6 +162,13 @@ final class RenderThread {
         return accepted
     }
 
+    /// Waits: the caller learns whether the lens was in range.
+    func setLens(_ settings: SKLensSettings) -> Bool {
+        var accepted = false
+        sync { [self] in accepted = engine?.setLens(settings) ?? false }
+        return accepted
+    }
+
     func setAttitude(_ rowMajor: [Float]) {
         post { [self] in rowMajor.withUnsafeBufferPointer { engine?.setAttitude($0.baseAddress!) } }
     }
@@ -214,6 +221,7 @@ final class RenderThread {
     // Settings.
 
     func setRenderScale(_ scale: Float) { post { [self] in engine?.setRenderScale(scale) } }
+    func setSpatialUpscaling(_ enabled: Bool) { post { [self] in engine?.setSpatialUpscaling(enabled) } }
     func setCullMargin(_ degrees: Float) { post { [self] in engine?.setCullMargin(degrees) } }
     func setLinearBlending(_ linear: Bool) { post { [self] in engine?.setLinearBlending(linear) } }
     func setSplatBudget(_ budget: Int) { post { [self] in engine?.setSplatBudget(Int32(budget)) } }
@@ -226,8 +234,9 @@ final class RenderThread {
 
     // Policy and capabilities.
 
-    /// The policy applied to the engine, cached for cheap reads off the render thread.
-    private var appliedPolicy = RenderThread.defaultPolicy()
+    /// The policy applied to the engine, cached for cheap reads off the render thread. It
+    /// starts as the engine's own, so the fixed fields never drift from the backend.
+    private lazy var appliedPolicy: SKRenderPolicy = engine?.renderPolicy ?? SKRenderPolicy()
     var renderPolicy: SKRenderPolicy { appliedPolicy }
 
     /// Re-validates and applies a policy on the render thread. Keeps the previous policy
@@ -253,20 +262,6 @@ final class RenderThread {
     /// Read-only; the engine has no setters for these after creation.
     var deviceCapabilities: SKDeviceCapabilities {
         engine?.deviceCapabilities ?? SKDeviceCapabilities()
-    }
-
-    private static func defaultPolicy() -> SKRenderPolicy {
-        var policy = SKRenderPolicy()
-        policy.raster = 0
-        policy.tileSize = 16
-        policy.lodErrorPixels = 1
-        policy.alphaThreshold = 1 / 255
-        policy.subpixelThreshold = 0.5
-        policy.enableFrustumCulling = true
-        policy.enableHiZOcclusion = false
-        policy.enableEarlyTermination = true
-        policy.sortDepth = 32
-        return policy
     }
 
     var gpuDescription: String { engine?.gpuDescription ?? "" }

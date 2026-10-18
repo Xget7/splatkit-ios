@@ -76,28 +76,22 @@ inline float3 shColor(const device uint* shData, uint index, float3 d) {
 }
 
 inline bool projectSplat(constant Camera& cam, Splat s, uint index, const device uint* shData,
-                         thread Projected& out, bool tightCulling = false,
-                         float minPixelRadius = 0.5) {
+                         thread Projected& out) {
   float4 rgba = unpackUnorm4x8(s.rgba8);
-  // Peak opacity sent to rasterization, including LOD's above-one override.
-  // exp(-r²/2) <= 1: if the peak fails the fragment cutoff, every pixel fails.
-  // Keep equality: the fragment uses <, not <=. Do not cull dark but opaque splats.
+  // Peak opacity sent to rasterization, including LOD's above-one override. A peak below the
+  // quad cutoff has no quad at all. Dark but opaque splats are kept: they occlude.
   float alpha = s.lodAlpha != 0u ? as_type<float>(s.lodAlpha) : rgba.a;
-  if (tightCulling && alpha < 1.0 / 255.0) return false;
+  if (alpha < kQuadMinAlpha) return false;
 
   float4 viewPos4 = cam.view * float4(s.px, s.py, s.pz, 1.0);
   float3 viewPos = viewPos4.xyz;
   if (viewPos.z >= 0.0) return false;
   float4 clip = cam.proj * viewPos4;
-  float bounds = kLooseCullExtent * clip.w;
   // Metal's perspective clip depth is [0,w], not OpenGL's [-w,w].
   // For this camera, clip.w = -viewPos.z and near = proj[3][2] / proj[2][2].
-  // The centre is tested against near and far; the sides use the margin or footprint below.
-  if (clip.z < 0.0 || clip.z > clip.w ||
-      (!tightCulling && (clip.x < -bounds || clip.x > bounds || clip.y < -bounds || clip.y > bounds))) {
-    return false;
-  }
-  if (tightCulling && clip.w <= cam.proj[3][2] / cam.proj[2][2]) return false;
+  // The centre is tested against near and far; the sides use the quad's footprint below.
+  if (clip.z < 0.0 || clip.z > clip.w) return false;
+  if (clip.w <= cam.proj[3][2] / cam.proj[2][2]) return false;
 
   float2 c0 = unpackHalf2(s.cov0);
   float2 c1 = unpackHalf2(s.cov1);
@@ -106,28 +100,23 @@ inline bool projectSplat(constant Camera& cam, Splat s, uint index, const device
   float2 axis1, axis2;
   ellipseAxes(cov2D, axis1, axis2);
 
-  float radius = min(s.lodAlpha != 0u ? kLodBoundsRadius : kBoundsRadius, sqrt(2.0 * log(max(alpha * 255.0, 1.0))));
+  float radius = min(s.lodAlpha != 0u ? kLodBoundsRadius : kBoundsRadius,
+                     sqrt(2.0 * log(max(alpha / kQuadMinAlpha, 1.0))));
+  // The axes are sigma in pixels; cutting the radius truncates the Gaussian without reshaping it.
+  float sigmaPixels = sqrt(max(dot(axis1, axis1), dot(axis2, axis2)));
+  radius = min(radius, kMaxPixelRadius / max(sigmaPixels, 1e-6));
 
-  if (tightCulling) {
-    // Use the unfiltered covariance eigenvalue for the configurable source-footprint
-    // approximation. ellipseAxes' stabilizing floor is for drawing, not culling.
-    float halfDifference = 0.5 * (cov2D.x - cov2D.z);
-    float sourceVariance = 0.5 * (cov2D.x + cov2D.z) +
-        sqrt(halfDifference * halfDifference + cov2D.y * cov2D.y) - kLowPassVariance;
-    if (sqrt(max(sourceVariance, 0.0)) * radius < minPixelRadius) return false;
+  // Bound the actual half-packed raster quad, not just its centre: a large or anisotropic
+  // splat crossing an edge must survive.
+  float2 packedAxis1 = float2(half2(axis1));
+  float2 packedAxis2 = float2(half2(axis2));
+  float2 extentPixels = radius * (abs(packedAxis1) + abs(packedAxis2));
+  float2 margin = (extentPixels + 0.5) * 2.0 * clip.w / cam.screenSize;
+  if (any(abs(clip.xy) > clip.w + margin)) return false;
 
-    // Bound the actual half-packed raster quad, not just its centre or a fixed
-    // 20% margin. Large/anisotropic splats crossing an edge must survive.
-    float2 packedAxis1 = float2(half2(axis1));
-    float2 packedAxis2 = float2(half2(axis2));
-    float2 extentPixels = radius * (abs(packedAxis1) + abs(packedAxis2));
-    float2 margin = (extentPixels + 0.5) * 2.0 * clip.w / cam.screenSize;
-    if (any(abs(clip.xy) > clip.w + margin)) return false;
-  } else {
-    float maxVariance = max(dot(axis1, axis1), dot(axis2, axis2));
-    float maxSourceSigma = sqrt(max(maxVariance - kLowPassVariance, 0.0));
-    if (maxSourceSigma * radius < kMinPixelRadius) return false;
-  }
+  float maxVariance = max(dot(axis1, axis1), dot(axis2, axis2));
+  float maxSourceSigma = sqrt(max(maxVariance - kLowPassVariance, 0.0));
+  if (maxSourceSigma * radius < kMinPixelRadius) return false;
 
   float3 rgb = rgba.rgb;
   if (SH_DEGREE >= 1u) {
@@ -151,12 +140,13 @@ inline SplatVertex expandQuad(constant Camera& cam, Projected p, uint vertexId) 
   float2 delta = (corner.x * unpackHalf2(p.axis1) + corner.y * unpackHalf2(p.axis2)) * 2.0 * p.radius / cam.screenSize;
   SplatVertex out;
   out.position = float4(p.center + delta, kSplatDepth, 1.0);
-  out.relativePosition = p.radius * corner;
-  out.color = float4(unpackHalf2(p.color0), unpackHalf2(p.color1));
+  out.gaussian = half2(p.radius * corner * kGaussianScale);
+  half2 color1 = as_type<half2>(p.color1);
+  out.color = half4(as_type<half2>(p.color0), color1.x, log2(max(color1.y, HALF_MIN)));
   return out;
 }
 
-inline float splatAlpha(SplatVertex in) {
-  float r2 = dot(in.relativePosition, in.relativePosition);
-  return min(exp(-0.5 * r2) * in.color.a, 1.0);
+// log2 of the unclamped alpha. LOD opacities above 1 make it positive near the centre.
+inline half splatPower(SplatVertex in) {
+  return in.color.a - dot(in.gaussian, in.gaussian);
 }

@@ -25,8 +25,9 @@ struct GpuWorldInfo {
   int shDegree = 0;
 };
 
-// Screen-tile ownership from the last completed hybrid frame. All zero when
-// unavailable. Compute includes background tiles; nonemptyCompute excludes them.
+// Screen-tile ownership of the last completed frame for a backend that rasterises some
+// tiles in compute. No backend does today, so every field is zero. Compute includes
+// background tiles; nonemptyCompute excludes them.
 struct ScreenTileStats {
   uint32_t compute = 0;
   uint32_t nonemptyCompute = 0;
@@ -44,9 +45,13 @@ class SplatRenderer {
   virtual ~SplatRenderer() = default;
 
   // Fraction of the surface resolution the splats are drawn at, [0.1, 2]. Away from one
-  // the frame is drawn offscreen and rescaled with a linear blit.
+  // the frame is drawn offscreen and rescaled.
   virtual void setRenderScale(float scale) = 0;
   virtual float renderScale() const = 0;
+  // Rescale a frame drawn below the surface resolution with the platform's spatial
+  // upscaler instead of a linear blit, where the backend has one. On by default.
+  virtual void setSpatialUpscaling(bool enabled) { (void)enabled; }
+  virtual bool spatialUpscaling() const { return false; }
   // Blend in linear light instead of the encoded space.
   virtual void setLinearBlending(bool linear) = 0;
   virtual bool linearBlending() const = 0;

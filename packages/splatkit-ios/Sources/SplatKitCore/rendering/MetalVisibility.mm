@@ -1,47 +1,36 @@
 #include "rendering/MetalVisibility.h"
 
 #include <algorithm>
-#include <cmath>
 #include <cstring>
 
 #include "rendering/MetalCompute.h"
 
 namespace splatkit {
 
-bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library, bool tightCulling,
-                             float minPixelRadius, MetalRadixSort::KeyBits depthBits) {
-  if (!std::isfinite(minPixelRadius) || minPixelRadius < 0.0f) return false;
+bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library,
+                             MetalRadixSort::KeyBits depthBits) {
   device_ = device;
   library_ = library;
-  tightCulling_ = tightCulling;
-  minPixelRadius_ = minPixelRadius;
   depthBits_ = depthBits;
-  storage_ = tightCulling ? MTLResourceStorageModePrivate : MTLResourceStorageModeShared;
   if (!createPipelines()) return false;
   bool ok = true;
   for (uint32_t slot = 0; slot < kSlots; ++slot) {
-    count_[slot] = metal::buffer(device, sizeof(uint32_t), storage_);
-    countReadback_[slot] = tightCulling ? metal::buffer(device, sizeof(uint32_t)) : count_[slot];
-    drawArguments_[slot] = metal::buffer(device, kDrawBatches * kDrawArgumentBytes, storage_);
+    count_[slot] = metal::buffer(device, sizeof(uint32_t));
+    drawArguments_[slot] = metal::buffer(device, kDrawBatches * kDrawArgumentBytes);
     ranges_[slot] = metal::buffer(device, size_t{kMaxRanges} * sizeof(SplatRenderer::Range));
     rangeStarts_[slot] = metal::buffer(device, size_t{kMaxRanges + 1} * sizeof(uint32_t));
-    ok = ok && count_[slot] != nil && countReadback_[slot] != nil && drawArguments_[slot] != nil &&
-         ranges_[slot] != nil && rangeStarts_[slot] != nil;
+    ok = ok && count_[slot] != nil && drawArguments_[slot] != nil && ranges_[slot] != nil &&
+         rangeStarts_[slot] != nil;
   }
-  return ok && sort_.create(device, library, storage_);
+  return ok && sort_.create(device, library);
 }
 
-// Only the pipelines depend on the radius and the key width; the buffers and the radix
-// scratch are reused. `tightCulling_` and the storage mode stay as `create` set them.
-bool MetalVisibility::reconfigure(float minPixelRadius, MetalRadixSort::KeyBits depthBits) {
+// Only the pipelines depend on the key width; the buffers and the radix scratch are reused.
+bool MetalVisibility::reconfigure(MetalRadixSort::KeyBits depthBits) {
   if (device_ == nil || library_ == nil) return false;
-  if (!std::isfinite(minPixelRadius) || minPixelRadius < 0.0f) return false;
-  const float previousRadius = minPixelRadius_;
   const MetalRadixSort::KeyBits previousBits = depthBits_;
-  minPixelRadius_ = minPixelRadius;
   depthBits_ = depthBits;
   if (!createPipelines()) {
-    minPixelRadius_ = previousRadius;
     depthBits_ = previousBits;
     return false;
   }
@@ -55,8 +44,6 @@ bool MetalVisibility::createPipelines() {
     MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
     uint32_t value = static_cast<uint32_t>(degree);
     [constants setConstantValue:&value type:MTLDataTypeUInt atIndex:kFnShDegree];
-    [constants setConstantValue:&tightCulling_ type:MTLDataTypeBool atIndex:kFnTightCulling];
-    [constants setConstantValue:&minPixelRadius_ type:MTLDataTypeFloat atIndex:kFnMinPixelRadius];
     [constants setConstantValue:&quantized type:MTLDataTypeBool atIndex:kFnQuantizedDepth];
     bool indexed = false;
     [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:kFnIndexedLod];
@@ -85,8 +72,7 @@ bool MetalVisibility::reserve(uint32_t capacity, uint32_t activeCapacity) {
     indexedOnly_ = activeCapacity > 0 && activeCapacity < sourceCapacity;
     return true;
   }
-  id<MTLBuffer> projected =
-      metal::buffer(device_, size_t{capacity} * sizeof(ProjectedSplat), storage_);
+  id<MTLBuffer> projected = metal::buffer(device_, size_t{capacity} * sizeof(ProjectedSplat));
   if (projected == nil || !sort_.reserve(capacity)) {
     LOGE("visibility buffers for %u splats failed", capacity);
     return false;
@@ -123,7 +109,7 @@ bool MetalVisibility::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuff
   if (rangeCount > 0) {
     std::memcpy(ranges_[slot].contents, ranges, size_t{rangeCount} * sizeof(*ranges));
   }
-  // Queue-ordered reset also works for GPU-private counters, without a CPU fence.
+  // Queue-ordered reset, without a CPU fence.
   id<MTLBlitCommandEncoder> reset = [cmd blitCommandEncoder];
   [reset fillBuffer:count_[slot] range:NSMakeRange(0, sizeof(uint32_t)) value:0];
   [reset endEncoding];
@@ -161,15 +147,6 @@ bool MetalVisibility::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuff
   [draw setBuffer:drawArguments_[slot] offset:0 atIndex:1];
   [draw dispatchThreadgroups:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
   [draw endEncoding];
-  if (countReadback_[slot] != count_[slot]) {
-    id<MTLBlitCommandEncoder> readback = [cmd blitCommandEncoder];
-    [readback copyFromBuffer:count_[slot]
-                sourceOffset:0
-                    toBuffer:countReadback_[slot]
-           destinationOffset:0
-                        size:sizeof(uint32_t)];
-    [readback endEncoding];
-  }
   return true;
 }
 

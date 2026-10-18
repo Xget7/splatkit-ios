@@ -111,7 +111,7 @@ TEST(MetalLODTest, DistanceChangesCutAndIndexedVisibilitySortsOnlyThatCut) {
   auto world = MetalWorld::upload(gpu.device, tree.nodes, 0);
   ASSERT_TRUE(world);
   MetalVisibility visibility;
-  ASSERT_TRUE(visibility.create(gpu.device, gpu.library, true, 0));
+  ASSERT_TRUE(visibility.create(gpu.device, gpu.library));
   ASSERT_TRUE(visibility.reserve(static_cast<uint32_t>(tree.nodeCount()), lod.budget()));
   EXPECT_EQ(visibility.capacity(), 400u);
   {

@@ -39,6 +39,34 @@ public struct CharacterSettings: Equatable {
     }
 }
 
+/// The distances the view draws between, in world units. Both bound one range, so they are
+/// set together.
+public struct DepthRange: Equatable {
+    public var nearPlane: Float
+    public var farPlane: Float
+
+    public init(nearPlane: Float, farPlane: Float) {
+        self.nearPlane = nearPlane
+        self.farPlane = farPlane
+    }
+}
+
+/// The lens the view draws, picks and frames through. A nil field keeps the engine default:
+/// a 65 degree vertical field of view and a depth range of 0.05 to 200.
+///
+/// `fieldOfViewDegrees` is vertical, 10 to 120. `depthRange` needs a positive near plane under
+/// the far one, at most 100,000 times nearer: wider, the shaders lose the far plane to float
+/// precision. A far plane past 200 also coarsens 16-bit sort keys, which span the range.
+public struct LensSettings: Equatable {
+    public var fieldOfViewDegrees: Float?
+    public var depthRange: DepthRange?
+
+    public init(fieldOfViewDegrees: Float? = nil, depthRange: DepthRange? = nil) {
+        self.fieldOfViewDegrees = fieldOfViewDegrees
+        self.depthRange = depthRange
+    }
+}
+
 /// A snapshot of what the engine is doing, refreshed twice a second.
 public struct SplatStats {
     /// Frames per second over the last half second: frames the display showed when
@@ -61,8 +89,7 @@ public struct SplatStats {
     /// Last completed visibility/order result, refreshed twice a second without a GPU wait.
     /// This counts submitted splats, not splats contributing a visible pixel after occlusion.
     public var drawnSplatCount: Int = 0
-    /// Screen tiles completed by compute, including background-only tiles.
-    /// All tile counts are zero when hybrid diagnostics are unavailable.
+    /// Screen tiles completed by compute; zero while the renderer has no tile path.
     public var computeTileCount: Int = 0
     /// Compute tiles whose candidate list contains at least one splat.
     public var nonemptyComputeTileCount: Int = 0
@@ -258,6 +285,12 @@ public final class SplatMetalView: UIView {
         }
     }
 
+    /// Below a render scale of one, upscale with MetalFX instead of a linear blit. On by
+    /// default; devices without the scaler keep the blit.
+    public var spatialUpscaling: Bool = true {
+        didSet { renderThread.setSpatialUpscaling(spatialUpscaling) }
+    }
+
     /// Angular margin around the view, in degrees, kept drawn so that what turns into
     /// view before the next cull lands is already there. 10 by default.
     public var cullMarginDegrees: Float = 10 {
@@ -340,6 +373,24 @@ public final class SplatMetalView: UIView {
 
     /// The walker's shape in effect.
     public private(set) var character = CharacterSettings()
+
+    /// The lens: vertical field of view and depth range. Applies at once and reframes the
+    /// default orbit. False when a value is out of range or the view has no engine, and then
+    /// the previous lens stays.
+    @discardableResult
+    public func setLens(_ settings: LensSettings) -> Bool {
+        let accepted = renderThread.setLens(SKLensSettings(
+            hasFieldOfView: ObjCBool(settings.fieldOfViewDegrees != nil),
+            fieldOfViewDegrees: settings.fieldOfViewDegrees ?? 0,
+            hasDepthRange: ObjCBool(settings.depthRange != nil),
+            nearPlane: settings.depthRange?.nearPlane ?? 0,
+            farPlane: settings.depthRange?.farPlane ?? 0))
+        if accepted { lens = settings }
+        return accepted
+    }
+
+    /// The lens in effect.
+    public private(set) var lens = LensSettings()
 
     /// Runs a reproducible capture: the gyroscope goes off, the camera takes a fixed pose
     /// and turns once over `seconds`, then the frame time distribution is logged.

@@ -37,6 +37,6 @@ bash scripts/package-ios.sh
 
 Requires Xcode, CMake and Python 3.9+; builds fetch pinned dependencies.
 No signing credentials or scene downloads are needed for synthetic native tests.
-LOD, hybrid tiles and 16-bit sorting remain experimental; quality acceptance and sustained 30/60 FPS are not guaranteed.
+LOD and 16-bit sorting remain experimental; quality acceptance and sustained 30/60 FPS are not guaranteed.
 Simulator/Mac checks are not phone benchmarks.
 [react-native-splatkit](https://github.com/Xget7/react-native-splatkit) drives `renderPolicy` from its `policy` prop; iOS device validation is pending.

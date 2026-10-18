@@ -226,6 +226,19 @@ bool SplatEngine::focus(float x, float y) {
   return camera_.focus(x, y, tan.x, tan.y, lens_.farPlane);
 }
 
+bool SplatEngine::setLens(const LensSettings& settings) {
+  const std::optional<Lens> lens = Lens::with(settings);
+  if (!lens) return false;
+  lens_ = *lens;
+  if (framedBounds_) {
+    camera_.reframeDefaultAnchor(lens_.framingRadius(*framedBounds_, framedExtent_));
+  }
+  // The projection is not part of what decides a redraw or a new cull.
+  planner_.invalidate();
+  redrawNeeded_ = true;
+  return true;
+}
+
 bool SplatEngine::startOrbitAnimation(float degrees, float degreesPerSecond, bool easeInOut) {
   return camera_.animateOrbit(degrees * kRadiansPerDegree, degreesPerSecond * kRadiansPerDegree,
                               easeInOut);

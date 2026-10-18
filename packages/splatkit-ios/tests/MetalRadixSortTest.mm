@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 #include <algorithm>
 #include <random>
+#include <unordered_map>
 #include <vector>
 #include "MetalTestContext.h"
 #include "rendering/MetalRadixSort.h"
@@ -36,10 +37,15 @@ std::vector<Pair> sortOnGpu(MetalRadixSort& v, const std::vector<Pair>& pairs,
   [cmd commit];
   [cmd waitUntilCompleted];
   EXPECT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  // Only the values come out sorted; these tests give every pair a distinct value, which
+  // names its key.
+  std::unordered_map<uint32_t, uint32_t> keyOf;
+  for (const Pair& pair : pairs) keyOf[pair.value] = pair.key;
   std::vector<Pair> out(pairs.size());
   for (size_t i = 0; i < pairs.size(); ++i) {
-    out[i] = {static_cast<const uint32_t*>(v.keys().contents)[i],
-              static_cast<const uint32_t*>(v.values().contents)[i]};
+    const uint32_t value = static_cast<const uint32_t*>(v.values().contents)[i];
+    const auto found = keyOf.find(value);
+    out[i] = {found == keyOf.end() ? ~0u : found->second, value};
   }
   return out;
 }
@@ -131,15 +137,22 @@ TEST_F(MetalRadixSortTest, ReportsTheSortTimeOfFiveMillionKeys) {
                                                             options:MTLResourceStorageModeShared];
   double best = 1e9;
   for (int i = 0; i < 10; ++i) {
+    // A sort leaves keys() as scratch and values() permuted: refill both so every
+    // iteration sorts the same pairs.
+    for (size_t j = 0; j < n; ++j) {
+      keys[j] = pairs[j].key;
+      values[j] = pairs[j].value;
+    }
     id<MTLCommandBuffer> cmd = [Gpu::get().queue commandBuffer];
     sort.encode(cmd, countBuffer);
     [cmd commit];
     [cmd waitUntilCompleted];
     best = std::min(best, (cmd.GPUEndTime - cmd.GPUStartTime) * 1000.0);
-    // The result is in place after an even number of passes: sort it again as is.
   }
-  const auto* sorted = static_cast<const uint32_t*>(sort.keys().contents);
-  EXPECT_TRUE(std::is_sorted(sorted, sorted + n));
+  const auto* order = static_cast<const uint32_t*>(sort.values().contents);
+  EXPECT_TRUE(std::is_sorted(order, order + n, [&](uint32_t a, uint32_t b) {
+    return pairs[a].key < pairs[b].key;
+  }));
   printf("[ sort     ] %zu keys: %.2f ms on %s\n", n, best, Gpu::get().device.name.UTF8String);
 }
 

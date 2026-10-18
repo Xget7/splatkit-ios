@@ -1,5 +1,4 @@
 #include <gtest/gtest.h>
-#include <algorithm>
 #include <cstdlib>
 #include <string>
 
@@ -11,14 +10,6 @@
 
 namespace splatkit {
 namespace {
-
-// Hybrid screen tiles are per-view policy; hardware is every renderer's default.
-void useHybridTiles(MetalSplatRenderer& renderer) {
-  RenderPolicy policy = renderer.deviceCapabilities().policy.fallback;
-  policy.raster = RasterStrategy::hybrid;
-  std::string reason;
-  ASSERT_TRUE(renderer.applyRenderPolicy(policy, &reason)) << reason;
-}
 
 class MetalRasterTest : public testing::Test {
  protected:
@@ -69,148 +60,42 @@ TEST_F(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacemen
   EXPECT_FALSE(renderer->hasCompletedWorldFrame());
 }
 
-TEST_F(MetalRasterTest, HybridTilesAreAPerViewOptInThatTurnsBackOff) {
+TEST_F(MetalRasterTest, HybridTilesAreNotOfferedAndResolveToHardware) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   const DeviceCapabilities caps = renderer->deviceCapabilities();
-  EXPECT_TRUE(caps.supportsComputeTiles);
+  EXPECT_FALSE(caps.supportsComputeTiles);
+  EXPECT_FALSE(caps.policy.raster);
   EXPECT_EQ(caps.policy.fallback.raster, RasterStrategy::hardware);
-  RenderPolicy computeOnly = caps.policy.fallback;
-  computeOnly.raster = RasterStrategy::computeTile;
-  const RenderPolicyResolution resolution = resolveRenderPolicy(computeOnly, caps.policy);
-  EXPECT_EQ(resolution.effective.raster, RasterStrategy::hardware);
+  for (RasterStrategy requested : {RasterStrategy::computeTile, RasterStrategy::hybrid}) {
+    RenderPolicy policy = caps.policy.fallback;
+    policy.raster = requested;
+    const RenderPolicyResolution resolution = resolveRenderPolicy(policy, caps.policy);
+    EXPECT_TRUE(resolution.accepted);
+    EXPECT_EQ(resolution.effective.raster, RasterStrategy::hardware);
+    ASSERT_EQ(resolution.warnings.size(), 1u);
+    EXPECT_EQ(resolution.warnings[0].field, "raster");
+  }
+  const RenderPolicyResolution fallback = resolveRenderPolicy(caps.policy.fallback, caps.policy);
+  EXPECT_TRUE(fallback.warnings.empty());
+}
+
+TEST_F(MetalRasterTest, SubpixelThresholdIsFixed) {
+  auto renderer = MetalSplatRenderer::create();
+  ASSERT_NE(renderer, nullptr);
+  const DeviceCapabilities caps = renderer->deviceCapabilities();
+  EXPECT_FALSE(caps.policy.subpixelThreshold);
+  EXPECT_EQ(caps.policy.fallback.subpixelThreshold, kMinPixelRadius);
+  RenderPolicy policy = caps.policy.fallback;
+  policy.subpixelThreshold = caps.policy.fallback.subpixelThreshold + 0.5f;
+  const RenderPolicyResolution resolution = resolveRenderPolicy(policy, caps.policy);
+  EXPECT_TRUE(resolution.accepted);
+  EXPECT_EQ(resolution.effective.subpixelThreshold, caps.policy.fallback.subpixelThreshold);
   ASSERT_EQ(resolution.warnings.size(), 1u);
-
-  auto layer = [CAMetalLayer layer];
-  layer.drawableSize = CGSizeMake(64, 64);
-  renderer->setLayer(layer);
-  renderer->setDrawableSize(64, 64);
-  splat::SplatCloud cloud;
-  cloud.positions = {0, 0, -2};
-  cloud.colors = {1, 0, 0};
-  cloud.alphas = {1};
-  cloud.covariances = {0.04f, 0, 0, 0.04f, 0, 0.04f};
-  ASSERT_TRUE(renderer->uploadWorld(cloud, 0));
-  SplatRenderer::Frame frame;
-  frame.orderSource = SplatRenderer::OrderSource::gpu;
-  const SplatRenderer::Range range{0, 1};
-  frame.ranges = &range;
-  frame.rangeCount = 1;
-  frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
-  auto completed = dispatch_semaphore_create(0);
-  auto tilesAfterFrame = [&] {
-    renderer->captureNextFrame(
-        [&](std::vector<uint8_t>, uint32_t, uint32_t) { dispatch_semaphore_signal(completed); });
-    EXPECT_TRUE(renderer->draw(frame));
-    EXPECT_EQ(
-        dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
-    const auto tiles = renderer->lastScreenTileStats();
-    return tiles.compute + tiles.hardware;
-  };
-  EXPECT_EQ(tilesAfterFrame(), 0u);
-  useHybridTiles(*renderer);
-  EXPECT_EQ(tilesAfterFrame(), 16u);
-  RenderPolicy hardware = caps.policy.fallback;
-  std::string reason;
-  ASSERT_TRUE(renderer->applyRenderPolicy(hardware, &reason)) << reason;
-  EXPECT_EQ(tilesAfterFrame(), 0u);
+  EXPECT_EQ(resolution.warnings[0].field, "subpixelThreshold");
 }
 
-TEST_F(MetalRasterTest, HybridCompletesOverflowTilesWithTheFullHardwareImage) {
-  std::vector<uint8_t> images[2];
-  for (int mode = 0; mode < 2; ++mode) {
-    auto renderer = MetalSplatRenderer::create();
-    ASSERT_NE(renderer, nullptr);
-    if (mode != 0) useHybridTiles(*renderer);
-    auto layer = [CAMetalLayer layer];
-    layer.drawableSize = CGSizeMake(64, 64);
-    renderer->setLayer(layer);
-    renderer->setDrawableSize(64, 64);
-    splat::SplatCloud cloud;
-    for (uint32_t i = 0; i < 514; ++i) {
-      cloud.positions.insert(cloud.positions.end(), {i == 513 ? 0.85f : 0.0f, 0, -2});
-      cloud.colors.insert(cloud.colors.end(), {i == 513 ? 0.0f : 1.0f, i == 513 ? 1.0f : 0.0f, 0});
-      cloud.alphas.push_back(0.6f);
-      cloud.covariances.insert(cloud.covariances.end(), {0.01f, 0, 0, 0.01f, 0, 0.01f});
-    }
-    ASSERT_TRUE(renderer->uploadWorld(cloud, 0));
-    SplatRenderer::Frame frame;
-    frame.orderSource = SplatRenderer::OrderSource::gpu;
-    const SplatRenderer::Range range{0, 514};
-    frame.ranges = &range;
-    frame.rangeCount = 1;
-    frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
-    auto captured = dispatch_semaphore_create(0);
-    renderer->captureNextFrame([&](std::vector<uint8_t> pixels, uint32_t, uint32_t) {
-      images[mode] = std::move(pixels);
-      dispatch_semaphore_signal(captured);
-    });
-    ASSERT_TRUE(renderer->draw(frame));
-    ASSERT_EQ(dispatch_semaphore_wait(captured, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)),
-              0);
-    ASSERT_EQ(images[mode].size(), 64u * 64u * 4u);
-  }
-  int maxDifference = 0;
-  for (size_t i = 0; i < images[0].size(); ++i)
-    maxDifference = std::max(maxDifference, std::abs(int(images[0][i]) - int(images[1][i])));
-  EXPECT_LE(maxDifference, 2);
-  EXPECT_GT(images[1][(32 * 64 + 32) * 4 + 2], 200);
-  EXPECT_GT(images[1][(32 * 64 + 56) * 4 + 1], 80);
-}
-
-TEST_F(MetalRasterTest, LargeFootprintAndCrossTileBoundaryMatchHardwareImage) {
-  std::vector<uint8_t> images[2];
-  for (int mode = 0; mode < 2; ++mode) {
-    auto renderer = MetalSplatRenderer::create();
-    ASSERT_NE(renderer, nullptr);
-    if (mode != 0) useHybridTiles(*renderer);
-    auto layer = [CAMetalLayer layer];
-    layer.drawableSize = CGSizeMake(128, 128);
-    renderer->setLayer(layer);
-    renderer->setDrawableSize(128, 128);
-    splat::SplatCloud cloud;
-    // Large blue footprint covers >16 tiles; red straddles x=96, the border
-    // between one of its hardware-owned tiles and a compute-owned neighbour.
-    cloud.positions = {-0.13f, 0.13f, -2.1f, 0.54f, 0.13f, -2.0f};
-    cloud.colors = {0, 0, 1, 1, 0, 0};
-    cloud.alphas = {0.6f, 0.6f};
-    cloud.covariances = {0.02f, 0, 0, 0.02f, 0, 0.02f, 0.001f, 0, 0, 0.001f, 0, 0.001f};
-    ASSERT_TRUE(renderer->uploadWorld(cloud, 0));
-    SplatRenderer::Frame frame;
-    frame.orderSource = SplatRenderer::OrderSource::gpu;
-    const SplatRenderer::Range range{0, 2};
-    frame.ranges = &range;
-    frame.rangeCount = 1;
-    frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
-    auto captured = dispatch_semaphore_create(0);
-    renderer->captureNextFrame([&](std::vector<uint8_t> pixels, uint32_t, uint32_t) {
-      images[mode] = std::move(pixels);
-      dispatch_semaphore_signal(captured);
-    });
-    ASSERT_TRUE(renderer->draw(frame));
-    ASSERT_EQ(dispatch_semaphore_wait(captured, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)),
-              0);
-    ASSERT_EQ(images[mode].size(), 128u * 128u * 4u);
-    const auto tiles = renderer->lastScreenTileStats();
-    if (mode == 1) {
-      EXPECT_GT(tiles.compute, 0u);
-      EXPECT_GT(tiles.nonemptyCompute, 0u);
-      EXPECT_GT(tiles.hardware, 0u);
-      EXPECT_EQ(tiles.compute + tiles.hardware, 64u);
-    } else {
-      EXPECT_EQ(tiles.compute + tiles.nonemptyCompute + tiles.hardware, 0u);
-    }
-  }
-  int maxDifference = 0;
-  for (size_t i = 0; i < images[0].size(); ++i)
-    maxDifference = std::max(maxDifference, std::abs(int(images[0][i]) - int(images[1][i])));
-  EXPECT_LE(maxDifference, 2);
-  EXPECT_GT(images[1][(56 * 128 + 56) * 4], 60);  // large blue splat was not omitted
-  EXPECT_GT(images[1][(56 * 128 + 95) * 4 + 2], 60);
-  EXPECT_GT(images[1][(56 * 128 + 96) * 4 + 2], 60);
-}
-
-TEST_F(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
+TEST_F(MetalRasterTest, LodLeafCutDrawsEveryLeaf) {
   splat::LodTree tree;
   tree.leafCount = 514;
   tree.nodes.positions = {0, 0, -2};
@@ -227,43 +112,30 @@ TEST_F(MetalRasterTest, LodLeafCutFeedsHybridWithoutLosingOverflowTiles) {
     tree.nodes.covariances.insert(tree.nodes.covariances.end(), {0.01f, 0, 0, 0.01f, 0, 0.01f});
     tree.layout.push_back({{x, 0, -2}, 0, 0, 0});
   }
-  std::vector<uint8_t> images[2];
-  for (int mode = 0; mode < 2; ++mode) {
-    auto renderer = MetalSplatRenderer::create();
-    ASSERT_NE(renderer, nullptr);
-    if (mode != 0) useHybridTiles(*renderer);
-    auto layer = [CAMetalLayer layer];
-    layer.drawableSize = CGSizeMake(64, 64);
-    renderer->setLayer(layer);
-    renderer->setDrawableSize(64, 64);
-    ASSERT_TRUE(renderer->uploadLodWorld(tree, 0, 514));
-    SplatRenderer::Frame frame;
-    frame.orderSource = SplatRenderer::OrderSource::gpu;
-    frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
-    auto completed = dispatch_semaphore_create(0);
-    renderer->captureNextFrame([&](std::vector<uint8_t> pixels, uint32_t, uint32_t) {
-      images[mode] = std::move(pixels);
-      dispatch_semaphore_signal(completed);
-    });
-    ASSERT_TRUE(renderer->draw(frame));
-    ASSERT_EQ(
-        dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
-    ASSERT_EQ(renderer->lastSelectedCount(), 514u);
-    ASSERT_EQ(renderer->lastDrawCount(), 514u);
-    ASSERT_EQ(images[mode].size(), 64u * 64u * 4u);
-    if (mode == 1) {
-      const auto tiles = renderer->lastScreenTileStats();
-      EXPECT_GT(tiles.nonemptyCompute, 0u);
-      EXPECT_GT(tiles.hardware, 0u);
-      EXPECT_EQ(tiles.compute + tiles.hardware, 16u);
-    }
-  }
-  int maxDifference = 0;
-  for (size_t i = 0; i < images[0].size(); ++i)
-    maxDifference = std::max(maxDifference, std::abs(int(images[0][i]) - int(images[1][i])));
-  EXPECT_LE(maxDifference, 2);
-  EXPECT_GT(images[1][(32 * 64 + 32) * 4 + 2], 200);
-  EXPECT_GT(images[1][(32 * 64 + 56) * 4 + 1], 80);
+  auto renderer = MetalSplatRenderer::create();
+  ASSERT_NE(renderer, nullptr);
+  auto layer = [CAMetalLayer layer];
+  layer.drawableSize = CGSizeMake(64, 64);
+  renderer->setLayer(layer);
+  renderer->setDrawableSize(64, 64);
+  ASSERT_TRUE(renderer->uploadLodWorld(tree, 0, 514));
+  SplatRenderer::Frame frame;
+  frame.orderSource = SplatRenderer::OrderSource::gpu;
+  frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
+  auto completed = dispatch_semaphore_create(0);
+  std::vector<uint8_t> image;
+  renderer->captureNextFrame([&](std::vector<uint8_t> pixels, uint32_t, uint32_t) {
+    image = std::move(pixels);
+    dispatch_semaphore_signal(completed);
+  });
+  ASSERT_TRUE(renderer->draw(frame));
+  ASSERT_EQ(dispatch_semaphore_wait(completed, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)),
+            0);
+  ASSERT_EQ(renderer->lastSelectedCount(), 514u);
+  ASSERT_EQ(renderer->lastDrawCount(), 514u);
+  ASSERT_EQ(image.size(), 64u * 64u * 4u);
+  EXPECT_GT(image[(32 * 64 + 32) * 4 + 2], 200);
+  EXPECT_GT(image[(32 * 64 + 56) * 4 + 1], 80);
 }
 
 TEST_F(MetalRasterTest, LodErrorPolicyRefinesALoadedHierarchyLive) {
@@ -361,6 +233,69 @@ TEST_F(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {
   ASSERT_EQ(pixels.size(), 64u * 64u * 4u);
   const size_t center = (32 * 64 + 32) * 4;
   EXPECT_GT(pixels[center + 2], 200);  // red, not the background
+  EXPECT_LT(pixels[center + 1], 20);
+}
+
+TEST_F(MetalRasterTest, HalfScaleFrameReachesTheDrawableThroughMetalFXOrTheBlit) {
+  auto renderer = MetalSplatRenderer::create();
+  ASSERT_NE(renderer, nullptr);
+  CAMetalLayer* layer = [CAMetalLayer layer];
+  layer.drawableSize = CGSizeMake(64, 64);
+  renderer->setLayer(layer);
+  renderer->setDrawableSize(64, 64);
+  renderer->setRenderScale(0.5f);
+#if SPLATKIT_HAS_METALFX
+  const bool scalerExpected =
+      [MTLFXSpatialScalerDescriptor supportsDevice:MTLCreateSystemDefaultDevice()];
+#else
+  const bool scalerExpected = false;
+#endif
+  EXPECT_EQ(renderer->upscalerActive(), scalerExpected);
+  EXPECT_TRUE(layer.framebufferOnly);
+  splat::SplatCloud cloud;
+  cloud.positions = {0, 0, -2};
+  cloud.colors = {1, 0, 0};
+  cloud.alphas = {1};
+  cloud.covariances = {0.04f, 0, 0, 0.04f, 0, 0.04f};
+  ASSERT_TRUE(renderer->uploadWorld(cloud, 0));
+  SplatRenderer::Frame frame;
+  frame.orderSource = SplatRenderer::OrderSource::gpu;
+  const SplatRenderer::Range range{0, 1};
+  frame.ranges = &range;
+  frame.rangeCount = 1;
+  frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
+  auto centerPixel = [&](std::vector<uint8_t>* out) {
+    dispatch_semaphore_t captured = dispatch_semaphore_create(0);
+    renderer->captureNextFrame([&](std::vector<uint8_t> image, uint32_t, uint32_t) {
+      *out = std::move(image);
+      dispatch_semaphore_signal(captured);
+    });
+    ASSERT_TRUE(renderer->draw(frame));
+    ASSERT_EQ(dispatch_semaphore_wait(captured, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)),
+              0);
+    ASSERT_EQ(out->size(), 64u * 64u * 4u);
+  };
+  std::vector<uint8_t> pixels;
+  centerPixel(&pixels);
+  const size_t center = (32 * 64 + 32) * 4;
+  EXPECT_GT(pixels[center + 2], 200);
+  EXPECT_LT(pixels[center + 1], 20);
+
+  // Each transition rebuilds the target and the scaler together.
+  renderer->setRenderScale(1.0f);
+  EXPECT_FALSE(renderer->upscalerActive());
+  centerPixel(&pixels);
+  EXPECT_GT(pixels[center + 2], 200);
+  renderer->setRenderScale(0.5f);
+  EXPECT_EQ(renderer->upscalerActive(), scalerExpected);
+  centerPixel(&pixels);
+  EXPECT_GT(pixels[center + 2], 200);
+
+  renderer->setSpatialUpscaling(false);
+  EXPECT_FALSE(renderer->upscalerActive());
+  EXPECT_TRUE(layer.framebufferOnly);
+  centerPixel(&pixels);
+  EXPECT_GT(pixels[center + 2], 200);
   EXPECT_LT(pixels[center + 1], 20);
 }
 

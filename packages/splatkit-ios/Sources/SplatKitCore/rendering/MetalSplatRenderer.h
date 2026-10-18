@@ -1,6 +1,12 @@
 #pragma once
 
 #import <Metal/Metal.h>
+#if __has_include(<MetalFX/MetalFX.h>)
+#import <MetalFX/MetalFX.h>
+#define SPLATKIT_HAS_METALFX 1
+#else
+#define SPLATKIT_HAS_METALFX 0  // the iOS simulator SDK ships no MetalFX
+#endif
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <array>
@@ -14,7 +20,6 @@
 #include <vector>
 
 #include "rendering/MetalLOD.h"
-#include "rendering/MetalTileRaster.h"
 #include "rendering/MetalVisibility.h"
 #include "rendering/MetalWorld.h"
 #include "splatkit/rendering/GpuLayout.h"
@@ -43,6 +48,11 @@ class MetalSplatRenderer final : public SplatRenderer {
 
   void setRenderScale(float scale) override;
   float renderScale() const override { return renderScale_; }
+  void setSpatialUpscaling(bool enabled) override;
+  bool spatialUpscaling() const override { return spatialUpscaling_; }
+  // True while frames go through MetalFX: a scale below one, the setting on, and a device
+  // that has the scaler. Otherwise the scaled target is blitted.
+  bool upscalerActive() const { return scaler_ != nil; }
   void setLinearBlending(bool linear) override;
   bool linearBlending() const override { return linearBlending_; }
   void setVsync(bool vsync) override;
@@ -90,10 +100,6 @@ class MetalSplatRenderer final : public SplatRenderer {
   float lodPixels() const { return lodPixels_; }
   uint32_t lastLodLimitedCount() const { return lod_ ? lastLodLimitedCount_.load() : 0; }
   uint32_t lastLodEvaluatedCount() const { return lod_ ? lastLodEvaluatedCount_.load() : 0; }
-  ScreenTileStats lastScreenTileStats() const override {
-    if (gpuFailed_.load()) return {};
-    return {lastComputeTiles_.load(), lastNonemptyComputeTiles_.load(), lastHardwareTiles_.load()};
-  }
   bool reportsPresentTimes() const override { return true; }
   uint32_t takePresentTimes(std::vector<int64_t>* times) override;
   const std::string& deviceDescription() const override { return description_; }
@@ -105,6 +111,8 @@ class MetalSplatRenderer final : public SplatRenderer {
   MetalSplatRenderer() = default;
   bool createPipelines();
   bool createTarget();
+  // Rebuilds scaler_ and upscaled_ for the current target_; a nil scaler_ means the blit.
+  bool createScaler();
   MTLPixelFormat pixelFormat() const;
   // Where the splats are drawn: the drawable's format, or half floats when the GPU order
   // path accumulates coverage front to back, which 8 bits would round away.
@@ -115,15 +123,14 @@ class MetalSplatRenderer final : public SplatRenderer {
   // Encode only: draw() commits these in dependency order after validation succeeds.
   id<MTLCommandBuffer> encodeSelection(uint32_t slot);
   id<MTLCommandBuffer> encodeVisibilityAndSort(const Frame& frame, uint32_t slot);
-  bool encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture, const Frame& frame,
+  void encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture, const Frame& frame,
                     uint32_t slot, uint32_t drawCount, bool gpuOrder);
   void encodeOutput(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture);
   id<MTLBuffer> encodeCapture(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture,
                               CaptureHandler* onCapture);
   // Transfers the acquired inFlight_ slot to the final completion handler.
-  void submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable, uint32_t slot,
-                   bool tileRendered, bool drewWorld, id<MTLBuffer> captured,
-                   CaptureHandler onCapture);
+  void submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable, bool drewWorld,
+                   id<MTLBuffer> captured, CaptureHandler onCapture);
 
   id<MTLDevice> device_ = nil;
   id<MTLCommandQueue> queue_ = nil;
@@ -146,9 +153,16 @@ class MetalSplatRenderer final : public SplatRenderer {
   CAMetalLayer* layer_ = nil;
   uint32_t width_ = 0;
   uint32_t height_ = 0;
-  id<MTLTexture> target_ = nil;  // scaled rendering or half-float GPU compositing
+  id<MTLTexture> target_ = nil;    // scaled rendering or half-float GPU compositing
+  id<MTLTexture> upscaled_ = nil;  // MetalFX output at drawable size, private storage
+#if SPLATKIT_HAS_METALFX
+  id<MTLFXSpatialScaler> scaler_ = nil;  // target_ to upscaled_, when active
+#else
+  id scaler_ = nil;  // stays nil: the scaled frame always goes through the blit
+#endif
   std::unique_ptr<MetalWorld> world_;
   float renderScale_ = 1.0f;
+  bool spatialUpscaling_ = true;
   bool linearBlending_ = false;
   uint32_t generation_ = 0;
   uint64_t frame_ = 0;
@@ -167,7 +181,6 @@ class MetalSplatRenderer final : public SplatRenderer {
   std::atomic<uint32_t> lastSelectedCount_{0};
   std::atomic<uint32_t> lastLodLimitedCount_{0}, lastLodEvaluatedCount_{0};
   std::atomic<double> lastSelectMillis_{0};
-  float minPixelRadius_ = 0.5f;
   float lodErrorPixels_ = 1.0f;
   uint32_t lodSplatLimit_ = 0;
   // The threshold selection runs at: the policy's, raised while a cut would exceed the splat
@@ -177,18 +190,11 @@ class MetalSplatRenderer final : public SplatRenderer {
   uint32_t lodAdaptedReadback_ = 0;
   void adaptLodThreshold();
   MetalRadixSort::KeyBits depthBits_ = MetalRadixSort::KeyBits::Full32;
-  MetalTileRaster tileRaster_;
-  // Pipelines exist once a view first asks for hybrid tiles; computeRaster_ is the policy.
-  bool tileRasterReady_ = false;
-  bool computeRaster_ = false;
   // A GPU error latches this renderer off. Never repeatedly resubmit failed work.
   std::atomic<bool> gpuFailed_{false};
   bool gpuSort_ = false;
   std::atomic<double> lastSortMillis_{0};
   std::atomic<uint32_t> lastDrawCount_{0};
-  std::atomic<uint32_t> lastComputeTiles_{0};
-  std::atomic<uint32_t> lastNonemptyComputeTiles_{0};
-  std::atomic<uint32_t> lastHardwareTiles_{0};
   CaptureHandler capture_;
   std::string description_;
 };

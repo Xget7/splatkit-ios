@@ -1,27 +1,30 @@
 #include "rendering/MetalRadixSort.h"
 
 #include "rendering/MetalCompute.h"
+#include "rendering/MetalShaderTypes.h"
 
 namespace splatkit {
 
-bool MetalRadixSort::create(id<MTLDevice> device, id<MTLLibrary> library,
-                            MTLResourceOptions storage) {
+bool MetalRadixSort::create(id<MTLDevice> device, id<MTLLibrary> library) {
   device_ = device;
-  storage_ = storage;
   prepare_ = metal::pipeline(device, library, "prepareRadixSort");
   histogram_ = metal::pipeline(device, library, "radixHistogram");
   scan_ = metal::pipeline(device, library, "radixScan");
-  scatter_ = metal::pipeline(device, library, "radixScatter");
+  for (bool last : {false, true}) {
+    MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
+    [constants setConstantValue:&last type:MTLDataTypeBool atIndex:kFnLastSortPass];
+    (last ? scatterLast_ : scatter_) = metal::pipeline(device, library, "radixScatter", constants);
+  }
   // The shader's blocked layout and ballot masks use 32 lanes per SIMD group.
   if (histogram_.threadExecutionWidth != 32 || scan_.threadExecutionWidth != 32 ||
-      scatter_.threadExecutionWidth != 32) {
+      scatter_.threadExecutionWidth != 32 || scatterLast_.threadExecutionWidth != 32) {
     LOGE("radix sort requires 32-lane SIMD groups");
     return false;
   }
-  totals_ = metal::buffer(device, kBins * sizeof(uint32_t), storage_);
-  dispatch_ = metal::buffer(device, 4 * sizeof(uint32_t), storage_);
+  totals_ = metal::buffer(device, kBins * sizeof(uint32_t));
+  dispatch_ = metal::buffer(device, 4 * sizeof(uint32_t));
   return prepare_ != nil && histogram_ != nil && scan_ != nil && scatter_ != nil &&
-         totals_ != nil && dispatch_ != nil;
+         scatterLast_ != nil && totals_ != nil && dispatch_ != nil;
 }
 
 bool MetalRadixSort::reserve(uint32_t capacity) {
@@ -30,11 +33,9 @@ bool MetalRadixSort::reserve(uint32_t capacity) {
   const size_t blocks = (size_t{capacity} + kBlock - 1) / kBlock;
   std::array<id<MTLBuffer>, 2> keys{};
   std::array<id<MTLBuffer>, 2> values{};
-  for (auto& key : keys)
-    key = metal::buffer(device_, size_t{capacity} * sizeof(uint32_t), storage_);
-  for (auto& value : values)
-    value = metal::buffer(device_, size_t{capacity} * sizeof(uint32_t), storage_);
-  id<MTLBuffer> histogram = metal::buffer(device_, blocks * kBins * sizeof(uint32_t), storage_);
+  for (auto& key : keys) key = metal::buffer(device_, size_t{capacity} * sizeof(uint32_t));
+  for (auto& value : values) value = metal::buffer(device_, size_t{capacity} * sizeof(uint32_t));
+  id<MTLBuffer> histogram = metal::buffer(device_, blocks * kBins * sizeof(uint32_t));
   if (keys[0] == nil || keys[1] == nil || values[0] == nil || values[1] == nil ||
       histogram == nil) {
     LOGE("sort buffers for %u pairs failed", capacity);
@@ -80,7 +81,7 @@ void MetalRadixSort::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> count, KeyBi
     [enc setBuffer:totals_ offset:0 atIndex:2];
     [enc dispatchThreadgroups:MTLSizeMake(kBins, 1, 1) threadsPerThreadgroup:threads];
 
-    [enc setComputePipelineState:scatter_];
+    [enc setComputePipelineState:pass + 1 == passes ? scatterLast_ : scatter_];
     [enc setBuffer:keys_[in] offset:0 atIndex:0];
     [enc setBuffer:values_[in] offset:0 atIndex:1];
     [enc setBuffer:keys_[out] offset:0 atIndex:2];

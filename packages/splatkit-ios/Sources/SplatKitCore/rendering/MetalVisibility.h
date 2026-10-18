@@ -16,24 +16,20 @@ namespace splatkit {
 // Call reserve only while idle. All encodes and raster consumers use one command queue.
 class MetalVisibility {
  public:
-  // Tight culling drops splats by opacity, near plane and screen footprint, sorts by view
-  // depth and keeps the scratch GPU-private; off, it culls loosely and sorts by distance.
-  // Low16 uses linear view depth and finite forward-Z Mat4::perspective planes,
-  // independently of the culling option. Shader key width and radix passes agree.
-  bool create(id<MTLDevice> device, id<MTLLibrary> library, bool tightCulling = false,
-              float minPixelRadius = 0.5f,
+  // Both widths sort by linear view depth: Full32 by its float bits, Low16 quantized between
+  // finite forward-Z Mat4::perspective planes. Shader key width and radix passes agree.
+  bool create(id<MTLDevice> device, id<MTLLibrary> library,
               MetalRadixSort::KeyBits depthBits = MetalRadixSort::KeyBits::Full32);
-  // Rebuilds the visibility pipelines for a new sub-pixel radius and/or key width,
-  // keeping every reserved buffer and the radix scratch. The key width and the shader's
-  // quantized flag must agree, so both move together. Render thread, while idle. On
-  // failure the previous radius and key width are restored.
-  bool reconfigure(float minPixelRadius, MetalRadixSort::KeyBits depthBits);
+  // Rebuilds the visibility pipelines for a new key width, keeping every reserved buffer
+  // and the radix scratch. The key width and the shader's quantized flag must agree, so
+  // both move together. Render thread, while idle. On failure the previous key width is
+  // restored.
+  bool reconfigure(MetalRadixSort::KeyBits depthBits);
   // Space for every source splat, or an explicitly bounded GPU index list when
   // activeCapacity is nonzero. The latter must only be used with indexed encode.
   // Failure preserves the previous allocation.
   bool reserve(uint32_t capacity, uint32_t activeCapacity = 0);
   uint32_t capacity() const { return capacity_; }
-  bool tightCulling() const { return tightCulling_; }
 
   // Invalid ranges fail before encoding any work. Empty ranges produce an empty draw.
   // Caller owns uniforms/source buffers and must keep slot inputs unchanged until
@@ -43,15 +39,14 @@ class MetalVisibility {
               uint32_t rangeCount, id<MTLBuffer> indices = nil, id<MTLBuffer> activeCount = nil);
 
   id<MTLBuffer> order() const { return sort_.values(); }
-  // GPU-owned uint32 slots; Low16 only uses the lower 16 bits.
+  // GPU-owned uint32 slots as the cull wrote them, unsorted; Low16 only uses the lower 16 bits.
   id<MTLBuffer> depthKeys() const { return sort_.keys(); }
   id<MTLBuffer> projected() const { return projected_; }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return drawArguments_[slot]; }
-  // A four-byte readback of the count, which tight culling keeps GPU-private.
-  id<MTLBuffer> countBuffer(uint32_t slot) const { return countReadback_[slot]; }
+  id<MTLBuffer> countBuffer(uint32_t slot) const { return count_[slot]; }
   // Only read after the GPU has completed this slot.
   uint32_t count(uint32_t slot) const {
-    return *static_cast<const uint32_t*>(countReadback_[slot].contents);
+    return *static_cast<const uint32_t*>(count_[slot].contents);
   }
 
   static constexpr uint32_t kSlots = 2;
@@ -67,9 +62,6 @@ class MetalVisibility {
 
   id<MTLDevice> device_ = nil;
   id<MTLLibrary> library_ = nil;
-  MTLResourceOptions storage_ = MTLResourceStorageModeShared;
-  bool tightCulling_ = false;
-  float minPixelRadius_ = 0.5f;
   std::array<id<MTLComputePipelineState>, kShDegrees> visibility_{};
   std::array<id<MTLComputePipelineState>, kShDegrees> indexedVisibility_{};
   id<MTLComputePipelineState> prepareDraw_ = nil;
@@ -80,7 +72,6 @@ class MetalVisibility {
   bool indexedOnly_ = false;
   id<MTLBuffer> projected_ = nil;
   std::array<id<MTLBuffer>, kSlots> count_{};
-  std::array<id<MTLBuffer>, kSlots> countReadback_{};
   std::array<id<MTLBuffer>, kSlots> drawArguments_{};
   std::array<id<MTLBuffer>, kSlots> ranges_{};
   std::array<id<MTLBuffer>, kSlots> rangeStarts_{};
