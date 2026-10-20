@@ -1,7 +1,7 @@
 #pragma once
 
 #import <Metal/Metal.h>
-#include "rendering/MetalCompute.h"
+#include "rendering/metal/device/MetalShaderLibrary.h"
 
 namespace splatkit::test {
 

@@ -1,12 +1,12 @@
 add_executable(splatkit_ios_tests
-  MetalVisibilityTest.mm
-  MetalLODTest.mm
-  MetalRadixSortTest.mm
-  MetalWorldTest.mm
-  MetalRasterTest.mm
+  rendering/metal/cull/MetalVisibilityPassTest.mm
+  rendering/metal/selection/MetalLodSelectionTest.mm
+  rendering/metal/sort/MetalRadixSortTest.mm
+  rendering/metal/world/MetalWorldTest.mm
+  rendering/metal/MetalSplatRendererTest.mm
 )
 target_include_directories(splatkit_ios_tests PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/../Sources/SplatKitCore ${CMAKE_CURRENT_BINARY_DIR}/../embedded
+  ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../Sources/SplatKitCore ${CMAKE_CURRENT_BINARY_DIR}/../embedded
 )
 target_link_libraries(splatkit_ios_tests PRIVATE splatkit_ios GTest::gtest_main)
 target_compile_options(splatkit_ios_tests PRIVATE -Wall -Wextra -Werror -fobjc-arc)

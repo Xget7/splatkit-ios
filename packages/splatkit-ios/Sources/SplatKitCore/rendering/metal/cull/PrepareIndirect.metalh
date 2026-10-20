@@ -1,5 +1,5 @@
 #pragma once
-#include "SplatTypes.metalh"
+#include "../layout/SplatTypes.metalh"
 
 constant uint kDrawBatches = 7;
 constant uint kBatchEndSixtyFourths[kDrawBatches] = {1, 2, 4, 8, 16, 32, 64};

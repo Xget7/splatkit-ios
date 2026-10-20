@@ -5,7 +5,7 @@
 #include <algorithm>
 
 #include "SplatShaderSource.h"
-#include "rendering/MetalShaderTypes.h"
+#include "rendering/metal/layout/MetalShaderTypes.h"
 #include "splatkit/Log.h"
 
 namespace splatkit::metal {

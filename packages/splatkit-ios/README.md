@@ -79,11 +79,11 @@ The view ships no walking control; the host draws its own, wherever it likes, an
 ## Layout
 
 ```
-Sources/SplatKitCore/rendering/    renderer, world, visibility, radix, LOD; shaders/ contains MSL
-Sources/SplatKitCore/engine/       SKSplatEngine, the Objective-C boundary over the shared engine
-Sources/SplatKitCore/include/      the public header Swift imports
-Sources/SplatKit/                  RenderThread, MotionInput, SplatMetalView
-cmake/                             embeds the shader source into the library
+Sources/SplatKitCore/rendering/metal/  MetalSplatRenderer; one folder per job beside its MSL
+Sources/SplatKitCore/engine/           SKSplatEngine, the Objective-C boundary over the shared engine
+Sources/SplatKitCore/include/          the public header Swift imports
+Sources/SplatKit/                      RenderThread, MotionInput, SplatMetalView
+cmake/                                 embeds the shader source into the library
 ```
 
 The shader is compiled at run time from the embedded source, so the library is a plain static archive with no metallib to ship.

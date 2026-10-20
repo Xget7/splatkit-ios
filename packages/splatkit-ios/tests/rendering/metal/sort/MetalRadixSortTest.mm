@@ -5,8 +5,8 @@
 #include <random>
 #include <unordered_map>
 #include <vector>
-#include "MetalTestContext.h"
-#include "rendering/MetalRadixSort.h"
+#include "rendering/metal/sort/MetalRadixSort.h"
+#include "support/MetalTestContext.h"
 
 namespace splatkit {
 namespace {
@@ -150,9 +150,8 @@ TEST_F(MetalRadixSortTest, ReportsTheSortTimeOfFiveMillionKeys) {
     best = std::min(best, (cmd.GPUEndTime - cmd.GPUStartTime) * 1000.0);
   }
   const auto* order = static_cast<const uint32_t*>(sort.values().contents);
-  EXPECT_TRUE(std::is_sorted(order, order + n, [&](uint32_t a, uint32_t b) {
-    return pairs[a].key < pairs[b].key;
-  }));
+  EXPECT_TRUE(std::is_sorted(order, order + n,
+                             [&](uint32_t a, uint32_t b) { return pairs[a].key < pairs[b].key; }));
   printf("[ sort     ] %zu keys: %.2f ms on %s\n", n, best, Gpu::get().device.name.UTF8String);
 }
 

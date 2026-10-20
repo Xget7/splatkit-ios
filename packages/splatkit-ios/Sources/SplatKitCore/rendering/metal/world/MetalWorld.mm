@@ -1,10 +1,10 @@
-#include "rendering/MetalWorld.h"
+#include "rendering/metal/world/MetalWorld.h"
 
 #include <algorithm>
 #include <cstring>
 #include <limits>
 
-#include "rendering/MetalCompute.h"
+#include "rendering/metal/device/MetalShaderLibrary.h"
 #include "splatkit/rendering/GpuLayout.h"
 
 namespace splatkit {

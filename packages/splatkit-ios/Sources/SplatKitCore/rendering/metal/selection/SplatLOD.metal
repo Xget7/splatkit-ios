@@ -1,4 +1,4 @@
-#include "SplatTypes.metalh"
+#include "../layout/SplatTypes.metalh"
 
 // Matches splat::LodCluster. Only interior nodes enter the frontier.
 struct LodCluster {

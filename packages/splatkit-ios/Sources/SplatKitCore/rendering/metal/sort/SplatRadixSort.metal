@@ -1,4 +1,4 @@
-#include "SplatTypes.metalh"
+#include "../layout/SplatTypes.metalh"
 
 constant uint kSortThreads = 256;
 constant uint kSortPerThread = 16;

@@ -10,7 +10,7 @@ namespace splatkit {
 // Interior-only traversal -> bounded GPU cut. V1 metadata is built once at upload;
 // v2 metadata is precomputed offline. No CPU traversal/count readback per frame.
 // Create/upload while idle; encode and its consumers use the same command queue.
-class MetalLOD {
+class MetalLodSelection {
  public:
   // Safety bound on the selected cut; buffers scale with the budget actually requested.
   static constexpr uint32_t kMaxBudget = 4'000'000;

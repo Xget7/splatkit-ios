@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "rendering/MetalSplatRenderer.h"
+#include "rendering/metal/MetalSplatRenderer.h"
 #include "splatkit/Log.h"
 #include "splatkit/engine/SplatEngine.h"
 

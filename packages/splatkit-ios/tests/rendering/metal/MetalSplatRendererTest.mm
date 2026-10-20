@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "rendering/MetalSplatRenderer.h"
+#include "rendering/metal/MetalSplatRenderer.h"
 #include "splat/formats/SpzDecoder.h"
 #include "splat/io/MappedFile.h"
 #include "splat/sorting/SpatialOrder.h"
@@ -11,7 +11,7 @@
 namespace splatkit {
 namespace {
 
-class MetalRasterTest : public testing::Test {
+class MetalSplatRendererTest : public testing::Test {
  protected:
   void SetUp() override {
     id<MTLDevice> device = MTLCreateSystemDefaultDevice();
@@ -20,7 +20,7 @@ class MetalRasterTest : public testing::Test {
   }
 };
 
-TEST_F(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacement) {
+TEST_F(MetalSplatRendererTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacement) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   auto layer = [CAMetalLayer layer];
@@ -60,7 +60,7 @@ TEST_F(MetalRasterTest, WorldReadinessRequiresGpuCompletionAndResetsOnReplacemen
   EXPECT_FALSE(renderer->hasCompletedWorldFrame());
 }
 
-TEST_F(MetalRasterTest, HybridTilesAreNotOfferedAndResolveToHardware) {
+TEST_F(MetalSplatRendererTest, HybridTilesAreNotOfferedAndResolveToHardware) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   const DeviceCapabilities caps = renderer->deviceCapabilities();
@@ -80,7 +80,7 @@ TEST_F(MetalRasterTest, HybridTilesAreNotOfferedAndResolveToHardware) {
   EXPECT_TRUE(fallback.warnings.empty());
 }
 
-TEST_F(MetalRasterTest, SubpixelThresholdIsFixed) {
+TEST_F(MetalSplatRendererTest, SubpixelThresholdIsFixed) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   const DeviceCapabilities caps = renderer->deviceCapabilities();
@@ -95,7 +95,7 @@ TEST_F(MetalRasterTest, SubpixelThresholdIsFixed) {
   EXPECT_EQ(resolution.warnings[0].field, "subpixelThreshold");
 }
 
-TEST_F(MetalRasterTest, LodLeafCutDrawsEveryLeaf) {
+TEST_F(MetalSplatRendererTest, LodLeafCutDrawsEveryLeaf) {
   splat::LodTree tree;
   tree.leafCount = 514;
   tree.nodes.positions = {0, 0, -2};
@@ -138,7 +138,7 @@ TEST_F(MetalRasterTest, LodLeafCutDrawsEveryLeaf) {
   EXPECT_GT(image[(32 * 64 + 56) * 4 + 1], 80);
 }
 
-TEST_F(MetalRasterTest, LodErrorPolicyRefinesALoadedHierarchyLive) {
+TEST_F(MetalSplatRendererTest, LodErrorPolicyRefinesALoadedHierarchyLive) {
   splat::LodTree tree;
   tree.leafCount = 64;
   tree.nodes.positions = {0, 0, -8};
@@ -202,7 +202,7 @@ TEST_F(MetalRasterTest, LodErrorPolicyRefinesALoadedHierarchyLive) {
   EXPECT_FLOAT_EQ(renderer->lodPixels(), 0.1f);
 }
 
-TEST_F(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {
+TEST_F(MetalSplatRendererTest, GpuOrderedSplatContributesToThePresentedPixels) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   CAMetalLayer* layer = [CAMetalLayer layer];
@@ -236,7 +236,7 @@ TEST_F(MetalRasterTest, GpuOrderedSplatContributesToThePresentedPixels) {
   EXPECT_LT(pixels[center + 1], 20);
 }
 
-TEST_F(MetalRasterTest, HalfScaleFrameReachesTheDrawableThroughMetalFXOrTheBlit) {
+TEST_F(MetalSplatRendererTest, HalfScaleFrameReachesTheDrawableThroughMetalFXOrTheBlit) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   CAMetalLayer* layer = [CAMetalLayer layer];
@@ -299,7 +299,7 @@ TEST_F(MetalRasterTest, HalfScaleFrameReachesTheDrawableThroughMetalFXOrTheBlit)
   EXPECT_LT(pixels[center + 1], 20);
 }
 
-TEST_F(MetalRasterTest, IssFixtureProducesVisiblePixels) {
+TEST_F(MetalSplatRendererTest, IssFixtureProducesVisiblePixels) {
   const char* path = std::getenv("SPLAT_ISS_PATH");
   if (!path) GTEST_SKIP() << "Set SPLAT_ISS_PATH to the ISS SPZ fixture";
   auto file = splat::MappedFile::open(path);

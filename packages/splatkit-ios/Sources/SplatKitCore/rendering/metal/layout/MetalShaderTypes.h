@@ -7,7 +7,7 @@
 
 namespace splatkit {
 
-// Host layouts for shaders/SplatTypes.metalh. Private to the Metal renderer.
+// Host layouts for SplatTypes.metalh. Private to the Metal renderer.
 // World records remain in the platform-independent GpuLayout.h.
 struct alignas(16) CameraUniform {
   splat::Mat4 view;

@@ -1,5 +1,5 @@
-#include "SplatTypes.metalh"
-#include "SplatProjection.metalh"
+#include "../layout/SplatTypes.metalh"
+#include "../layout/SplatProjection.metalh"
 
 // CPU order path: projects in the vertex stage.
 vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[instance_id]],

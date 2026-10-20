@@ -1,14 +1,14 @@
-#include "rendering/MetalVisibility.h"
+#include "rendering/metal/cull/MetalVisibilityPass.h"
 
 #include <algorithm>
 #include <cstring>
 
-#include "rendering/MetalCompute.h"
+#include "rendering/metal/device/MetalShaderLibrary.h"
 
 namespace splatkit {
 
-bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library,
-                             MetalRadixSort::KeyBits depthBits) {
+bool MetalVisibilityPass::create(id<MTLDevice> device, id<MTLLibrary> library,
+                                 MetalRadixSort::KeyBits depthBits) {
   device_ = device;
   library_ = library;
   depthBits_ = depthBits;
@@ -26,7 +26,7 @@ bool MetalVisibility::create(id<MTLDevice> device, id<MTLLibrary> library,
 }
 
 // Only the pipelines depend on the key width; the buffers and the radix scratch are reused.
-bool MetalVisibility::reconfigure(MetalRadixSort::KeyBits depthBits) {
+bool MetalVisibilityPass::reconfigure(MetalRadixSort::KeyBits depthBits) {
   if (device_ == nil || library_ == nil) return false;
   const MetalRadixSort::KeyBits previousBits = depthBits_;
   depthBits_ = depthBits;
@@ -37,7 +37,7 @@ bool MetalVisibility::reconfigure(MetalRadixSort::KeyBits depthBits) {
   return true;
 }
 
-bool MetalVisibility::createPipelines() {
+bool MetalVisibilityPass::createPipelines() {
   const bool quantized = depthBits_ == MetalRadixSort::KeyBits::Low16;
   bool ok = true;
   for (int degree = 0; degree < kShDegrees; ++degree) {
@@ -63,7 +63,7 @@ bool MetalVisibility::createPipelines() {
   return ok && prepareDraw_ != nil;
 }
 
-bool MetalVisibility::reserve(uint32_t capacity, uint32_t activeCapacity) {
+bool MetalVisibilityPass::reserve(uint32_t capacity, uint32_t activeCapacity) {
   const uint32_t sourceCapacity = capacity;
   if (activeCapacity > 0) capacity = std::min(capacity, activeCapacity);
   capacity = std::max(capacity, 1u);
@@ -84,10 +84,10 @@ bool MetalVisibility::reserve(uint32_t capacity, uint32_t activeCapacity) {
   return true;
 }
 
-bool MetalVisibility::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms,
-                             id<MTLBuffer> splats, id<MTLBuffer> sh, int shDegree,
-                             const SplatRenderer::Range* ranges, uint32_t rangeCount,
-                             id<MTLBuffer> indices, id<MTLBuffer> activeCount) {
+bool MetalVisibilityPass::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms,
+                                 id<MTLBuffer> splats, id<MTLBuffer> sh, int shDegree,
+                                 const SplatRenderer::Range* ranges, uint32_t rangeCount,
+                                 id<MTLBuffer> indices, id<MTLBuffer> activeCount) {
   const bool indexed = indices != nil;
   if (indexedOnly_ && !indexed) return false;
   if (indexed != (activeCount != nil)) return false;

@@ -1,5 +1,5 @@
-#include "SplatTypes.metalh"
-#include "SplatProjection.metalh"
+#include "../layout/SplatTypes.metalh"
+#include "../layout/SplatProjection.metalh"
 
 constant bool kIndexedLOD [[function_constant(3)]];
 constant bool kQuantizedDepth [[function_constant(4)]];

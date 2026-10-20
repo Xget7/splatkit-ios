@@ -24,17 +24,19 @@ add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/../splatkit-engine splatkit-engine)
 # The Metal shader source travels inside the library as a string and is compiled by the
 # device at start, so a host app needs no metallib of ours in its bundle.
 include(cmake/embed.cmake)
+set(SPLATKIT_METAL_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Sources/SplatKitCore/rendering/metal)
 splatkit_embed_text(splatkit_ios_shaders
-  ${CMAKE_CURRENT_SOURCE_DIR}/Sources/SplatKitCore/rendering/shaders/Splat.metal
+  ${SPLATKIT_METAL_DIR}/device/Splat.metal
   SplatShaderSource
+  ${SPLATKIT_METAL_DIR}
 )
 
 add_library(splatkit_ios STATIC
-  Sources/SplatKitCore/rendering/MetalSplatRenderer.mm
-  Sources/SplatKitCore/rendering/MetalVisibility.mm
-  Sources/SplatKitCore/rendering/MetalLOD.mm
-  Sources/SplatKitCore/rendering/MetalRadixSort.mm
-  Sources/SplatKitCore/rendering/MetalWorld.mm
+  Sources/SplatKitCore/rendering/metal/MetalSplatRenderer.mm
+  Sources/SplatKitCore/rendering/metal/cull/MetalVisibilityPass.mm
+  Sources/SplatKitCore/rendering/metal/selection/MetalLodSelection.mm
+  Sources/SplatKitCore/rendering/metal/sort/MetalRadixSort.mm
+  Sources/SplatKitCore/rendering/metal/world/MetalWorld.mm
   Sources/SplatKitCore/engine/SKSplatEngine.mm
 )
 target_include_directories(splatkit_ios

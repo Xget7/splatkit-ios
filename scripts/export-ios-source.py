@@ -80,7 +80,7 @@ def main():
     selected = {}
     for name in sorted(set(names) - {""}):
         source = ROOT / name
-        if not source.exists():  # Deleted source shader, superseded by shaders/Splat.metal.
+        if not source.exists():  # Deleted in the working tree, still in the index.
             continue
         if source.is_symlink() or not source.is_file() or source.suffix in FORBIDDEN:
             raise ValueError(f"unexpected export file: {name}")

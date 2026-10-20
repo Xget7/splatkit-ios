@@ -1,9 +1,9 @@
-#include "rendering/MetalLOD.h"
+#include "rendering/metal/selection/MetalLodSelection.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
-#include "rendering/MetalCompute.h"
+#include "rendering/metal/device/MetalShaderLibrary.h"
 #include "splat/lod/LodFile.h"
 
 namespace splatkit {
@@ -23,7 +23,7 @@ constexpr NSUInteger kScanArgumentsOffset = 64;
 
 }  // namespace
 
-bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
+bool MetalLodSelection::create(id<MTLDevice> device, id<MTLLibrary> library) {
   device_ = device;
   initialize_ = metal::pipeline(device, library, "initializeSplatLOD");
   evaluate_ = metal::pipeline(device, library, "evaluateSplatLOD");
@@ -43,8 +43,8 @@ bool MetalLOD::create(id<MTLDevice> device, id<MTLLibrary> library) {
       return false;
   return true;
 }
-bool MetalLOD::upload(const splat::LodTree& tree, uint32_t capacity, float pixelLimit,
-                      float colorWeight, bool frustumCull) {
+bool MetalLodSelection::upload(const splat::LodTree& tree, uint32_t capacity, float pixelLimit,
+                               float colorWeight, bool frustumCull) {
   auto valid = splat::validateLodTree(tree);
   if (!valid) LOGE("invalid LOD hierarchy: %s", valid.error().message.c_str());
   if (!valid || capacity == 0 || !std::isfinite(pixelLimit) || pixelLimit < 0 ||
@@ -92,7 +92,7 @@ bool MetalLOD::upload(const splat::LodTree& tree, uint32_t capacity, float pixel
       data->clusters.size(), data->leaves.size(), depth_, capacity, pixelLimit, colorWeight);
   return true;
 }
-void MetalLOD::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
+void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
   auto start = [&](id<MTLComputePipelineState> pipeline, NSString* label) {
     auto e = [command computeCommandEncoder];
     e.label = label;

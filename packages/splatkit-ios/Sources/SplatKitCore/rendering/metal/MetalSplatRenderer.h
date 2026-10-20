@@ -19,9 +19,9 @@
 #include <string>
 #include <vector>
 
-#include "rendering/MetalLOD.h"
-#include "rendering/MetalVisibility.h"
-#include "rendering/MetalWorld.h"
+#include "rendering/metal/cull/MetalVisibilityPass.h"
+#include "rendering/metal/selection/MetalLodSelection.h"
+#include "rendering/metal/world/MetalWorld.h"
 #include "splatkit/rendering/GpuLayout.h"
 #include "splatkit/rendering/SplatRenderer.h"
 
@@ -85,7 +85,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   // capture at a time; a request while one is pending replaces it.
   void captureNextFrame(CaptureHandler handler);
   double lastGpuMillis() const override { return gpuFailed_.load() ? 0 : lastGpuMillis_.load(); }
-  // The cull and the sort run as compute passes on the GPU (MetalVisibility); the engine
+  // The cull and the sort run as compute passes on the GPU (MetalVisibilityPass); the engine
   // hands over the ranges to draw and never sorts on the CPU for this renderer.
   bool sortsOnGpu() const override { return gpuSort_; }
   double lastSortMillis() const override { return gpuFailed_.load() ? 0 : lastSortMillis_.load(); }
@@ -105,7 +105,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   const std::string& deviceDescription() const override { return description_; }
 
   static constexpr int kMaxShDegree = 3;
-  static constexpr uint32_t kFramesInFlight = MetalVisibility::kSlots;
+  static constexpr uint32_t kFramesInFlight = MetalVisibilityPass::kSlots;
 
  private:
   MetalSplatRenderer() = default;
@@ -175,8 +175,8 @@ class MetalSplatRenderer final : public SplatRenderer {
   };
   std::shared_ptr<PresentLog> presents_ = std::make_shared<PresentLog>();
   std::atomic<bool> completedWorldFrame_{false};
-  MetalVisibility visibility_;
-  std::unique_ptr<MetalLOD> lod_;
+  MetalVisibilityPass visibility_;
+  std::unique_ptr<MetalLodSelection> lod_;
   std::array<id<MTLBuffer>, kFramesInFlight> lodReadback_{};
   std::atomic<uint32_t> lastSelectedCount_{0};
   std::atomic<uint32_t> lastLodLimitedCount_{0}, lastLodEvaluatedCount_{0};

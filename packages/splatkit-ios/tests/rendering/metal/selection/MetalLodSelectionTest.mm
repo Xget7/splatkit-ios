@@ -5,16 +5,16 @@
 #include <cstdlib>
 #include <cstring>
 #include <set>
-#include "MetalTestContext.h"
-#include "rendering/MetalCompute.h"
-#include "rendering/MetalLOD.h"
-#include "rendering/MetalSplatRenderer.h"
-#include "rendering/MetalVisibility.h"
-#include "rendering/MetalWorld.h"
+#include "rendering/metal/MetalSplatRenderer.h"
+#include "rendering/metal/cull/MetalVisibilityPass.h"
+#include "rendering/metal/device/MetalShaderLibrary.h"
+#include "rendering/metal/selection/MetalLodSelection.h"
+#include "rendering/metal/world/MetalWorld.h"
 #include "splat/formats/SpzDecoder.h"
 #include "splat/io/MappedFile.h"
 #include "splat/lod/LodFile.h"
 #include "splatkit/camera/WalkCamera.h"
+#include "support/MetalTestContext.h"
 
 namespace splatkit {
 namespace {
@@ -53,7 +53,7 @@ void leaves(const splat::LodTree& tree, uint32_t node, std::vector<uint32_t>& ou
   if (n.childCount == 0) out.push_back(node);
   for (uint32_t k = 0; k < n.childCount; ++k) leaves(tree, n.childStart + k, out);
 }
-std::vector<uint32_t> select(MetalLOD& lod, id<MTLBuffer> uniforms,
+std::vector<uint32_t> select(MetalLodSelection& lod, id<MTLBuffer> uniforms,
                              std::array<uint32_t, 6>* stats = nullptr) {
   auto& gpu = test::Gpu::get();
   auto output = metal::buffer(gpu.device, 24 + size_t{lod.budget()} * 4);
@@ -76,12 +76,12 @@ std::vector<uint32_t> select(MetalLOD& lod, id<MTLBuffer> uniforms,
   return {values + 6, values + 6 + std::min(values[0], lod.budget())};
 }
 
-TEST(MetalLODTest, BudgetCutsCoverEveryLeafExactlyOnceAndAreDeterministic) {
+TEST(MetalLodSelectionTest, BudgetCutsCoverEveryLeafExactlyOnceAndAreDeterministic) {
   auto& gpu = test::Gpu::get();
   ASSERT_NE(gpu.library, nil);
   const auto tree = hierarchy();
   for (uint32_t budget : {1u, 7u, 31u, 32u, 33u, 64u, 257u, 400u, 515u}) {
-    MetalLOD lod;
+    MetalLodSelection lod;
     ASSERT_TRUE(lod.create(gpu.device, gpu.library));
     ASSERT_TRUE(lod.upload(tree, budget, 0));
     EXPECT_EQ(lod.indices().storageMode, MTLStorageModePrivate);
@@ -100,17 +100,17 @@ TEST(MetalLODTest, BudgetCutsCoverEveryLeafExactlyOnceAndAreDeterministic) {
   }
 }
 
-TEST(MetalLODTest, DistanceChangesCutAndIndexedVisibilitySortsOnlyThatCut) {
+TEST(MetalLodSelectionTest, DistanceChangesCutAndIndexedVisibilitySortsOnlyThatCut) {
   auto& gpu = test::Gpu::get();
   const auto tree = hierarchy();
-  MetalLOD lod;
+  MetalLodSelection lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   ASSERT_TRUE(lod.upload(tree, 400, 1));
   EXPECT_GT(select(lod, camera()).size(), 1u);
   EXPECT_EQ(select(lod, camera(1000000)).size(), 1u);
   auto world = MetalWorld::upload(gpu.device, tree.nodes, 0);
   ASSERT_TRUE(world);
-  MetalVisibility visibility;
+  MetalVisibilityPass visibility;
   ASSERT_TRUE(visibility.create(gpu.device, gpu.library));
   ASSERT_TRUE(visibility.reserve(static_cast<uint32_t>(tree.nodeCount()), lod.budget()));
   EXPECT_EQ(visibility.capacity(), 400u);
@@ -132,7 +132,7 @@ TEST(MetalLODTest, DistanceChangesCutAndIndexedVisibilitySortsOnlyThatCut) {
   EXPECT_LE(visibility.count(0), 400u);
 }
 
-TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
+TEST(MetalLodSelectionTest, OfflineFixtureRendersWithBoundedDrawCount) {
   const char* path = std::getenv("SPLAT_LOD_PATH");
   if (!path) GTEST_SKIP() << "Set SPLAT_LOD_PATH for the offline ISS hierarchy integration run";
   const char* reference = std::getenv("SPLAT_LOD_REFERENCE_SPZ");
@@ -241,7 +241,7 @@ TEST(MetalLODTest, OfflineFixtureRendersWithBoundedDrawCount) {
   }
 }
 
-TEST(MetalLODTest, QualityRefinesColorVariationWithoutFillingCapacity) {
+TEST(MetalLodSelectionTest, QualityRefinesColorVariationWithoutFillingCapacity) {
   auto& gpu = test::Gpu::get();
   splat::LodTree tree;
   tree.leafCount = 4;
@@ -258,7 +258,7 @@ TEST(MetalLODTest, QualityRefinesColorVariationWithoutFillingCapacity) {
   tree.nodes.colors[5 * 3] = 0;
   tree.nodes.colors[6 * 3 + 1] = 0;
   tree.selection = splat::buildLodSelectionData(tree);
-  MetalLOD lod;
+  MetalLodSelection lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   // Uniform pair may collapse at this distance; the varying pair must stay fine.
   ASSERT_TRUE(lod.upload(tree, 4, 1, 4, false));
@@ -269,11 +269,11 @@ TEST(MetalLODTest, QualityRefinesColorVariationWithoutFillingCapacity) {
   EXPECT_EQ(stats[5], 3u);
 }
 
-TEST(MetalLODTest, PacketExpansionDoesNotEvaluateLeavesAndReportsCapacityPressure) {
+TEST(MetalLodSelectionTest, PacketExpansionDoesNotEvaluateLeavesAndReportsCapacityPressure) {
   auto& gpu = test::Gpu::get();
   auto tree = hierarchy();
   tree.selection = splat::buildLodSelectionData(tree);
-  MetalLOD lod;
+  MetalLodSelection lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   ASSERT_TRUE(lod.upload(tree, 515, 0, 4, false));
   std::array<uint32_t, 6> stats{};
@@ -285,9 +285,9 @@ TEST(MetalLODTest, PacketExpansionDoesNotEvaluateLeavesAndReportsCapacityPressur
   EXPECT_GT(stats[4], 0u);
 }
 
-TEST(MetalLODTest, EmptyViewEmitsNothingAndSingleLeafRootEmitsOne) {
+TEST(MetalLodSelectionTest, EmptyViewEmitsNothingAndSingleLeafRootEmitsOne) {
   auto& gpu = test::Gpu::get();
-  MetalLOD lod;
+  MetalLodSelection lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   ASSERT_TRUE(lod.upload(hierarchy(), 515, 0));
   EXPECT_TRUE(select(lod, camera(-100)).empty());
@@ -301,7 +301,7 @@ TEST(MetalLODTest, EmptyViewEmitsNothingAndSingleLeafRootEmitsOne) {
   EXPECT_EQ(select(lod, camera()), (std::vector<uint32_t>{0}));
 }
 
-TEST(MetalLODTest, ParallelScanCrossesBlocksWithoutHolesOrDuplicates) {
+TEST(MetalLodSelectionTest, ParallelScanCrossesBlocksWithoutHolesOrDuplicates) {
   constexpr uint32_t count = 32768, nodes = 2 * count - 1;
   splat::LodTree tree;
   tree.leafCount = count;
@@ -316,7 +316,7 @@ TEST(MetalLODTest, ParallelScanCrossesBlocksWithoutHolesOrDuplicates) {
   }
   tree.selection = splat::buildLodSelectionData(tree);
   auto& gpu = test::Gpu::get();
-  MetalLOD lod;
+  MetalLodSelection lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   for (uint32_t capacity : {20000u, count}) {
     ASSERT_TRUE(lod.upload(tree, capacity, 0, 4, false));
@@ -336,7 +336,7 @@ TEST(MetalLODTest, ParallelScanCrossesBlocksWithoutHolesOrDuplicates) {
   }
 }
 
-TEST(MetalLODTest, LargeLeafPacketUsesCooperativeEmissionWithoutOverflow) {
+TEST(MetalLodSelectionTest, LargeLeafPacketUsesCooperativeEmissionWithoutOverflow) {
   splat::LodTree tree;
   tree.leafCount = 513;
   for (uint32_t i = 0; i < 514; ++i) {
@@ -349,7 +349,7 @@ TEST(MetalLODTest, LargeLeafPacketUsesCooperativeEmissionWithoutOverflow) {
   }
   tree.selection = splat::buildLodSelectionData(tree);
   auto& gpu = test::Gpu::get();
-  MetalLOD lod;
+  MetalLodSelection lod;
   ASSERT_TRUE(lod.create(gpu.device, gpu.library));
   ASSERT_TRUE(lod.upload(tree, 513, 0));
   std::array<uint32_t, 6> stats{};

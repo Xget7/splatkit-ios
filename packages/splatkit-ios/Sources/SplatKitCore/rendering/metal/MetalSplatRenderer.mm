@@ -1,4 +1,4 @@
-#include "rendering/MetalSplatRenderer.h"
+#include "rendering/metal/MetalSplatRenderer.h"
 
 #if SPLATKIT_HAS_METALFX
 // Recorded in the object as an autolink option, so a static consumer (SwiftPM, CocoaPods)
@@ -17,8 +17,8 @@ asm(".linker_option \"-framework\", \"MetalFX\"");
 #include <utility>
 #include <vector>
 
-#include "rendering/MetalCompute.h"
-#include "rendering/MetalShaderTypes.h"
+#include "rendering/metal/device/MetalShaderLibrary.h"
+#include "rendering/metal/layout/MetalShaderTypes.h"
 #include "splat/math/Mat4.h"
 #include "splatkit/Log.h"
 
@@ -142,8 +142,9 @@ void MetalSplatRenderer::setVsync(bool vsync) {
 
 DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   DeviceCapabilities caps;
-  // MetalLOD caps a selected cut at 4M nodes; the engine's residency window is [100k, 32M].
-  caps.limits.maxLodCapacitySplats = MetalLOD::kMaxBudget;
+  // MetalLodSelection caps a selected cut at 4M nodes; the engine's residency window is
+  // [100k, 32M].
+  caps.limits.maxLodCapacitySplats = MetalLodSelection::kMaxBudget;
   caps.limits.minResidencyCapacitySplats = 100'000;
   caps.limits.maxResidencyCapacitySplats = 32'000'000;
   caps.supportsComputeTiles = false;
@@ -440,11 +441,11 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
                                         uint32_t budget) {
   if (!gpuSort_) return false;
   waitIdle();
-  auto lod = std::make_unique<MetalLOD>();
+  auto lod = std::make_unique<MetalLodSelection>();
   if (!lod->create(device_, library_) || !lod->upload(tree, budget, lodErrorPixels_)) return false;
   lod->setSplatLimit(lodSplatLimit_);
   // Compact projections and radix scratch scale with the cut, not all resident nodes.
-  MetalVisibility visibility;
+  MetalVisibilityPass visibility;
   if (!visibility.create(device_, library_, depthBits_) ||
       !visibility.reserve(static_cast<uint32_t>(tree.nodeCount()), lod->budget()))
     return false;
@@ -678,7 +679,7 @@ void MetalSplatRenderer::encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> d
       [encoder setVertexBuffer:visibility_.projected() offset:0 atIndex:1];
       [encoder setVertexBuffer:visibility_.order() offset:0 atIndex:2];
       id<MTLBuffer> arguments = visibility_.drawArguments(slot);
-      for (uint32_t batch = 0; batch < MetalVisibility::kDrawBatches; ++batch) {
+      for (uint32_t batch = 0; batch < MetalVisibilityPass::kDrawBatches; ++batch) {
         if (batch > 0) {
           [encoder setRenderPipelineState:maskPipeline_];
           [encoder setDepthStencilState:maskDepth_];
@@ -688,7 +689,7 @@ void MetalSplatRenderer::encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> d
         [encoder setDepthStencilState:splatDepth_];
         [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                   indirectBuffer:arguments
-            indirectBufferOffset:batch * MetalVisibility::kDrawArgumentBytes];
+            indirectBufferOffset:batch * MetalVisibilityPass::kDrawArgumentBytes];
       }
     } else {
       const int degree =

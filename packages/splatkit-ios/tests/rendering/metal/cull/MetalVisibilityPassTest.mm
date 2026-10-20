@@ -7,25 +7,25 @@
 #include <random>
 #include <vector>
 
-#include "MetalTestContext.h"
-#include "rendering/MetalVisibility.h"
+#include "rendering/metal/cull/MetalVisibilityPass.h"
 #include "splat/math/Half.h"
 #include "splat/math/Mat4.h"
 #include "splatkit/rendering/GpuLayout.h"
+#include "support/MetalTestContext.h"
 
 namespace splatkit {
 namespace {
 
 using test::Gpu;
 
-class MetalVisibilityTest : public ::testing::Test {
+class MetalVisibilityPassTest : public ::testing::Test {
  protected:
   void SetUp() override {
     ASSERT_NE(Gpu::get().device, nil);
     ASSERT_NE(Gpu::get().library, nil);
     ASSERT_TRUE(visibility.create(Gpu::get().device, Gpu::get().library));
   }
-  MetalVisibility visibility;
+  MetalVisibilityPass visibility;
 };
 
 struct VisibilityInput {
@@ -56,7 +56,7 @@ struct VisibilityInput {
   }
 };
 
-TEST_F(MetalVisibilityTest, FullSetAboveTwoMillionIsNotSampled) {
+TEST_F(MetalVisibilityPassTest, FullSetAboveTwoMillionIsNotSampled) {
   const uint32_t n = 2000003;
   VisibilityInput input(n);
   ASSERT_TRUE(visibility.reserve(n));
@@ -76,7 +76,7 @@ TEST_F(MetalVisibilityTest, FullSetAboveTwoMillionIsNotSampled) {
   }
 }
 
-TEST_F(MetalVisibilityTest, EmptyFrameClearsPreviousIndirectDraws) {
+TEST_F(MetalVisibilityPassTest, EmptyFrameClearsPreviousIndirectDraws) {
   VisibilityInput input(8);
   ASSERT_TRUE(visibility.reserve(8));
   const SplatRenderer::Range range{0, 8};
@@ -91,12 +91,12 @@ TEST_F(MetalVisibilityTest, EmptyFrameClearsPreviousIndirectDraws) {
   }
   const auto* draws =
       static_cast<const MTLDrawPrimitivesIndirectArguments*>(visibility.drawArguments(0).contents);
-  for (uint32_t i = 0; i < MetalVisibility::kDrawBatches; ++i) {
+  for (uint32_t i = 0; i < MetalVisibilityPass::kDrawBatches; ++i) {
     EXPECT_EQ(draws[i].instanceCount, 0u);
   }
 }
 
-TEST_F(MetalVisibilityTest, RejectsRangesOutsideANewerSmallerWorld) {
+TEST_F(MetalVisibilityPassTest, RejectsRangesOutsideANewerSmallerWorld) {
   VisibilityInput input(4);
   ASSERT_TRUE(visibility.reserve(64));
   ASSERT_TRUE(visibility.reserve(4));
@@ -104,11 +104,11 @@ TEST_F(MetalVisibilityTest, RejectsRangesOutsideANewerSmallerWorld) {
   id<MTLCommandBuffer> cmd = [Gpu::get().queue commandBuffer];
   EXPECT_FALSE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1));
   EXPECT_FALSE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, nullptr, 1));
-  EXPECT_FALSE(visibility.encode(cmd, MetalVisibility::kSlots, input.uniforms, input.splats, nil, 0,
-                                 nullptr, 0));
+  EXPECT_FALSE(visibility.encode(cmd, MetalVisibilityPass::kSlots, input.uniforms, input.splats,
+                                 nil, 0, nullptr, 0));
 }
 
-TEST_F(MetalVisibilityTest, CullsAndOrdersTheRangesFrontToBack) {
+TEST_F(MetalVisibilityPassTest, CullsAndOrdersTheRangesFrontToBack) {
   Gpu& gpu = Gpu::get();
   // Six splats: two ranges of three. The camera at the origin looks down -z.
   // 0: 10 m ahead, 1: behind, 2: 2 m ahead, 3: far to the side (outside the view),
@@ -160,7 +160,7 @@ TEST_F(MetalVisibilityTest, CullsAndOrdersTheRangesFrontToBack) {
   // The batches partition the instances, in order.
   const auto* draw = static_cast<const uint32_t*>(visibility.drawArguments(1).contents);
   uint32_t next = 0;
-  for (uint32_t b = 0; b < MetalVisibility::kDrawBatches; ++b) {
+  for (uint32_t b = 0; b < MetalVisibilityPass::kDrawBatches; ++b) {
     EXPECT_EQ(draw[b * 4], 4u);        // vertices per instance
     EXPECT_EQ(draw[b * 4 + 3], next);  // base instance
     next += draw[b * 4 + 1];           // instances
@@ -168,7 +168,7 @@ TEST_F(MetalVisibilityTest, CullsAndOrdersTheRangesFrontToBack) {
   EXPECT_EQ(next, 3u);
 }
 
-TEST_F(MetalVisibilityTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
+TEST_F(MetalVisibilityPassTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
   Gpu& gpu = Gpu::get();
   const uint32_t one = splat::toHalf(1.0f);
   const uint32_t tiny = splat::toHalf(1.0e-8f);
@@ -208,7 +208,7 @@ TEST_F(MetalVisibilityTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
   EXPECT_EQ(visibility.count(0), 1u);
 }
 
-TEST_F(MetalVisibilityTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSplats) {
+TEST_F(MetalVisibilityPassTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSplats) {
   Gpu& gpu = Gpu::get();
   VisibilityInput input(4);
   auto* camera = static_cast<const CameraUniform*>(input.uniforms.contents);
@@ -247,7 +247,7 @@ TEST_F(MetalVisibilityTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSplats) 
   EXPECT_EQ(kept, (std::vector<uint32_t>{0, 3}));
 }
 
-TEST_F(MetalVisibilityTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadius) {
+TEST_F(MetalVisibilityPassTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadius) {
   Gpu& gpu = Gpu::get();
   VisibilityInput input(6);
   auto* source = static_cast<GpuSplat*>(input.splats.contents);
@@ -298,7 +298,7 @@ TEST_F(MetalVisibilityTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadius) 
   EXPECT_NEAR(huge->radius, 512.0f / 400.0f, 0.02f);
 }
 
-TEST(MetalVisibilityKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
+TEST(MetalVisibilityPassKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
   Gpu& gpu = Gpu::get();
   constexpr uint32_t n = 8;
   VisibilityInput input(n);
@@ -319,7 +319,7 @@ TEST(MetalVisibilityKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndice
                                       options:MTLResourceStorageModeShared];
   for (bool indexed : {false, true}) {
     SCOPED_TRACE(indexed);
-    MetalVisibility visibility;
+    MetalVisibilityPass visibility;
     ASSERT_TRUE(visibility.create(gpu.device, gpu.library, MetalRadixSort::KeyBits::Low16));
     ASSERT_TRUE(visibility.reserve(n));
     const SplatRenderer::Range range{0, n};
@@ -353,7 +353,7 @@ TEST(MetalVisibilityKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndice
   }
 }
 
-TEST_F(MetalVisibilityTest, CompactsSimdTailsAndClearsReusedSlots) {
+TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
   Gpu& gpu = Gpu::get();
   constexpr uint32_t capacity = 513;
   VisibilityInput input(capacity);
@@ -365,7 +365,7 @@ TEST_F(MetalVisibilityTest, CompactsSimdTailsAndClearsReusedSlots) {
   const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
   const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
   for (uint32_t n : {1u, 31u, 32u, 33u, 255u, 256u, 257u, 513u, 0u}) {
-    const uint32_t slot = n % MetalVisibility::kSlots;
+    const uint32_t slot = n % MetalVisibilityPass::kSlots;
     const SplatRenderer::Range range{0, n};
     id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
     ASSERT_TRUE(visibility.encode(cmd, slot, input.uniforms, input.splats, nil, 0,
@@ -387,7 +387,7 @@ TEST_F(MetalVisibilityTest, CompactsSimdTailsAndClearsReusedSlots) {
     const auto* draws = static_cast<const MTLDrawPrimitivesIndirectArguments*>(
         visibility.drawArguments(slot).contents);
     uint32_t next = 0;
-    for (uint32_t b = 0; b < MetalVisibility::kDrawBatches; ++b) {
+    for (uint32_t b = 0; b < MetalVisibilityPass::kDrawBatches; ++b) {
       EXPECT_EQ(draws[b].vertexCount, 4u);
       EXPECT_EQ(draws[b].vertexStart, 0u);
       EXPECT_EQ(draws[b].baseInstance, next);
