@@ -82,6 +82,10 @@ class SplatRenderer {
   virtual Extent drawExtent() const = 0;
   // Counts the rebuilds of the surface's images. A frame drawn before one is gone.
   virtual uint32_t generation() const = 0;
+  // True while the surface is waiting to be rebuilt at the size the host gave it. The
+  // platform only reports that size after a frame is presented, so the engine keeps
+  // drawing until this turns false. Render thread only.
+  virtual bool surfaceRebuildPending() const { return false; }
 
   // Uploads a world and draws it from now on. Fails, keeping the previous world, when
   // the upload does.

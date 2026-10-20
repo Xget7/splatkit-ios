@@ -393,7 +393,9 @@ void SplatEngine::render(int64_t frameTimeNanos) {
     if (benchmark_.running() || camera->view.m != lastDrawnView_.m) redrawNeeded_ = true;
   }
   const uint32_t generation = renderer_->generation();
-  if (generation != lastDrawnGeneration_) redrawNeeded_ = true;
+  if (generation != lastDrawnGeneration_ || renderer_->surfaceRebuildPending()) {
+    redrawNeeded_ = true;
+  }
   if (renderer_->reportsPresentTimes()) {
     const uint32_t dropped = renderer_->takePresentTimes(&presentTimes_);
     stats_.onPresented(presentTimes_, dropped);

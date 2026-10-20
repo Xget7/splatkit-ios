@@ -31,12 +31,14 @@ class RecordingRenderer final : public StubRenderer {
     return true;
   }
   ScreenTileStats lastScreenTileStats() const override { return tiles; }
+  bool surfaceRebuildPending() const override { return rebuildPending; }
   Extent extent{1000, 1000};
   OrderSource source = OrderSource::cpu;
   std::vector<Range> ranges;
   uint32_t frames = 0;
   ScreenTileStats tiles;
   bool gpuLod = false;
+  bool rebuildPending = false;
   uint32_t uploadedBudget = 0;
   int heldShDegree = 0;
 
@@ -196,6 +198,27 @@ TEST(FrameOrder, OrbitAnimationDrawsUntilItFinishesThenIdles) {
   EXPECT_EQ(observed->frames, beforeAnimation + 1);
   engine.render(300000001);
   EXPECT_EQ(observed->frames, beforeAnimation + 1);
+}
+
+TEST(FrameOrder, RendererWithAPendingSurfaceRebuildKeepsTheEngineDrawingUntilItSettles) {
+  auto renderer = std::make_unique<RecordingRenderer>(true);
+  auto* observed = renderer.get();
+  SplatEngine engine(std::move(renderer));
+  const auto bytes = worldBytes();
+  engine.loadWorld(bytes.data(), bytes.size());
+  engine.render(1);
+  engine.render(16666667);
+  const uint32_t settled = observed->frames;  // an unchanged scene idles
+
+  observed->rebuildPending = true;
+  engine.render(33333333);
+  engine.render(50000000);
+  EXPECT_EQ(observed->frames, settled + 2);
+
+  observed->rebuildPending = false;
+  engine.render(66666667);
+  engine.render(83333333);
+  EXPECT_EQ(observed->frames, settled + 2);
 }
 
 // A phone that turns to portrait while a world loads must end up where one held in
