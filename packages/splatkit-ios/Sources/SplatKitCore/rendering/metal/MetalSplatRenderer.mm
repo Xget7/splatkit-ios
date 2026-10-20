@@ -15,6 +15,7 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
   r->compute_ = std::make_unique<MetalFrameCompute>(r->context_->device(), r->context_->queue(),
                                                     r->context_->library(), r->frameLoop_);
   if (!r->compute_->create()) return nullptr;
+  r->capture_ = std::make_unique<MetalFrameCapture>(r->context_->device());
   r->surface_ = std::make_unique<MetalSurface>(r->context_->device(), r->context_->library(),
                                                r->frameLoop_, r->compute_->gpuSort());
   LOGI("%s", r->context_->description().c_str());
@@ -163,10 +164,10 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
   if (!ready() || !pipeline_.ready()) return false;
   if (!frameLoop_.acquire()) return false;
   // Capture requires a readable drawable before nextDrawable() acquires it.
-  if (capture_) surface_->allowReadback(true);
+  if (capture_->pending()) surface_->allowReadback(true);
   id<CAMetalDrawable> drawable = surface_->nextDrawable();
   if (drawable == nil) {
-    // Until submitFrame(), every failure returns the acquired slot synchronously.
+    // Until frameLoop_.submit(), every failure releases the acquired slot synchronously.
     frameLoop_.release();
     return false;
   }
@@ -202,70 +203,18 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
                    {compute_->projected(), compute_->order(), compute_->drawArguments(slot)},
                    drawCount, gpuOrder);
   surface_->encodeOutput(cmd, drawable.texture);
-  CaptureHandler onCapture;
-  id<MTLBuffer> captured = encodeCapture(cmd, drawable.texture, &onCapture);
+  MetalFrameCapture::Readback readback = capture_->encode(cmd, drawable.texture);
+  if (readback) surface_->allowReadback(false);
 
   // Submit dependencies in order on the same queue. The final completion releases
   // the slot only after selection, visibility/sort and rendering have finished.
   if (selection != nil) [selection commit];
   if (sort != nil) [sort commit];
   const bool drewWorld = world_ && (gpuOrder || drawCount > 0);
-  submitFrame(cmd, drawable, drewWorld, captured, std::move(onCapture));
+  // Transfers the acquired frame slot to the loop, which returns it when the frame completes.
+  frameLoop_.submit(cmd, drawable, drewWorld, MetalFrameCapture::completion(std::move(readback)));
   compute_->advance();
   return true;
-}
-
-id<MTLBuffer> MetalSplatRenderer::encodeCapture(id<MTLCommandBuffer> cmd,
-                                                id<MTLTexture> drawableTexture,
-                                                CaptureHandler* onCapture) {
-  id<MTLBuffer> captured = nil;
-  if (capture_) {
-    if (drawableTexture.framebufferOnly) {
-      LOGW("capture skipped: the drawable is not readable yet");
-    } else {
-      const uint32_t width = surface_->width();
-      const uint32_t height = surface_->height();
-      const NSUInteger bytesPerRow = NSUInteger{width} * 4;
-      captured = [context_->device() newBufferWithLength:bytesPerRow * height
-                                                 options:MTLResourceStorageModeShared];
-      id<MTLBlitCommandEncoder> copy = [cmd blitCommandEncoder];
-      [copy copyFromTexture:drawableTexture
-                       sourceSlice:0
-                       sourceLevel:0
-                      sourceOrigin:MTLOriginMake(0, 0, 0)
-                        sourceSize:MTLSizeMake(width, height, 1)
-                          toBuffer:captured
-                 destinationOffset:0
-            destinationBytesPerRow:bytesPerRow
-          destinationBytesPerImage:bytesPerRow * height];
-      [copy endEncoding];
-      *onCapture = std::move(capture_);
-      capture_ = nullptr;
-      surface_->allowReadback(false);
-    }
-  }
-
-  return captured;
-}
-
-void MetalSplatRenderer::submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable,
-                                     bool drewWorld, id<MTLBuffer> captured,
-                                     CaptureHandler onCapture) {
-  std::function<void(id<MTLCommandBuffer>)> onCompleted;
-  if (onCapture) {
-    const uint32_t width = surface_->width();
-    const uint32_t height = surface_->height();
-    onCompleted = [captured, width, height,
-                   onCapture = std::move(onCapture)](id<MTLCommandBuffer> done) {
-      if (done.status == MTLCommandBufferStatusError) {
-        onCapture({}, 0, 0);
-        return;
-      }
-      const auto* bytes = static_cast<const uint8_t*>(captured.contents);
-      onCapture(std::vector<uint8_t>(bytes, bytes + size_t{width} * height * 4), width, height);
-    };
-  }
-  frameLoop_.submit(cmd, drawable, drewWorld, std::move(onCompleted));
 }
 
 void MetalSplatRenderer::captureNextFrame(CaptureHandler handler) {
@@ -273,7 +222,7 @@ void MetalSplatRenderer::captureNextFrame(CaptureHandler handler) {
     if (handler) handler({}, 0, 0);
     return;
   }
-  capture_ = std::move(handler);
+  capture_->request(std::move(handler));
 }
 
 }  // namespace splatkit

@@ -39,6 +39,8 @@ void MetalUpscaler::reset() {
 bool MetalUpscaler::configure(const MetalRenderTarget& target,
                               [[maybe_unused]] uint32_t drawableWidth,
                               [[maybe_unused]] uint32_t drawableHeight, bool spatialUpscaling) {
+  // For standalone callers; MetalSurface::rebuild resets first, to free the old output before the
+  // new target is allocated.
   reset();
   const bool wanted = spatialUpscaling && target.color() != nil && target.renderScale() < 1.0f;
 #if SPLATKIT_HAS_METALFX

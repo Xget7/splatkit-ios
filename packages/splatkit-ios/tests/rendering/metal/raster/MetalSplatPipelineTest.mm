@@ -36,16 +36,17 @@ class MetalSplatPipelineTest : public testing::Test {
     compute_->updateCamera(frame_, 0, {kSize, kSize}, false);
   }
 
-  // A green splat 2.5 m away and a red one 1.8 m away, both covering the centre, with zero SH.
-  std::unique_ptr<MetalWorld> overlappingSplats() {
+  // A green splat 2.5 m away and a red one 1.8 m away, both covering the centre, with zero SH at
+  // `shDegree` (0 uploads the 4-byte placeholder buffer the renderer binds).
+  std::unique_ptr<MetalWorld> overlappingSplats(int shDegree = 1) {
     splat::SplatCloud cloud;
     cloud.positions = {0, 0, -2.5f, 0, 0, -1.8f};
     cloud.colors = {0, 1, 0, 1, 0, 0};
     cloud.alphas = {1, 1};
     cloud.covariances = {0.05f, 0, 0, 0.05f, 0, 0.05f, 0.05f, 0, 0, 0.05f, 0, 0.05f};
-    cloud.shDegree = 1;
-    cloud.sh.assign(18, 0.0f);
-    return MetalWorld::upload(gpu_->device, cloud, 1);
+    cloud.shDegree = shDegree;
+    if (shDegree > 0) cloud.sh.assign(18, 0.0f);
+    return MetalWorld::upload(gpu_->device, cloud, shDegree);
   }
 
   // The centre pixel after encoding with `encode` into a fresh pass, as B, G, R, A.
@@ -64,8 +65,6 @@ class MetalSplatPipelineTest : public testing::Test {
     return {pixels.begin() + kCentre, pixels.begin() + kCentre + 4};
   }
 
-  // Degree 1 by default: the degree-0 CPU pipeline draws nothing on this GPU, before and after
-  // the split (see the disabled test).
   void drawCpu(id<MTLCommandBuffer> cmd, const MetalWorld* world, uint32_t drawCount,
                int degree = 1) {
     pipeline_.encode(cmd, *target_, drawable_, compute_->uniforms(0), world, degree, {}, drawCount,
@@ -131,8 +130,7 @@ TEST_F(MetalSplatPipelineTest, ACpuOrderDrawsBackToBackAndCountsTheEntries) {
   EXPECT_NEAR(pixel[2], 13, 1);
 }
 
-// Known gap, fixed separately: the degree-0 CPU pipeline leaves the background untouched.
-TEST_F(MetalSplatPipelineTest, DISABLED_ACpuOrderAtDegreeZeroDrawsTheSplats) {
+TEST_F(MetalSplatPipelineTest, ACpuOrderAtDegreeZeroDrawsTheSplats) {
   auto world = overlappingSplats();
   ASSERT_NE(world, nullptr);
   const uint32_t backToFront[2] = {0, 1};
@@ -140,6 +138,18 @@ TEST_F(MetalSplatPipelineTest, DISABLED_ACpuOrderAtDegreeZeroDrawsTheSplats) {
   const auto pixel =
       centreAfter([&](id<MTLCommandBuffer> cmd) { drawCpu(cmd, world.get(), 2, 0); });
   EXPECT_GT(pixel[2], 150);
+  EXPECT_LT(pixel[1], 80);
+}
+
+TEST_F(MetalSplatPipelineTest, ACpuOrderDrawsAWorldThatCarriesNoShAtDegreeZero) {
+  auto world = overlappingSplats(0);
+  ASSERT_NE(world, nullptr);
+  ASSERT_EQ(world->info().shDegree, 0);
+  const uint32_t backToFront[2] = {0, 1};
+  ASSERT_TRUE(world->writeOrder(backToFront, 2));
+  const auto pixel =
+      centreAfter([&](id<MTLCommandBuffer> cmd) { drawCpu(cmd, world.get(), 2, 0); });
+  EXPECT_GT(pixel[2], 150);  // the red splat is on top
   EXPECT_LT(pixel[1], 80);
 }
 

@@ -80,9 +80,13 @@ The view ships no walking control; the host draws its own, wherever it likes, an
 
 ```
 Sources/SplatKitCore/rendering/metal/  MetalSplatRenderer; one folder per job beside its MSL
-Sources/SplatKitCore/engine/           SKSplatEngine, the Objective-C boundary over the shared engine
+Sources/SplatKitCore/engine/           SKSplatEngine, the Objective-C boundary over the shared engine, and its type conversions
+Sources/SplatKitCore/diagnostics/      the PNG writer behind frame capture
 Sources/SplatKitCore/include/          the public header Swift imports
-Sources/SplatKit/                      RenderThread, MotionInput, SplatMetalView
+Sources/SplatKit/                      SplatMetalView and one file per public value type
+Sources/SplatKit/engine/               RenderThread
+Sources/SplatKit/input/                MotionInput, TouchLook
+tests/                                 mirrors the source folders
 cmake/                                 embeds the shader source into the library
 ```
 

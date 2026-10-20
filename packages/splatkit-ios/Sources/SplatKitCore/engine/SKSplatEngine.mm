@@ -1,13 +1,11 @@
 #import "SplatKit/SKSplatEngine.h"
 
-#import <CoreGraphics/CoreGraphics.h>
-#import <ImageIO/ImageIO.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
-
 #include <memory>
 #include <string>
 #include <vector>
 
+#include "diagnostics/SKPngWriter.h"
+#include "engine/SKTypeConversions.h"
 #include "rendering/metal/MetalSplatRenderer.h"
 #include "splatkit/Log.h"
 #include "splatkit/engine/SplatEngine.h"
@@ -20,91 +18,6 @@ void nslogSink(splatkit::LogLevel level, const char* message) {
                     : level == splatkit::LogLevel::warn ? "W"
                                                         : "I";
   NSLog(@"SplatKit %s: %s", tag, message);
-}
-
-// BGRA rows, top down, to a PNG file. Colours are written as they were presented.
-bool writePng(NSString* path, const std::vector<uint8_t>& bgra, uint32_t width, uint32_t height) {
-  if (width == 0 || height == 0 || bgra.size() != size_t{width} * height * 4) return false;
-  CGColorSpaceRef space = CGColorSpaceCreateDeviceRGB();
-  CGDataProviderRef provider =
-      CGDataProviderCreateWithData(nullptr, bgra.data(), bgra.size(), nullptr);
-  const CGBitmapInfo info = kCGBitmapByteOrder32Little | kCGImageAlphaNoneSkipFirst;
-  CGImageRef image = CGImageCreate(width, height, 8, 32, size_t{width} * 4, space, info, provider,
-                                   nullptr, false, kCGRenderingIntentDefault);
-  bool ok = false;
-  if (image != nullptr) {
-    NSURL* url = [NSURL fileURLWithPath:path];
-    CGImageDestinationRef dest = CGImageDestinationCreateWithURL(
-        (__bridge CFURLRef)url, (__bridge CFStringRef)UTTypePNG.identifier, 1, nullptr);
-    if (dest != nullptr) {
-      CGImageDestinationAddImage(dest, image, nullptr);
-      ok = CGImageDestinationFinalize(dest);
-      CFRelease(dest);
-    }
-    CGImageRelease(image);
-  }
-  CGDataProviderRelease(provider);
-  CGColorSpaceRelease(space);
-  return ok;
-}
-
-// Bridge between the C++ policy types and their C mirror imported by Swift.
-SKRenderPolicy fromCppPolicy(const splatkit::RenderPolicy& p) {
-  SKRenderPolicy out{};
-  out.raster = static_cast<uint32_t>(p.raster);
-  out.tileSize = p.tileSize;
-  out.lodErrorPixels = p.lodErrorPixels;
-  out.alphaThreshold = p.alphaThreshold;
-  out.subpixelThreshold = p.subpixelThreshold;
-  out.enableFrustumCulling = p.enableFrustumCulling;
-  out.enableHiZOcclusion = p.enableHiZOcclusion;
-  out.enableEarlyTermination = p.enableEarlyTermination;
-  out.sortDepth = static_cast<uint32_t>(p.sortDepth);
-  out.lodSplatLimit = p.lodSplatLimit;
-  return out;
-}
-
-bool toCppPolicy(SKRenderPolicy p, splatkit::RenderPolicy* out) {
-  if (p.sortDepth != 16 && p.sortDepth != 32) return false;
-  out->raster = static_cast<splatkit::RasterStrategy>(p.raster);
-  out->tileSize = p.tileSize;
-  out->lodErrorPixels = p.lodErrorPixels;
-  out->alphaThreshold = p.alphaThreshold;
-  out->subpixelThreshold = p.subpixelThreshold;
-  out->enableFrustumCulling = p.enableFrustumCulling == YES;
-  out->enableHiZOcclusion = p.enableHiZOcclusion == YES;
-  out->enableEarlyTermination = p.enableEarlyTermination == YES;
-  out->sortDepth = p.sortDepth == 16 ? splatkit::SortKeyBits::low16 : splatkit::SortKeyBits::full32;
-  out->lodSplatLimit = p.lodSplatLimit;
-  return true;
-}
-
-SKRenderPolicySupport fromCppSupport(const splatkit::RenderPolicySupport& s) {
-  SKRenderPolicySupport out{};
-  out.raster = s.raster;
-  out.tileSize = s.tileSize;
-  out.lodErrorPixels = s.lodErrorPixels;
-  out.alphaThreshold = s.alphaThreshold;
-  out.subpixelThreshold = s.subpixelThreshold;
-  out.enableFrustumCulling = s.enableFrustumCulling;
-  out.enableHiZOcclusion = s.enableHiZOcclusion;
-  out.enableEarlyTermination = s.enableEarlyTermination;
-  out.sortDepth = s.sortDepth;
-  out.rasterMask = s.rasterMask;
-  out.tileSizeMask = s.tileSizeMask;
-  out.minLodErrorPixels = s.minLodErrorPixels;
-  out.maxLodErrorPixels = s.maxLodErrorPixels;
-  out.minSubpixelThreshold = s.minSubpixelThreshold;
-  out.maxSubpixelThreshold = s.maxSubpixelThreshold;
-  out.lodSplatLimit = s.lodSplatLimit;
-  return out;
-}
-
-splatkit::LensSettings lensSettings(const SKLensSettings& s) {
-  splatkit::LensSettings out;
-  if (s.hasFieldOfView) out.fieldOfViewDegrees = s.fieldOfViewDegrees;
-  if (s.hasDepthRange) out.depthRange = splatkit::DepthRange{s.nearPlane, s.farPlane};
-  return out;
 }
 
 }  // namespace
@@ -210,22 +123,7 @@ splatkit::LensSettings lensSettings(const SKLensSettings& s) {
 }
 
 - (SKSplatStats)stats {
-  const splatkit::Stats s = _engine->stats();
-  return {s.fps,
-          s.frameMillis,
-          s.gpuMillis,
-          s.sortMillis,
-          s.splatCount,
-          s.walking,
-          s.motion,
-          s.drawnSplatCount,
-          s.computeTileCount,
-          s.nonemptyComputeTileCount,
-          s.hardwareTileCount,
-          s.presentTiming,
-          s.frameMillisP95,
-          s.lowFps,
-          s.droppedFrames};
+  return splatkit::fromCppStats(_engine->stats());
 }
 
 - (NSString*)gpuDescription {
@@ -233,29 +131,18 @@ splatkit::LensSettings lensSettings(const SKLensSettings& s) {
 }
 
 - (SKRenderPolicy)renderPolicy {
-  return fromCppPolicy(_engine->renderPolicy());
+  return splatkit::fromCppPolicy(_engine->renderPolicy());
 }
 
 - (SKDeviceCapabilities)deviceCapabilities {
-  const splatkit::DeviceCapabilities caps = _engine->deviceCapabilities();
-  SKDeviceCapabilities out{};
-  out.maxLodCapacitySplats = caps.limits.maxLodCapacitySplats;
-  out.minResidencyCapacitySplats = caps.limits.minResidencyCapacitySplats;
-  out.maxResidencyCapacitySplats = caps.limits.maxResidencyCapacitySplats;
-  out.supportsComputeTiles = caps.supportsComputeTiles;
-  out.supportsHiZOcclusion = caps.supportsHiZOcclusion;
-  out.supportsSubgroups = caps.supportsSubgroups;
-  out.maxTextureDimension = caps.maxTextureDimension;
-  out.policy = fromCppSupport(caps.policy);
-  out.fallback = fromCppPolicy(caps.policy.fallback);
-  return out;
+  return splatkit::fromCppCapabilities(_engine->deviceCapabilities());
 }
 
 - (SKRenderPolicyOutcome)applyRenderPolicy:(SKRenderPolicy)policy
                                     reason:(NSString**)reason
                                   warnings:(NSArray<NSString*>**)warnings {
   splatkit::RenderPolicy requested;
-  if (!toCppPolicy(policy, &requested)) {
+  if (!splatkit::toCppPolicy(policy, &requested)) {
     if (reason != nullptr) *reason = @"sortDepth must be 16 or 32";
     return SKRenderPolicyOutcomeInvalid;
   }
@@ -276,27 +163,13 @@ splatkit::LensSettings lensSettings(const SKLensSettings& s) {
 }
 
 - (BOOL)applyCameraRequest:(SKCameraRequest)request reason:(NSString**)reason {
-  splatkit::CameraRequest requested{};
-  requested.mode = static_cast<splatkit::CameraMode>(request.mode);
-  requested.anchor = {request.anchor.x, request.anchor.y, request.anchor.z};
-  requested.radius = request.radius;
-  requested.azimuth = request.azimuth;
-  requested.elevation = request.elevation;
-  requested.orbitRadiansPerSecond = request.orbitRadiansPerSecond;
-  const auto resolution = _engine->applyCameraRequest(requested);
+  const auto resolution = _engine->applyCameraRequest(splatkit::toCppCameraRequest(request));
   if (reason != nullptr) *reason = @(resolution.error.c_str());
   return resolution.accepted;
 }
 
 - (SKCameraState)cameraState {
-  const auto state = _engine->cameraState();
-  return {static_cast<int32_t>(state.mode),
-          state.hasAnchor,
-          {state.anchor.x, state.anchor.y, state.anchor.z},
-          state.radius,
-          state.azimuth,
-          state.elevation,
-          state.orbitRadiansPerSecond};
+  return splatkit::fromCppCameraState(_engine->cameraState());
 }
 
 - (void)lookWithDeltaYaw:(float)deltaYaw deltaPitch:(float)deltaPitch {
@@ -325,11 +198,11 @@ splatkit::LensSettings lensSettings(const SKLensSettings& s) {
 }
 
 - (BOOL)setLens:(SKLensSettings)settings {
-  return _engine->setLens(lensSettings(settings)) ? YES : NO;
+  return _engine->setLens(splatkit::lensSettings(settings)) ? YES : NO;
 }
 
 + (BOOL)acceptsLens:(SKLensSettings)settings {
-  return splatkit::Lens::with(lensSettings(settings)).has_value() ? YES : NO;
+  return splatkit::Lens::with(splatkit::lensSettings(settings)).has_value() ? YES : NO;
 }
 
 - (void)setAttitude:(const float*)rowMajor {
@@ -379,7 +252,7 @@ splatkit::LensSettings lensSettings(const SKLensSettings& s) {
 - (void)captureFrameToFile:(NSString*)path completion:(void (^)(BOOL ok))completion {
   _renderer->captureNextFrame(
       [path, completion](std::vector<uint8_t> bgra, uint32_t width, uint32_t height) {
-        const bool ok = writePng(path, bgra, width, height);
+        const bool ok = splatkit::writePng(path, bgra, width, height);
         if (ok) {
           LOGI("captured %ux%u to %s", width, height, path.UTF8String);
         } else {

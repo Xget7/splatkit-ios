@@ -4,13 +4,13 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <cstdint>
-#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "rendering/metal/device/MetalContext.h"
+#include "rendering/metal/diagnostics/MetalFrameCapture.h"
 #include "rendering/metal/frame/MetalFrameCompute.h"
 #include "rendering/metal/presentation/MetalFrameLoop.h"
 #include "rendering/metal/presentation/MetalSurface.h"
@@ -74,8 +74,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   bool hasCompletedWorldFrame() const { return frameLoop_.hasCompletedWorldFrame(); }
 
   // Pixels of a presented frame: BGRA, 8 bits each, rows top down, `width` by `height`.
-  using CaptureHandler =
-      std::function<void(std::vector<uint8_t> bgra, uint32_t width, uint32_t height)>;
+  using CaptureHandler = MetalFrameCapture::Handler;
   // Hands the next frame's pixels to `handler`, from the GPU's completion thread. One
   // capture at a time; a request while one is pending replaces it.
   void captureNextFrame(CaptureHandler handler);
@@ -108,12 +107,6 @@ class MetalSplatRenderer final : public SplatRenderer {
  private:
   MetalSplatRenderer() = default;
 
-  id<MTLBuffer> encodeCapture(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture,
-                              CaptureHandler* onCapture);
-  // Transfers the acquired frame slot to the loop, which returns it when the frame completes.
-  void submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable, bool drewWorld,
-                   id<MTLBuffer> captured, CaptureHandler onCapture);
-
   std::unique_ptr<MetalContext> context_;
   MetalFrameLoop frameLoop_{kFramesInFlight};
   MetalSplatPipeline pipeline_;
@@ -121,7 +114,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   std::unique_ptr<MetalFrameCompute> compute_;
   std::unique_ptr<MetalSurface> surface_;
   std::unique_ptr<MetalWorld> world_;
-  CaptureHandler capture_;
+  std::unique_ptr<MetalFrameCapture> capture_;
 };
 
 }  // namespace splatkit

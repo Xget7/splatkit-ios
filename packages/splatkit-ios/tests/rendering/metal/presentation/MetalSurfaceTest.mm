@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <vector>
+
 #include "rendering/metal/presentation/MetalSurface.h"
 #include "support/MetalTestContext.h"
 
@@ -221,6 +223,11 @@ TEST_F(MetalSurfaceTest, TheOutputPassWritesTheScaledTargetToTheDrawableAndSkips
   EXPECT_EQ(pixel[0], 0);
   EXPECT_EQ(pixel[2], 0);
 
+  const uint8_t sentinel[4] = {10, 20, 30, 40};
+  [drawable replaceRegion:MTLRegionMake2D(32, 32, 1, 1)
+              mipmapLevel:0
+                withBytes:sentinel
+              bytesPerRow:4];
   surface.setRenderScale(1.0f);
   ASSERT_EQ(surface.target().color(), nil);
   cmd = [gpu_->queue commandBuffer];
@@ -228,6 +235,12 @@ TEST_F(MetalSurfaceTest, TheOutputPassWritesTheScaledTargetToTheDrawableAndSkips
   [cmd commit];
   [cmd waitUntilCompleted];
   EXPECT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  uint8_t after[4] = {};
+  [drawable getBytes:after
+         bytesPerRow:64 * 4
+          fromRegion:MTLRegionMake2D(32, 32, 1, 1)
+         mipmapLevel:0];
+  EXPECT_EQ(std::vector<uint8_t>(after, after + 4), std::vector<uint8_t>(sentinel, sentinel + 4));
 }
 
 TEST_F(MetalSurfaceTest, ReadbackTogglesTheLayerAndDrawablesComeFromIt) {

@@ -43,7 +43,8 @@ kernel void visibility(uint t [[thread_position_in_grid]],
   bool visible = false;
   uint key = 0;
   uint index = 0;
-  Projected p;
+  // Zeroed for the same reason as in splatVertex (SplatRaster.metal).
+  Projected p = {};
 
   if (t < total) {
     if (kIndexedLOD) {
