@@ -1,7 +1,7 @@
 #include <gtest/gtest.h>
 
-#include "rendering/metal/device/MetalContext.h"
 #include "rendering/metal/presentation/MetalSurface.h"
+#include "support/MetalTestContext.h"
 
 namespace splatkit {
 namespace {
@@ -11,33 +11,33 @@ constexpr uint32_t kSlots = 2;
 class MetalSurfaceTest : public testing::Test {
  protected:
   void SetUp() override {
-    context_ = MetalContext::create();
-    if (context_ == nullptr) GTEST_SKIP() << "Apple GPU family 7 unavailable";
+    gpu_ = &test::Gpu::get();
+    if (gpu_->device == nil || gpu_->library == nil) GTEST_SKIP() << "No Metal device";
     layer_ = [CAMetalLayer layer];
     layer_.drawableSize = CGSizeMake(200, 120);
   }
 
   bool scalerSupported() const {
 #if SPLATKIT_HAS_METALFX
-    return [MTLFXSpatialScalerDescriptor supportsDevice:context_->device()];
+    return [MTLFXSpatialScalerDescriptor supportsDevice:gpu_->device];
 #else
     return false;
 #endif
   }
 
-  std::unique_ptr<MetalContext> context_;
+  test::Gpu* gpu_ = nullptr;
   MetalFrameLoop loop_{kSlots};
   CAMetalLayer* layer_ = nil;
 };
 
 TEST_F(MetalSurfaceTest, AttachingALayerConfiguresItAndCountsAsAChange) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   EXPECT_EQ(surface.generation(), 0u);
   EXPECT_FALSE(surface.ready());
   EXPECT_TRUE(surface.setLayer(layer_));
   EXPECT_EQ(surface.layer(), layer_);
   EXPECT_EQ(surface.generation(), 1u);
-  EXPECT_EQ(layer_.device, context_->device());
+  EXPECT_EQ(layer_.device, gpu_->device);
   EXPECT_EQ(layer_.pixelFormat, MTLPixelFormatBGRA8Unorm);
   EXPECT_TRUE(layer_.framebufferOnly);
   EXPECT_FALSE(surface.ready());  // no size yet
@@ -54,7 +54,7 @@ TEST_F(MetalSurfaceTest, AttachingALayerConfiguresItAndCountsAsAChange) {
 }
 
 TEST_F(MetalSurfaceTest, EverySettingThatChangesTheTargetBumpsTheGenerationOnce) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   ASSERT_TRUE(surface.setLayer(layer_));
   uint32_t generation = surface.generation();
   auto bumped = [&] {
@@ -84,7 +84,7 @@ TEST_F(MetalSurfaceTest, EverySettingThatChangesTheTargetBumpsTheGenerationOnce)
 }
 
 TEST_F(MetalSurfaceTest, TheRenderScaleIsClampedBeforeItIsCompared) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   surface.setDrawableSize(200, 120);
   surface.setRenderScale(5.0f);
   EXPECT_EQ(surface.renderScale(), 2.0f);
@@ -96,25 +96,26 @@ TEST_F(MetalSurfaceTest, TheRenderScaleIsClampedBeforeItIsCompared) {
 }
 
 TEST_F(MetalSurfaceTest, FullScaleDrawsToTheDrawableUnlessCompositingNeedsHalfFloats) {
-  MetalSurface direct(*context_, loop_, false);
+  MetalSurface direct(gpu_->device, gpu_->library, loop_, false);
   direct.setDrawableSize(200, 120);
   EXPECT_EQ(direct.target().color(), nil);
   EXPECT_EQ(direct.targetFormat(), MTLPixelFormatBGRA8Unorm);
   EXPECT_EQ(direct.drawExtent().width, 200u);
   EXPECT_EQ(direct.drawExtent().height, 120u);
 
-  MetalSurface halfFloat(*context_, loop_, true);
+  MetalSurface halfFloat(gpu_->device, gpu_->library, loop_, true);
+  ASSERT_TRUE(halfFloat.setLayer(layer_));
   halfFloat.setDrawableSize(200, 120);
   ASSERT_NE(halfFloat.target().color(), nil);
   EXPECT_EQ(halfFloat.target().color().pixelFormat, MTLPixelFormatRGBA16Float);
   EXPECT_EQ(halfFloat.targetFormat(), MTLPixelFormatRGBA16Float);
-  EXPECT_EQ(halfFloat.pixelFormat(), MTLPixelFormatBGRA8Unorm);
+  EXPECT_EQ(layer_.pixelFormat, MTLPixelFormatBGRA8Unorm);
   EXPECT_EQ(halfFloat.drawExtent().width, 200u);
-  EXPECT_FALSE(halfFloat.upscaler().active());
+  EXPECT_FALSE(halfFloat.upscalerActive());
 }
 
 TEST_F(MetalSurfaceTest, AScaleBelowOneRebuildsTheTargetAndTheUpscalerTogether) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   surface.setDrawableSize(200, 120);
   surface.setRenderScale(0.75f);
   ASSERT_NE(surface.target().color(), nil);
@@ -123,22 +124,22 @@ TEST_F(MetalSurfaceTest, AScaleBelowOneRebuildsTheTargetAndTheUpscalerTogether) 
   EXPECT_EQ(surface.target().color().pixelFormat, MTLPixelFormatBGRA8Unorm);
   EXPECT_EQ(surface.drawExtent().width, 150u);
   EXPECT_EQ(surface.drawExtent().height, 90u);
-  EXPECT_EQ(surface.upscaler().active(), scalerSupported());
+  EXPECT_EQ(surface.upscalerActive(), scalerSupported());
 
   surface.setSpatialUpscaling(false);
-  EXPECT_FALSE(surface.upscaler().active());
+  EXPECT_FALSE(surface.upscalerActive());
   EXPECT_EQ(surface.drawExtent().width, 150u);
   surface.setSpatialUpscaling(true);
-  EXPECT_EQ(surface.upscaler().active(), scalerSupported());
+  EXPECT_EQ(surface.upscalerActive(), scalerSupported());
 
   surface.setRenderScale(1.0f);
   EXPECT_EQ(surface.target().color(), nil);
-  EXPECT_FALSE(surface.upscaler().active());
+  EXPECT_FALSE(surface.upscalerActive());
   EXPECT_EQ(surface.drawExtent().width, 200u);
 }
 
 TEST_F(MetalSurfaceTest, ARotationResizesTheTargetAndZeroLeavesNone) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   ASSERT_TRUE(surface.setLayer(layer_));
   surface.setRenderScale(0.5f);
   surface.setDrawableSize(200, 120);
@@ -146,24 +147,23 @@ TEST_F(MetalSurfaceTest, ARotationResizesTheTargetAndZeroLeavesNone) {
   surface.setDrawableSize(120, 200);
   EXPECT_EQ(surface.target().color().width, 60u);
   EXPECT_EQ(surface.target().color().height, 100u);
-  EXPECT_EQ(surface.upscaler().active(), scalerSupported());
+  EXPECT_EQ(surface.upscalerActive(), scalerSupported());
   surface.setDrawableSize(0, 0);
   EXPECT_EQ(surface.target().color(), nil);
-  EXPECT_FALSE(surface.upscaler().active());
+  EXPECT_FALSE(surface.upscalerActive());
   EXPECT_FALSE(surface.ready());
   surface.setDrawableSize(200, 120);
   EXPECT_NE(surface.target().color(), nil);
 }
 
 TEST_F(MetalSurfaceTest, LinearBlendingSwitchesTheLayerAndTargetFormats) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   ASSERT_TRUE(surface.setLayer(layer_));
   surface.setDrawableSize(200, 120);
   surface.setRenderScale(0.5f);
   ASSERT_TRUE(surface.setLinearBlending(true));
   EXPECT_TRUE(surface.linearBlending());
   EXPECT_EQ(layer_.pixelFormat, MTLPixelFormatBGRA8Unorm_sRGB);
-  EXPECT_EQ(surface.pixelFormat(), MTLPixelFormatBGRA8Unorm_sRGB);
   EXPECT_EQ(surface.targetFormat(), MTLPixelFormatBGRA8Unorm_sRGB);
   EXPECT_EQ(surface.target().color().pixelFormat, MTLPixelFormatBGRA8Unorm_sRGB);
   ASSERT_TRUE(surface.setLinearBlending(false));
@@ -171,8 +171,67 @@ TEST_F(MetalSurfaceTest, LinearBlendingSwitchesTheLayerAndTargetFormats) {
   EXPECT_EQ(surface.target().color().pixelFormat, MTLPixelFormatBGRA8Unorm);
 }
 
+TEST_F(MetalSurfaceTest, TheDepthBufferFollowsTheSizeOfTheColourTheFrameDraws) {
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
+  surface.setDrawableSize(200, 120);
+  EXPECT_EQ(surface.target().depth(), nil);
+  ASSERT_TRUE(surface.ensureDepth(200, 120));
+  EXPECT_EQ(surface.target().depth().width, 200u);
+  EXPECT_EQ(surface.target().depth().height, 120u);
+  id<MTLTexture> depth = surface.target().depth();
+  ASSERT_TRUE(surface.ensureDepth(200, 120));
+  EXPECT_EQ(surface.target().depth(), depth);
+  ASSERT_TRUE(surface.ensureDepth(100, 60));
+  EXPECT_EQ(surface.target().depth().width, 100u);
+}
+
+TEST_F(MetalSurfaceTest, TheOutputPassWritesTheScaledTargetToTheDrawableAndSkipsADirectFrame) {
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
+  ASSERT_TRUE(surface.setLayer(layer_));
+  surface.setDrawableSize(64, 64);
+  surface.setSpatialUpscaling(false);
+  surface.setRenderScale(0.5f);
+  ASSERT_NE(surface.target().color(), nil);
+
+  MTLTextureDescriptor* desc =
+      [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                         width:64
+                                                        height:64
+                                                     mipmapped:NO];
+  desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+  desc.storageMode = MTLStorageModeShared;
+  id<MTLTexture> drawable = [gpu_->device newTextureWithDescriptor:desc];
+  id<MTLCommandBuffer> cmd = [gpu_->queue commandBuffer];
+  MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+  pass.colorAttachments[0].texture = surface.target().color();
+  pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+  pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+  pass.colorAttachments[0].clearColor = MTLClearColorMake(0, 1, 0, 1);
+  [[cmd renderCommandEncoderWithDescriptor:pass] endEncoding];
+  surface.encodeOutput(cmd, drawable);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  uint8_t pixel[4] = {};
+  [drawable getBytes:pixel
+         bytesPerRow:64 * 4
+          fromRegion:MTLRegionMake2D(32, 32, 1, 1)
+         mipmapLevel:0];
+  EXPECT_EQ(pixel[1], 255);  // B, G, R, A
+  EXPECT_EQ(pixel[0], 0);
+  EXPECT_EQ(pixel[2], 0);
+
+  surface.setRenderScale(1.0f);
+  ASSERT_EQ(surface.target().color(), nil);
+  cmd = [gpu_->queue commandBuffer];
+  surface.encodeOutput(cmd, drawable);
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  EXPECT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+}
+
 TEST_F(MetalSurfaceTest, ReadbackTogglesTheLayerAndDrawablesComeFromIt) {
-  MetalSurface surface(*context_, loop_, false);
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   ASSERT_TRUE(surface.setLayer(layer_));
   surface.setDrawableSize(200, 120);
   surface.allowReadback(true);

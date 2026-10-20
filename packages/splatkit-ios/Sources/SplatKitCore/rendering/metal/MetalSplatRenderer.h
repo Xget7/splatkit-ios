@@ -49,7 +49,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   bool spatialUpscaling() const override { return surface_->spatialUpscaling(); }
   // True while frames go through MetalFX: a scale below one, the setting on, and a device
   // that has the scaler. Otherwise the scaled target is blitted.
-  bool upscalerActive() const { return surface_->upscaler().active(); }
+  bool upscalerActive() const { return surface_->upscalerActive(); }
   void setLinearBlending(bool linear) override;
   bool linearBlending() const override { return surface_->linearBlending(); }
   void setVsync(bool vsync) override;

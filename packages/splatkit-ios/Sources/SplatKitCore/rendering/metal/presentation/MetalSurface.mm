@@ -2,18 +2,17 @@
 
 #include <algorithm>
 
-#include "rendering/metal/device/MetalContext.h"
 #include "splatkit/Log.h"
 
 namespace splatkit {
 
-MetalSurface::MetalSurface(const MetalContext& context, MetalFrameLoop& frameLoop,
+MetalSurface::MetalSurface(id<MTLDevice> device, id<MTLLibrary> library, MetalFrameLoop& frameLoop,
                            bool compositesInHalfFloat)
-    : device_(context.device()),
+    : device_(device),
       frameLoop_(frameLoop),
       compositesInHalfFloat_(compositesInHalfFloat),
-      target_(context.device()),
-      upscaler_(context.device(), context.library()) {}
+      target_(device),
+      upscaler_(device, library) {}
 
 bool MetalSurface::setLayer(CAMetalLayer* layer) {
   if (layer == layer_) return true;
@@ -79,6 +78,14 @@ id<CAMetalDrawable> MetalSurface::nextDrawable() {
 
 void MetalSurface::allowReadback(bool allowed) {
   layer_.framebufferOnly = allowed ? NO : YES;
+}
+
+bool MetalSurface::ensureDepth(NSUInteger width, NSUInteger height) {
+  return target_.ensureDepth(width, height);
+}
+
+void MetalSurface::encodeOutput(id<MTLCommandBuffer> cmd, id<MTLTexture> drawable) {
+  upscaler_.encode(cmd, target_.color(), drawable);
 }
 
 Extent MetalSurface::drawExtent() const {

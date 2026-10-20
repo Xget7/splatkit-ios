@@ -25,12 +25,14 @@ class MetalUpscalerTest : public testing::Test {
 #endif
   }
 
-  // Clears the target to opaque red, writes it to a drawable-like texture through the upscaler
-  // and returns the centre pixel as B, G, R, A.
-  std::vector<uint8_t> centrePixelAfterEncode(MetalUpscaler& upscaler,
-                                              const MetalRenderTarget& target) {
+  // Clears the target to `clear`, writes it to a drawable-like texture of `drawableFormat`
+  // through the upscaler and returns the centre pixel as B, G, R, A.
+  std::vector<uint8_t> centrePixelAfterEncode(
+      MetalUpscaler& upscaler, const MetalRenderTarget& target,
+      MTLPixelFormat drawableFormat = MTLPixelFormatBGRA8Unorm,
+      MTLClearColor clear = MTLClearColorMake(1, 0, 0, 1)) {
     MTLTextureDescriptor* desc =
-        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+        [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:drawableFormat
                                                            width:kDrawable
                                                           height:kDrawable
                                                        mipmapped:NO];
@@ -42,7 +44,7 @@ class MetalUpscalerTest : public testing::Test {
     pass.colorAttachments[0].texture = target.color();
     pass.colorAttachments[0].loadAction = MTLLoadActionClear;
     pass.colorAttachments[0].storeAction = MTLStoreActionStore;
-    pass.colorAttachments[0].clearColor = MTLClearColorMake(1, 0, 0, 1);
+    pass.colorAttachments[0].clearColor = clear;
     [[cmd renderCommandEncoderWithDescriptor:pass] endEncoding];
     upscaler.encode(cmd, target.color(), drawable);
     [cmd commit];
@@ -123,19 +125,14 @@ TEST_F(MetalUpscalerTest, ASrgbOutputFormatBuildsItsOwnBlit) {
   MetalRenderTarget target(gpu_->device);
   ASSERT_TRUE(target.resize(kDrawable, kDrawable, 0.5f, MTLPixelFormatBGRA8Unorm_sRGB));
   ASSERT_TRUE(upscaler.configure(target, kDrawable, kDrawable, false));
-  MTLTextureDescriptor* desc =
-      [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm_sRGB
-                                                         width:kDrawable
-                                                        height:kDrawable
-                                                     mipmapped:NO];
-  desc.usage = MTLTextureUsageRenderTarget;
-  desc.storageMode = MTLStorageModeShared;
-  id<MTLTexture> drawable = [gpu_->device newTextureWithDescriptor:desc];
-  id<MTLCommandBuffer> cmd = [gpu_->queue commandBuffer];
-  upscaler.encode(cmd, target.color(), drawable);
-  [cmd commit];
-  [cmd waitUntilCompleted];
-  EXPECT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  // Half linear red is stored sRGB encoded: 0.735 of full scale, in both textures, so the blit
+  // must read the target as sRGB and write the drawable as sRGB.
+  const std::vector<uint8_t> pixel = centrePixelAfterEncode(
+      upscaler, target, MTLPixelFormatBGRA8Unorm_sRGB, MTLClearColorMake(0.5, 0, 0, 1));
+  EXPECT_NEAR(pixel[2], 188, 1);
+  EXPECT_EQ(pixel[1], 0);
+  EXPECT_EQ(pixel[0], 0);
+  EXPECT_EQ(pixel[3], 255);
 }
 
 }  // namespace

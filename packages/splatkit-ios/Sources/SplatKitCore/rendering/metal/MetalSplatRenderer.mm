@@ -30,7 +30,8 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
   LOGI("Metal depth keys: %u bits, %u radix passes (uint32 scratch)",
        static_cast<uint32_t>(r->depthBits_), static_cast<uint32_t>(r->depthBits_) / 8);
   if (!r->gpuSort_) LOGW("GPU sort unavailable, sorting on the CPU");
-  r->surface_ = std::make_unique<MetalSurface>(*r->context_, r->frameLoop_, r->gpuSort_);
+  r->surface_ = std::make_unique<MetalSurface>(r->context_->device(), r->context_->library(),
+                                               r->frameLoop_, r->gpuSort_);
   LOGI("%s", r->context_->description().c_str());
   return r;
 }
@@ -336,11 +337,11 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
   if (frameLoop_.gpuFailed()) return false;
   if (!ready() || splatPipelines_[0] == nil) return false;
   if (!frameLoop_.acquire()) return false;
-  // Until submitFrame(), every failure returns the acquired slot synchronously.
   // Capture requires a readable drawable before nextDrawable() acquires it.
   if (capture_) surface_->allowReadback(true);
   id<CAMetalDrawable> drawable = surface_->nextDrawable();
   if (drawable == nil) {
+    // Until submitFrame(), every failure returns the acquired slot synchronously.
     frameLoop_.release();
     return false;
   }
@@ -368,7 +369,7 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
 
   id<MTLCommandBuffer> cmd = [context_->queue() commandBuffer];
   encodeRaster(cmd, drawable.texture, frame, slot, drawCount, gpuOrder);
-  surface_->upscaler().encode(cmd, surface_->target().color(), drawable.texture);
+  surface_->encodeOutput(cmd, drawable.texture);
   CaptureHandler onCapture;
   id<MTLBuffer> captured = encodeCapture(cmd, drawable.texture, &onCapture);
 
@@ -471,14 +472,14 @@ void MetalSplatRenderer::encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> d
                                       const Frame& frame, uint32_t slot, uint32_t drawCount,
                                       bool gpuOrder) {
   MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-  MetalRenderTarget& target = surface_->target();
+  const MetalRenderTarget& target = surface_->target();
   id<MTLTexture> colour = target.color() != nil ? target.color() : drawableTexture;
   pass.colorAttachments[0].texture = colour;
   pass.colorAttachments[0].loadAction = MTLLoadActionClear;
   pass.colorAttachments[0].storeAction = MTLStoreActionStore;
   // Front to back accumulates onto nothing and puts the background under at the end.
   pass.colorAttachments[0].clearColor = gpuOrder ? MTLClearColorMake(0, 0, 0, 0) : kBackground;
-  if (target.ensureDepth(colour.width, colour.height)) {
+  if (surface_->ensureDepth(colour.width, colour.height)) {
     pass.depthAttachment.texture = target.depth();
     pass.depthAttachment.loadAction = MTLLoadActionClear;
     pass.depthAttachment.storeAction = MTLStoreActionDontCare;
