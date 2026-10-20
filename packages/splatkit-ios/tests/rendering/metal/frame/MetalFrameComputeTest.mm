@@ -238,5 +238,40 @@ TEST_F(MetalFrameComputeTest, ReplacingTheLodWorldByAFlatOneDropsTheSelection) {
   EXPECT_EQ(compute_->lastLodLimitedCount(), 0u);
 }
 
+// The completion handlers run when the GPU finishes, which can be after the renderer that
+// encoded them is gone. They are encoded and left uncommitted here, so the compute and the loop
+// are certainly destroyed before any handler runs.
+TEST_F(MetalFrameComputeTest,
+       SelectionAndSortHandlersKeepTheStateTheyWriteAliveAfterTheComputeIsGone) {
+  auto tree = sixtyFourLeaves();
+  auto world = MetalWorld::upload(gpu_->device, tree.nodes, 0);
+  ASSERT_NE(world, nullptr);
+  auto loop = std::make_unique<MetalFrameLoop>(kFramesInFlight);
+  auto compute =
+      std::make_unique<MetalFrameCompute>(gpu_->device, gpu_->queue, gpu_->library, *loop);
+  ASSERT_TRUE(compute->create());
+  ASSERT_TRUE(compute->configureLodWorld(tree, 64));
+  compute->updateCamera(frame_, 0, kExtent, false);
+  id<MTLCommandBuffer> selection = compute->encodeSelection(0);
+  id<MTLCommandBuffer> sort = compute->encodeVisibilityAndSort(frame_, 0, *world);
+  ASSERT_NE(selection, nil);
+  ASSERT_NE(sort, nil);
+
+  const std::shared_ptr<std::atomic<bool>> failed = loop->failureLatch();
+  compute.reset();
+  loop.reset();
+  // The report owns the latch and only the handlers still hold the report, so the latch has a
+  // second owner exactly while a handler owns the report.
+  ASSERT_GE(failed.use_count(), 2);
+
+  [selection commit];
+  [sort commit];
+  [selection waitUntilCompleted];
+  [sort waitUntilCompleted];
+  EXPECT_EQ(selection.status, MTLCommandBufferStatusCompleted);
+  EXPECT_EQ(sort.status, MTLCommandBufferStatusCompleted);
+  EXPECT_FALSE(failed->load());
+}
+
 }  // namespace
 }  // namespace splatkit

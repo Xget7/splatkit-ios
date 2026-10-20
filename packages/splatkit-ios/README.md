@@ -130,5 +130,6 @@ Selection feeds visibility → radix → raster; denied refinements retain paren
 The hierarchy stays resident, without Hi-Z or temporal transitions.
 
 Stats: `loadedSplatCount` counts source splats; `drawnSplatCount` counts completed draw candidates.
+`loadedShDegree` is the harmonics degree the world holds on the GPU, the ceiling for what `shDegree` draws.
 Command timings overlap; HUD sort includes visibility/radix.
 [Phone measurements](../../docs/BENCHMARKS.md) record settings, evidence and visual limitations.

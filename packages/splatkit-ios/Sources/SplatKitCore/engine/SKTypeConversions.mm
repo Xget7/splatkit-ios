@@ -18,7 +18,8 @@ SKRenderPolicy fromCppPolicy(const RenderPolicy& p) {
 }
 
 bool toCppPolicy(SKRenderPolicy p, RenderPolicy* out) {
-  if (p.sortDepth != 16 && p.sortDepth != 32) return false;
+  const auto sortDepth = static_cast<SortKeyBits>(p.sortDepth);
+  if (sortDepth != SortKeyBits::low16 && sortDepth != SortKeyBits::full32) return false;
   out->raster = static_cast<RasterStrategy>(p.raster);
   out->tileSize = p.tileSize;
   out->lodErrorPixels = p.lodErrorPixels;
@@ -27,7 +28,7 @@ bool toCppPolicy(SKRenderPolicy p, RenderPolicy* out) {
   out->enableFrustumCulling = p.enableFrustumCulling == YES;
   out->enableHiZOcclusion = p.enableHiZOcclusion == YES;
   out->enableEarlyTermination = p.enableEarlyTermination == YES;
-  out->sortDepth = p.sortDepth == 16 ? SortKeyBits::low16 : SortKeyBits::full32;
+  out->sortDepth = sortDepth;
   out->lodSplatLimit = p.lodSplatLimit;
   return true;
 }
@@ -75,7 +76,8 @@ SKSplatStats fromCppStats(const Stats& s) {
           s.presentTiming,
           s.frameMillisP95,
           s.lowFps,
-          s.droppedFrames};
+          s.droppedFrames,
+          s.loadedShDegree};
 }
 
 SKDeviceCapabilities fromCppCapabilities(const DeviceCapabilities& caps) {

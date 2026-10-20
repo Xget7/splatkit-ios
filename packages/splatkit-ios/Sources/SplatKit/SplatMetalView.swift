@@ -305,6 +305,7 @@ public final class SplatMetalView: UIView {
         stats.gpuMillis = s.gpuMillis
         stats.sortMillis = s.sortMillis
         stats.splatCount = Int(s.splatCount)
+        stats.loadedShDegree = Int(s.loadedShDegree)
         stats.drawnSplatCount = Int(s.drawnSplatCount)
         stats.computeTileCount = Int(s.computeTileCount)
         stats.nonemptyComputeTileCount = Int(s.nonemptyComputeTileCount)

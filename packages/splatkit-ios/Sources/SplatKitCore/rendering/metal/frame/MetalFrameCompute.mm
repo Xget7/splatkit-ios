@@ -34,7 +34,11 @@ bool reserveOrdering(MetalVisibilityPass& visibility, MetalRadixSort& sort, uint
 
 MetalFrameCompute::MetalFrameCompute(id<MTLDevice> device, id<MTLCommandQueue> queue,
                                      id<MTLLibrary> library, MetalFrameLoop& frameLoop)
-    : device_(device), queue_(queue), library_(library), frameLoop_(frameLoop) {}
+    : device_(device),
+      queue_(queue),
+      library_(library),
+      frameLoop_(frameLoop),
+      report_(std::make_shared<GpuReport>(frameLoop.failureLatch())) {}
 
 bool MetalFrameCompute::createOrdering(MetalVisibilityPass& visibility, MetalRadixSort& sort,
                                        KeyBits bits) const {
@@ -171,12 +175,11 @@ id<MTLCommandBuffer> MetalFrameCompute::encodeSelection(uint32_t slot) {
                       size:sizeof(LodCounters)];
   [readback endEncoding];
   const std::shared_ptr<GpuReport> report = report_;
-  const std::shared_ptr<std::atomic<bool>> failed = frameLoop_.failureLatch();
   const bool logLod = frames_ % kLodLogFrames == 0;
   const float pixels = lodPixels_;
   [selection addCompletedHandler:^(id<MTLCommandBuffer> done) {
     if (done.status == MTLCommandBufferStatusError) {
-      failed->store(true);
+      report->failed->store(true);
       LOGE("LOD command failed: %s", done.error.localizedDescription.UTF8String);
       return;
     }
@@ -209,11 +212,10 @@ id<MTLCommandBuffer> MetalFrameCompute::encodeVisibilityAndSort(const SplatRende
   sort_.encode(sort, visibility_.countBuffer(slot), visibility_.depthBits());
   visibility_.encodeIndirect(sort, slot);
   const std::shared_ptr<GpuReport> report = report_;
-  const std::shared_ptr<std::atomic<bool>> failed = frameLoop_.failureLatch();
   id<MTLBuffer> countBuffer = visibility_.countBuffer(slot);
   [sort addCompletedHandler:^(id<MTLCommandBuffer> done) {
     if (done.status == MTLCommandBufferStatusError) {
-      failed->store(true);
+      report->failed->store(true);
       LOGE("visibility command failed: %s", done.error.localizedDescription.UTF8String);
       return;
     }

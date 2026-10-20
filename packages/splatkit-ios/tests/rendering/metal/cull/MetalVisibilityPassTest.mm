@@ -45,6 +45,50 @@ TEST(MetalVisibilityPassSizingTest, ReconfigureKeepsTheReservationAndTheKeyWidth
   EXPECT_EQ(rig.pass.capacity(), 16u);
 }
 
+TEST(MetalPrepareDrawArgumentsTest, WritesExactlyTheDrawBatches) {
+  auto& gpu = Gpu::get();
+  id<MTLComputePipelineState> prepare =
+      metal::pipeline(gpu.device, gpu.library, "prepareDrawArguments");
+  ASSERT_NE(prepare, nil);
+  constexpr uint32_t kSentinel = 0xdeadbeefu;
+  constexpr uint32_t kGuardRecords = 3;
+  constexpr uint32_t kWords = kDrawArgumentBytes / sizeof(uint32_t);
+  std::vector<uint32_t> initial((kDrawBatches + kGuardRecords) * kWords, kSentinel);
+  id<MTLBuffer> draws = [gpu.device newBufferWithBytes:initial.data()
+                                                length:initial.size() * sizeof(uint32_t)
+                                               options:MTLResourceStorageModeShared];
+  const uint32_t splats = 64;
+  id<MTLBuffer> count = [gpu.device newBufferWithBytes:&splats
+                                                length:sizeof(splats)
+                                               options:MTLResourceStorageModeShared];
+  id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
+  id<MTLComputeCommandEncoder> encoder = [cmd computeCommandEncoder];
+  [encoder setComputePipelineState:prepare];
+  [encoder setBuffer:count offset:0 atIndex:0];
+  [encoder setBuffer:draws offset:0 atIndex:1];
+  [encoder dispatchThreadgroups:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
+  [encoder endEncoding];
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+
+  const auto* records = static_cast<const MTLDrawPrimitivesIndirectArguments*>(draws.contents);
+  // 64 splats split at 1/64, 2/64, 4/64 ... of the set.
+  const uint32_t expectedInstances[kDrawBatches] = {1, 1, 2, 4, 8, 16, 32};
+  uint32_t start = 0;
+  for (uint32_t b = 0; b < kDrawBatches; ++b) {
+    EXPECT_EQ(records[b].vertexCount, 4u);
+    EXPECT_EQ(records[b].instanceCount, expectedInstances[b]);
+    EXPECT_EQ(records[b].vertexStart, 0u);
+    EXPECT_EQ(records[b].baseInstance, start);
+    start += expectedInstances[b];
+  }
+  const auto* words = static_cast<const uint32_t*>(draws.contents);
+  for (uint32_t i = kDrawBatches * kWords; i < initial.size(); ++i) {
+    EXPECT_EQ(words[i], kSentinel) << "word " << i << " is past the last draw batch";
+  }
+}
+
 struct VisibilityInput {
   id<MTLBuffer> splats;
   id<MTLBuffer> uniforms;

@@ -3,12 +3,11 @@
 #include <chrono>
 #include <future>
 
+#include "rendering/metal/layout/MetalFrameSlots.h"
 #include "rendering/metal/presentation/MetalFrameLoop.h"
 
 namespace splatkit {
 namespace {
-
-constexpr uint32_t kSlots = 2;
 
 class MetalFrameLoopTest : public testing::Test {
  protected:
@@ -49,26 +48,25 @@ class MetalFrameLoopTest : public testing::Test {
 };
 
 TEST_F(MetalFrameLoopTest, AnAcquiredSlotHoldsWaitIdleUntilItIsReleased) {
-  MetalFrameLoop loop(kSlots);
-  ASSERT_TRUE(loop.acquire());
-  ASSERT_TRUE(loop.acquire());
+  MetalFrameLoop loop(kFramesInFlight);
+  for (uint32_t i = 0; i < kFramesInFlight; ++i) ASSERT_TRUE(loop.acquire());
   auto idle = std::async(std::launch::async, [&] { loop.waitIdle(); });
   EXPECT_EQ(idle.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
-  loop.release();
-  EXPECT_EQ(idle.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
+  for (uint32_t i = 0; i + 1 < kFramesInFlight; ++i) {
+    loop.release();
+    EXPECT_EQ(idle.wait_for(std::chrono::milliseconds(100)), std::future_status::timeout);
+  }
   loop.release();
   EXPECT_EQ(idle.wait_for(std::chrono::seconds(5)), std::future_status::ready);
   // waitIdle gives every slot back.
-  ASSERT_TRUE(loop.acquire());
-  ASSERT_TRUE(loop.acquire());
-  loop.release();
-  loop.release();
+  for (uint32_t i = 0; i < kFramesInFlight; ++i) ASSERT_TRUE(loop.acquire());
+  for (uint32_t i = 0; i < kFramesInFlight; ++i) loop.release();
 }
 
 TEST_F(MetalFrameLoopTest, AFailedGpuRefusesFramesAndHoldsNoSlot) {
-  MetalFrameLoop loop(kSlots);
+  MetalFrameLoop loop(kFramesInFlight);
   EXPECT_FALSE(loop.gpuFailed());
-  loop.markFailed();
+  loop.failureLatch()->store(true);
   EXPECT_TRUE(loop.gpuFailed());
   EXPECT_FALSE(loop.acquire());
   EXPECT_TRUE(idleWithin(loop, std::chrono::seconds(5)));
@@ -76,7 +74,7 @@ TEST_F(MetalFrameLoopTest, AFailedGpuRefusesFramesAndHoldsNoSlot) {
 }
 
 TEST_F(MetalFrameLoopTest, ASubmittedFrameRecordsItsTimeAndReleasesItsSlotAfterTheCallback) {
-  MetalFrameLoop loop(kSlots);
+  MetalFrameLoop loop(kFramesInFlight);
   dispatch_semaphore_t done = dispatch_semaphore_create(0);
   MTLCommandBufferStatus status = MTLCommandBufferStatusNotEnqueued;
   ASSERT_TRUE(loop.acquire());
@@ -91,7 +89,7 @@ TEST_F(MetalFrameLoopTest, ASubmittedFrameRecordsItsTimeAndReleasesItsSlotAfterT
 }
 
 TEST_F(MetalFrameLoopTest, ABackgroundFrameDoesNotCountAsAWorldFrame) {
-  MetalFrameLoop loop(kSlots);
+  MetalFrameLoop loop(kFramesInFlight);
   dispatch_semaphore_t done = dispatch_semaphore_create(0);
   MTLCommandBufferStatus status = MTLCommandBufferStatusNotEnqueued;
   ASSERT_TRUE(loop.acquire());
@@ -102,7 +100,7 @@ TEST_F(MetalFrameLoopTest, ABackgroundFrameDoesNotCountAsAWorldFrame) {
 }
 
 TEST_F(MetalFrameLoopTest, AFailureAfterAWorldFrameWithdrawsIt) {
-  MetalFrameLoop loop(kSlots);
+  MetalFrameLoop loop(kFramesInFlight);
   dispatch_semaphore_t done = dispatch_semaphore_create(0);
   MTLCommandBufferStatus status = MTLCommandBufferStatusNotEnqueued;
   ASSERT_TRUE(loop.acquire());
@@ -110,13 +108,13 @@ TEST_F(MetalFrameLoopTest, AFailureAfterAWorldFrameWithdrawsIt) {
   ASSERT_EQ(dispatch_semaphore_wait(done, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
   EXPECT_TRUE(idleWithin(loop, std::chrono::seconds(5)));
   ASSERT_TRUE(loop.hasCompletedWorldFrame());
-  loop.markFailed();
+  loop.failureLatch()->store(true);
   EXPECT_FALSE(loop.hasCompletedWorldFrame());
   EXPECT_EQ(loop.lastGpuMillis(), 0.0);
 }
 
 TEST_F(MetalFrameLoopTest, TakingPresentTimesClearsTheCallersVectorFirst) {
-  MetalFrameLoop loop(kSlots);
+  MetalFrameLoop loop(kFramesInFlight);
   std::vector<int64_t> times = {1, 2, 3};
   EXPECT_EQ(loop.takePresentTimes(&times), 0u);
   EXPECT_TRUE(times.empty());

@@ -350,7 +350,9 @@ TEST_F(MetalSplatRendererTest, IssFixtureProducesVisiblePixels) {
   }
 }
 
-TEST_F(MetalSplatRendererTest, DestroyingTheRendererWithSelectionAndSortInFlightIsSafe) {
+// A smoke test: it fails only on a crash or a hang. MetalFrameComputeTest pins the handler
+// lifetime this relies on.
+TEST_F(MetalSplatRendererTest, DestroyingTheRendererWithFramesInFlightDoesNotCrash) {
   constexpr uint32_t kLeaves = 4096;
   constexpr int kRepeats = 50;
   splat::LodTree tree;

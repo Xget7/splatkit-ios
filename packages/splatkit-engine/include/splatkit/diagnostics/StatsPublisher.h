@@ -25,6 +25,7 @@ struct Stats {
   float gpuMillis = 0;         // GPU time of the last frame, from timestamp queries
   float sortMillis = 0;        // last completed sort
   uint32_t splatCount = 0;
+  uint32_t loadedShDegree = 0;  // harmonics the loaded world holds on the GPU; zero without a world
   bool walking = false;
   bool motion = false;
   uint32_t drawnSplatCount = 0;   // last completed visibility/order result, not source count
@@ -59,6 +60,7 @@ class StatsPublisher {
     std::size_t selected = 0;   // nodes the level of detail selection chose
     uint32_t sourceSplats = 0;  // splats in the file, what hosts count
     uint32_t gpuSplats = 0;     // records on the GPU, more than the file with a tree
+    uint32_t shDegree = 0;      // harmonics the world holds on the GPU
     bool walking = false;
     bool motion = false;
     uint32_t computeTiles = 0;
@@ -104,6 +106,7 @@ class StatsPublisher {
   std::atomic<float> gpuMillis_{0};
   std::atomic<float> sortMillis_{0};
   std::atomic<uint32_t> splats_{0};
+  std::atomic<uint32_t> loadedShDegree_{0};
   std::atomic<uint32_t> drawnSplats_{0};
   std::atomic<uint32_t> computeTiles_{0};
   std::atomic<uint32_t> nonemptyComputeTiles_{0};

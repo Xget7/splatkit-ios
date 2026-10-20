@@ -64,6 +64,8 @@ void MetalFrameLoop::submit(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawab
   }];
 #endif
   [cmd presentDrawable:drawable];
+  // The handler touches the loop's members through these raw pointers, so signalling the
+  // semaphore must stay its last action: ~MetalFrameLoop returns only after waitIdle().
   dispatch_semaphore_t inFlight = inFlight_;
   std::atomic<double>* gpuMillis = &lastGpuMillis_;
   std::atomic<bool>* failed = gpuFailed_.get();

@@ -9,11 +9,13 @@ namespace {
 
 constexpr int64_t kHalfSecond = 500'000'000LL;
 
-StatsPublisher::Sample counts(uint32_t drawn, uint32_t source, double gpuMillis) {
+StatsPublisher::Sample counts(uint32_t drawn, uint32_t source, double gpuMillis,
+                              uint32_t shDegree = 0) {
   StatsPublisher::Sample s;
   s.drawn = drawn;
   s.sourceSplats = source;
   s.gpuMillis = gpuMillis;
+  s.shDegree = shDegree;
   return s;
 }
 
@@ -31,10 +33,11 @@ TEST(StatsPublisher, WindowCloseIsTheOnlyRegularRefresh) {
 TEST(StatsPublisher, PublishRefreshesCountsWithoutClosingTheWindow) {
   StatsPublisher stats;
   stats.onFrame(kHalfSecond, true, [] { return counts(1, 1, 1); });
-  stats.publish(counts(7, 9, 3));
+  stats.publish(counts(7, 9, 3, 2));
   Stats now = stats.stats();
   EXPECT_EQ(now.drawnSplatCount, 7u);
   EXPECT_EQ(now.splatCount, 9u);
+  EXPECT_EQ(now.loadedShDegree, 2u);
   EXPECT_FLOAT_EQ(now.gpuMillis, 3.0f);
   EXPECT_FLOAT_EQ(now.fps, 0.0f);
 

@@ -90,6 +90,8 @@ typedef struct {
   float lowFps;
   /// Submitted frames never shown in the last half second.
   uint32_t droppedFrames;
+  /// Spherical harmonics degree the loaded world holds on the GPU; zero without a world.
+  uint32_t loadedShDegree;
 } SKSplatStats;
 
 /// The renderer-applicable policy. Mirror of the host contract: raster 0 hardware,

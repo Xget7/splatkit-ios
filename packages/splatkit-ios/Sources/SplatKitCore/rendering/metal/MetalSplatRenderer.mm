@@ -15,6 +15,8 @@ constexpr uint32_t kMaxResidencyCapacity = 32'000'000;
 // The LOD error threshold range, in pixels, a policy may request.
 constexpr float kMinLodErrorPixels = 0.1f;
 constexpr float kMaxLodErrorPixels = 16.0f;
+constexpr uint32_t kFallbackTileSize = 16;
+constexpr float kFallbackLodErrorPixels = 1.0f;
 // Apple family 7, the minimum this renderer accepts, supports 16384x16384 textures.
 constexpr uint32_t kAppleFamily7MaxTextureDimension = 16384;
 
@@ -92,8 +94,8 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   caps.maxTextureDimension = context_->device() != nil ? kAppleFamily7MaxTextureDimension : 0u;
   RenderPolicySupport& policy = caps.policy;
   policy.fallback.raster = RasterStrategy::hardware;
-  policy.fallback.tileSize = 16;
-  policy.fallback.lodErrorPixels = 1.0f;
+  policy.fallback.tileSize = kFallbackTileSize;
+  policy.fallback.lodErrorPixels = kFallbackLodErrorPixels;
   policy.fallback.alphaThreshold = kQuadMinAlpha;
   policy.fallback.subpixelThreshold = kMinPixelRadius;
   policy.fallback.sortDepth =

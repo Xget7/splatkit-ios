@@ -36,7 +36,7 @@ class MetalSurface {
   bool setLayer(CAMetalLayer* layer);
   // The layer's size in pixels.
   void setDrawableSize(uint32_t width, uint32_t height);
-  // Clamped to [kMinRenderScale, kMaxRenderScale]; below or above 1 draws offscreen.
+  // Clamped to [kMinRenderScale, kMaxRenderScale].
   void setRenderScale(float scale);
   void setSpatialUpscaling(bool enabled);
   // False when the blit pipeline for the new format could not be built.

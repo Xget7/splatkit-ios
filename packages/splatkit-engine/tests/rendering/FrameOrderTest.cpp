@@ -13,7 +13,7 @@ class RecordingRenderer final : public StubRenderer {
   explicit RecordingRenderer(bool gpu) : gpu_(gpu) {}
   Extent drawExtent() const override { return extent; }
   bool uploadWorld(const splat::SplatCloud& cloud, int) override {
-    world_ = GpuWorldInfo{static_cast<uint32_t>(cloud.count()), 0};
+    world_ = GpuWorldInfo{static_cast<uint32_t>(cloud.count()), heldShDegree};
     return true;
   }
   std::optional<GpuWorldInfo> world() const override { return world_; }
@@ -38,6 +38,7 @@ class RecordingRenderer final : public StubRenderer {
   ScreenTileStats tiles;
   bool gpuLod = false;
   uint32_t uploadedBudget = 0;
+  int heldShDegree = 0;
 
  private:
   bool gpu_;
@@ -113,6 +114,22 @@ TEST(FrameOrder, CompletedScreenTileCountsReachPublishedStatsAndClearWhenUnavail
   EXPECT_EQ(stats.computeTileCount, 0u);
   EXPECT_EQ(stats.nonemptyComputeTileCount, 0u);
   EXPECT_EQ(stats.hardwareTileCount, 0u);
+}
+
+TEST(FrameOrder, LoadedWorldShDegreeReachesPublishedStatsAndIsZeroWithoutAWorld) {
+  auto renderer = std::make_unique<RecordingRenderer>(true);
+  auto* observed = renderer.get();
+  observed->heldShDegree = 2;
+  SplatEngine engine(std::move(renderer));
+  engine.render(1);
+  engine.requestRedraw();
+  engine.render(500000001);
+  EXPECT_EQ(engine.stats().loadedShDegree, 0u);
+  const auto bytes = worldBytes();
+  engine.loadWorld(bytes.data(), bytes.size());
+  engine.requestRedraw();
+  engine.render(1000000002);
+  EXPECT_EQ(engine.stats().loadedShDegree, 2u);
 }
 
 TEST(FrameOrder, RendererWithoutGpuSortFailsTheLoadInsteadOfFallingBackToCpu) {

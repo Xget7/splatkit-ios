@@ -356,6 +356,7 @@ StatsPublisher::Sample SplatEngine::sample() const {
   const std::optional<GpuWorldInfo> world = renderer_->world();
   s.sourceSplats = world ? sourceCount_ : 0;
   s.gpuSplats = world ? (streamer_ ? streamer_->held() : world->count) : 0;
+  s.shDegree = world ? static_cast<uint32_t>(world->shDegree) : 0;
   s.walking = camera_.hasCollider();
   s.motion = camera_.motionEnabled();
   return s;

@@ -15,6 +15,9 @@ public struct SplatStats {
     public var gpuMillis: Float = 0
     public var sortMillis: Float = 0
     public var splatCount: Int = 0
+    /// Spherical harmonics degree the loaded world holds on the GPU, its file degree capped by
+    /// `maxShDegree` at load; zero without a world. `shDegree` above it draws no more.
+    public var loadedShDegree: Int = 0
     /// Splats in the loaded source world; not GPU residency for a streamed world.
     public var loadedSplatCount: Int { splatCount }
     /// Last completed visibility/order result, refreshed twice a second without a GPU wait.

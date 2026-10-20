@@ -89,6 +89,7 @@ void StatsPublisher::publish(const Sample& s) {
   gpuMillis_.store(static_cast<float>(s.gpuMillis), kRelaxed);
   sortMillis_.store(static_cast<float>(s.sortMillis), kRelaxed);
   splats_.store(s.sourceSplats, kRelaxed);
+  loadedShDegree_.store(s.shDegree, kRelaxed);
   drawnSplats_.store(s.drawn, kRelaxed);
   computeTiles_.store(s.computeTiles, kRelaxed);
   nonemptyComputeTiles_.store(s.nonemptyComputeTiles, kRelaxed);
@@ -116,6 +117,7 @@ Stats StatsPublisher::stats() const {
   s.gpuMillis = gpuMillis_.load(kRelaxed);
   s.sortMillis = sortMillis_.load(kRelaxed);
   s.splatCount = splats_.load(kRelaxed);
+  s.loadedShDegree = loadedShDegree_.load(kRelaxed);
   s.drawnSplatCount = drawnSplats_.load(kRelaxed);
   s.computeTileCount = computeTiles_.load(kRelaxed);
   s.nonemptyComputeTileCount = nonemptyComputeTiles_.load(kRelaxed);

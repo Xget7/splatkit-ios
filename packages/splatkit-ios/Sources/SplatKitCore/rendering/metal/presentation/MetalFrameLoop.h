@@ -45,9 +45,8 @@ class MetalFrameLoop {
 
   // A GPU error latches this loop off. Never repeatedly resubmit failed work.
   bool gpuFailed() const { return gpuFailed_->load(); }
-  // For work that fails outside submit(), such as the selection and visibility buffers.
-  void markFailed() { gpuFailed_->store(true); }
-  // The latch itself, for completion handlers that can run after the loop is destroyed.
+  // The latch itself. Work that fails outside submit(), such as the selection and visibility
+  // buffers, sets it from completion handlers that can run after the loop is destroyed.
   std::shared_ptr<std::atomic<bool>> failureLatch() const { return gpuFailed_; }
   // A successful GPU frame of the current world has finished; uploads alone and background
   // frames do not qualify.
