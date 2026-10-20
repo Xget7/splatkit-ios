@@ -34,6 +34,10 @@ splatkit_embed_text(splatkit_ios_shaders
 add_library(splatkit_ios STATIC
   Sources/SplatKitCore/rendering/metal/MetalSplatRenderer.mm
   Sources/SplatKitCore/rendering/metal/cull/MetalVisibilityPass.mm
+  Sources/SplatKitCore/rendering/metal/device/MetalContext.mm
+  Sources/SplatKitCore/rendering/metal/presentation/MetalFrameLoop.mm
+  Sources/SplatKitCore/rendering/metal/presentation/MetalRenderTarget.mm
+  Sources/SplatKitCore/rendering/metal/presentation/MetalUpscaler.mm
   Sources/SplatKitCore/rendering/metal/selection/MetalLodSelection.mm
   Sources/SplatKitCore/rendering/metal/sort/MetalRadixSort.mm
   Sources/SplatKitCore/rendering/metal/world/MetalWorld.mm
@@ -47,7 +51,7 @@ target_compile_options(splatkit_ios PRIVATE -Wall -Wextra -Werror -fobjc-arc)
 target_link_libraries(splatkit_ios PUBLIC splatkit_engine
   "-framework Metal" "-framework QuartzCore" "-framework Foundation"
   "-framework CoreGraphics" "-framework ImageIO" "-framework UniformTypeIdentifiers")
-# The iOS simulator SDK has no MetalFX; the renderer compiles the scaler out via __has_include.
+# The iOS simulator SDK has no MetalFX; MetalUpscaler compiles the scaler out via __has_include.
 find_library(SPLATKIT_METALFX_FRAMEWORK MetalFX)
 if(SPLATKIT_METALFX_FRAMEWORK)
   target_link_libraries(splatkit_ios PUBLIC "-framework MetalFX")

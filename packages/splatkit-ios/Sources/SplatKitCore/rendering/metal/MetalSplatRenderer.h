@@ -1,12 +1,6 @@
 #pragma once
 
 #import <Metal/Metal.h>
-#if __has_include(<MetalFX/MetalFX.h>)
-#import <MetalFX/MetalFX.h>
-#define SPLATKIT_HAS_METALFX 1
-#else
-#define SPLATKIT_HAS_METALFX 0  // the iOS simulator SDK ships no MetalFX
-#endif
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <array>
@@ -14,12 +8,15 @@
 #include <cstdint>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
 
 #include "rendering/metal/cull/MetalVisibilityPass.h"
+#include "rendering/metal/device/MetalContext.h"
+#include "rendering/metal/presentation/MetalFrameLoop.h"
+#include "rendering/metal/presentation/MetalRenderTarget.h"
+#include "rendering/metal/presentation/MetalUpscaler.h"
 #include "rendering/metal/selection/MetalLodSelection.h"
 #include "rendering/metal/world/MetalWorld.h"
 #include "splatkit/rendering/GpuLayout.h"
@@ -27,7 +24,7 @@
 
 namespace splatkit {
 
-// Everything between a CAMetalLayer and a presented frame: the device and queue, the
+// Everything between a CAMetalLayer and a presented frame: the Metal context, the
 // pipelines built for the layer's pixel format, the offscreen target a render scale
 // needs, and the world bound to them. The layer is attached and sized by the view; the
 // world stays through a detach. Render thread only, except where noted.
@@ -52,7 +49,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   bool spatialUpscaling() const override { return spatialUpscaling_; }
   // True while frames go through MetalFX: a scale below one, the setting on, and a device
   // that has the scaler. Otherwise the scaled target is blitted.
-  bool upscalerActive() const { return scaler_ != nil; }
+  bool upscalerActive() const { return upscaler_->active(); }
   void setLinearBlending(bool linear) override;
   bool linearBlending() const override { return linearBlending_; }
   void setVsync(bool vsync) override;
@@ -76,7 +73,7 @@ class MetalSplatRenderer final : public SplatRenderer {
 
   // Any thread. A successful GPU frame of the current world has finished; uploads
   // alone and background frames do not qualify. Reset when the world is replaced.
-  bool hasCompletedWorldFrame() const { return !gpuFailed_.load() && completedWorldFrame_.load(); }
+  bool hasCompletedWorldFrame() const { return frameLoop_.hasCompletedWorldFrame(); }
 
   // Pixels of a presented frame: BGRA, 8 bits each, rows top down, `width` by `height`.
   using CaptureHandler =
@@ -84,17 +81,21 @@ class MetalSplatRenderer final : public SplatRenderer {
   // Hands the next frame's pixels to `handler`, from the GPU's completion thread. One
   // capture at a time; a request while one is pending replaces it.
   void captureNextFrame(CaptureHandler handler);
-  double lastGpuMillis() const override { return gpuFailed_.load() ? 0 : lastGpuMillis_.load(); }
+  double lastGpuMillis() const override { return frameLoop_.lastGpuMillis(); }
   // The cull and the sort run as compute passes on the GPU (MetalVisibilityPass); the engine
   // hands over the ranges to draw and never sorts on the CPU for this renderer.
   bool sortsOnGpu() const override { return gpuSort_; }
-  double lastSortMillis() const override { return gpuFailed_.load() ? 0 : lastSortMillis_.load(); }
-  uint32_t lastDrawCount() const override { return gpuFailed_.load() ? 0 : lastDrawCount_.load(); }
+  double lastSortMillis() const override {
+    return frameLoop_.gpuFailed() ? 0 : lastSortMillis_.load();
+  }
+  uint32_t lastDrawCount() const override {
+    return frameLoop_.gpuFailed() ? 0 : lastDrawCount_.load();
+  }
   uint32_t lastSelectedCount() const override {
-    return gpuFailed_.load() ? 0 : lastSelectedCount_.load();
+    return frameLoop_.gpuFailed() ? 0 : lastSelectedCount_.load();
   }
   double lastSelectMillis() const override {
-    return gpuFailed_.load() ? 0 : lastSelectMillis_.load();
+    return frameLoop_.gpuFailed() ? 0 : lastSelectMillis_.load();
   }
   // The threshold the next selection runs at, at least the policy's. Render thread.
   float lodPixels() const { return lodPixels_; }
@@ -102,7 +103,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   uint32_t lastLodEvaluatedCount() const { return lod_ ? lastLodEvaluatedCount_.load() : 0; }
   bool reportsPresentTimes() const override { return true; }
   uint32_t takePresentTimes(std::vector<int64_t>* times) override;
-  const std::string& deviceDescription() const override { return description_; }
+  const std::string& deviceDescription() const override { return context_->description(); }
 
   static constexpr int kMaxShDegree = 3;
   static constexpr uint32_t kFramesInFlight = MetalVisibilityPass::kSlots;
@@ -111,13 +112,10 @@ class MetalSplatRenderer final : public SplatRenderer {
   MetalSplatRenderer() = default;
   bool createPipelines();
   bool createTarget();
-  // Rebuilds scaler_ and upscaled_ for the current target_; a nil scaler_ means the blit.
-  bool createScaler();
   MTLPixelFormat pixelFormat() const;
   // Where the splats are drawn: the drawable's format, or half floats when the GPU order
   // path accumulates coverage front to back, which 8 bits would round away.
   MTLPixelFormat targetFormat() const;
-  void waitIdle();
 
   void updateCameraUniforms(const Frame& frame, uint32_t slot);
   // Encode only: draw() commits these in dependency order after validation succeeds.
@@ -125,18 +123,15 @@ class MetalSplatRenderer final : public SplatRenderer {
   id<MTLCommandBuffer> encodeVisibilityAndSort(const Frame& frame, uint32_t slot);
   void encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture, const Frame& frame,
                     uint32_t slot, uint32_t drawCount, bool gpuOrder);
-  void encodeOutput(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture);
   id<MTLBuffer> encodeCapture(id<MTLCommandBuffer> cmd, id<MTLTexture> drawableTexture,
                               CaptureHandler* onCapture);
-  // Transfers the acquired inFlight_ slot to the final completion handler.
+  // Transfers the acquired frame slot to the loop, which returns it when the frame completes.
   void submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawable, bool drewWorld,
                    id<MTLBuffer> captured, CaptureHandler onCapture);
 
-  id<MTLDevice> device_ = nil;
-  id<MTLCommandQueue> queue_ = nil;
-  id<MTLLibrary> library_ = nil;
+  std::unique_ptr<MetalContext> context_;
+  MetalFrameLoop frameLoop_{kFramesInFlight};
   std::array<id<MTLRenderPipelineState>, kMaxShDegree + 1> splatPipelines_{};
-  id<MTLRenderPipelineState> blitPipeline_ = nil;
   // The GPU order path: front to back in batches, a saturation mask between them, the
   // background last.
   id<MTLRenderPipelineState> projectedPipeline_ = nil;
@@ -144,37 +139,20 @@ class MetalSplatRenderer final : public SplatRenderer {
   id<MTLRenderPipelineState> backgroundPipeline_ = nil;
   id<MTLDepthStencilState> splatDepth_ = nil;  // pass unless masked, never write
   id<MTLDepthStencilState> maskDepth_ = nil;   // always write
-  id<MTLTexture> depth_ = nil;                 // GPU-private, the size of the colour target
-  bool createDepth(NSUInteger width, NSUInteger height);
   MTLPixelFormat pipelineFormat_ = MTLPixelFormatInvalid;
   std::array<id<MTLBuffer>, kFramesInFlight> uniforms_{};
-  dispatch_semaphore_t inFlight_ = nullptr;
 
   CAMetalLayer* layer_ = nil;
   uint32_t width_ = 0;
   uint32_t height_ = 0;
-  id<MTLTexture> target_ = nil;    // scaled rendering or half-float GPU compositing
-  id<MTLTexture> upscaled_ = nil;  // MetalFX output at drawable size, private storage
-#if SPLATKIT_HAS_METALFX
-  id<MTLFXSpatialScaler> scaler_ = nil;  // target_ to upscaled_, when active
-#else
-  id scaler_ = nil;  // stays nil: the scaled frame always goes through the blit
-#endif
+  std::unique_ptr<MetalRenderTarget> target_;
+  std::unique_ptr<MetalUpscaler> upscaler_;
   std::unique_ptr<MetalWorld> world_;
   float renderScale_ = 1.0f;
   bool spatialUpscaling_ = true;
   bool linearBlending_ = false;
   uint32_t generation_ = 0;
   uint64_t frame_ = 0;
-  std::atomic<double> lastGpuMillis_{0};
-  // Filled by drawable presented handlers, which can outlive a frame's other state.
-  struct PresentLog {
-    std::mutex mutex;
-    std::vector<int64_t> times;  // display times in nanoseconds, capped while nobody drains
-    uint32_t dropped = 0;
-  };
-  std::shared_ptr<PresentLog> presents_ = std::make_shared<PresentLog>();
-  std::atomic<bool> completedWorldFrame_{false};
   MetalVisibilityPass visibility_;
   std::unique_ptr<MetalLodSelection> lod_;
   std::array<id<MTLBuffer>, kFramesInFlight> lodReadback_{};
@@ -190,13 +168,10 @@ class MetalSplatRenderer final : public SplatRenderer {
   uint32_t lodAdaptedReadback_ = 0;
   void adaptLodThreshold();
   MetalRadixSort::KeyBits depthBits_ = MetalRadixSort::KeyBits::Full32;
-  // A GPU error latches this renderer off. Never repeatedly resubmit failed work.
-  std::atomic<bool> gpuFailed_{false};
   bool gpuSort_ = false;
   std::atomic<double> lastSortMillis_{0};
   std::atomic<uint32_t> lastDrawCount_{0};
   CaptureHandler capture_;
-  std::string description_;
 };
 
 }  // namespace splatkit
