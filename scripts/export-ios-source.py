@@ -73,6 +73,7 @@ def main():
                   "scripts/check_android_alignment.py", "scripts/benchmark_report.py",
                   "scripts/compare_captures.py", "scripts/requirements-validation.txt", "scripts/tests",
                   ".github/workflows/android.yml", ".github/workflows/lint.yml",
+                  ".github/actions/android-sdk",
                   "docs/AGENT_HARNESS.md", "docs/VALIDATION.md")
     names = subprocess.check_output(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *packages, *files],

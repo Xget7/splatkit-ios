@@ -235,7 +235,7 @@
   "packages/splatkit-ios/tests/rendering/metal/world/MetalWorldTest.mm": "d16d844b6ee152a10f561bb2fafe1b0b072b284b2d744a5cff80e76981248f15",
   "packages/splatkit-ios/tests/support/MetalTestContext.h": "0351543d8204602dec4ec41f470d06c5e8fb4a60b9cf15219e68477eb2858ec2",
   "scripts/build-ios.sh": "2110b0651442df5141394be5a10787ab0c4e4d596714428c63273ab5c5f45767",
-  "scripts/export-ios-source.py": "e96471d2c3965e05a097ed05553bbbe993e9ec4633c4e2bcd8cab18a12b7be52",
+  "scripts/export-ios-source.py": "5d62af39d2470ef9626f8f46b378079ea364dcc3597f6c44c3f65b61bd6f7295",
   "scripts/package-ios.sh": "dc46aeae108de22505d863b02cf64128b8b2b199453f4cfeb63150cf396f5c90",
   "scripts/prepare-world.sh": "e5422cefd9740ad623122bb74555fac3251a8fab563f85911875bf2e6f31164c",
   "scripts/sdk_harness.py": "b21a3f5123abf1504b7c3a87a325268a246cb340e07fbb67515a34cedaef4d21",
