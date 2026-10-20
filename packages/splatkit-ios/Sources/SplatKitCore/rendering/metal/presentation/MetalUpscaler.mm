@@ -36,8 +36,9 @@ void MetalUpscaler::reset() {
 
 // MetalFX requires a private-storage output, which the iOS drawable is not, so the scaler
 // writes upscaled_ at drawable size and the blit pass copies that to the drawable.
-bool MetalUpscaler::configure(const MetalRenderTarget& target, uint32_t drawableWidth,
-                              uint32_t drawableHeight, bool spatialUpscaling) {
+bool MetalUpscaler::configure(const MetalRenderTarget& target,
+                              [[maybe_unused]] uint32_t drawableWidth,
+                              [[maybe_unused]] uint32_t drawableHeight, bool spatialUpscaling) {
   reset();
   const bool wanted = spatialUpscaling && target.color() != nil && target.renderScale() < 1.0f;
 #if SPLATKIT_HAS_METALFX

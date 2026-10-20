@@ -3,19 +3,25 @@
 # fetched dependencies) for a device, into build/ios. The dev app and the Swift package
 # link them from there.
 #
-#   scripts/build-ios.sh            Release, arm64 device
+#   scripts/build-ios.sh                         Release, arm64 device
 #   scripts/build-ios.sh Debug
+#   scripts/build-ios.sh Release iphonesimulator  arm64 simulator, into build/ios-simulator
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
 config="${1:-Release}"
-build="$root/build/ios"
+sdk="${2:-iphoneos}"
+case "$sdk" in
+  iphoneos) build="$root/build/ios" ;;
+  iphonesimulator) build="$root/build/ios-simulator" ;;
+  *) echo "unknown SDK $sdk; use iphoneos or iphonesimulator" >&2; exit 2 ;;
+esac
 
 cmake -S "$root/packages/splatkit-ios" -B "$build" -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE="$config" \
   -DCMAKE_SYSTEM_NAME=iOS \
   -DCMAKE_OSX_ARCHITECTURES=arm64 \
-  -DCMAKE_OSX_SYSROOT=iphoneos \
+  -DCMAKE_OSX_SYSROOT="$sdk" \
   -DCMAKE_OSX_DEPLOYMENT_TARGET=17.0 \
   -DCMAKE_C_COMPILER_WORKS=ON -DCMAKE_CXX_COMPILER_WORKS=ON \
   > /dev/null

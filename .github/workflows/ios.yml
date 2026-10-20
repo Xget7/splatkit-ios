@@ -25,3 +25,6 @@ jobs:
         run: ctest --test-dir build/ios-mac --output-on-failure
       - name: Build for iOS
         run: scripts/build-ios.sh
+      # The simulator SDK has no MetalFX, so code guarded for it compiles differently there.
+      - name: Build for the iOS simulator
+        run: scripts/build-ios.sh Release iphonesimulator

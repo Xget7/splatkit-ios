@@ -25,13 +25,12 @@ std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
     uniform = metal::buffer(r->context_->device(), sizeof(CameraUniform));
     if (uniform == nil) return nullptr;
   }
-  r->target_ = std::make_unique<MetalRenderTarget>(r->context_->device());
-  r->upscaler_ = std::make_unique<MetalUpscaler>(r->context_->device(), r->context_->library());
   r->depthBits_ = MetalRadixSort::KeyBits::Full32;
   r->gpuSort_ = r->visibility_.create(r->context_->device(), r->context_->library(), r->depthBits_);
   LOGI("Metal depth keys: %u bits, %u radix passes (uint32 scratch)",
        static_cast<uint32_t>(r->depthBits_), static_cast<uint32_t>(r->depthBits_) / 8);
   if (!r->gpuSort_) LOGW("GPU sort unavailable, sorting on the CPU");
+  r->surface_ = std::make_unique<MetalSurface>(*r->context_, r->frameLoop_, r->gpuSort_);
   LOGI("%s", r->context_->description().c_str());
   return r;
 }
@@ -42,70 +41,40 @@ MetalSplatRenderer::~MetalSplatRenderer() {
 }
 
 void MetalSplatRenderer::setLayer(CAMetalLayer* layer) {
-  if (layer == layer_) return;
-  frameLoop_.waitIdle();
-  layer_ = layer;
-  if (layer_ == nil) return;
-  layer_.device = context_->device();
-  layer_.pixelFormat = pixelFormat();
-  layer_.framebufferOnly = YES;
-  ++generation_;
-  bool built = upscaler_->setOutputFormat(pixelFormat());
-  if (pipelineFormat_ != targetFormat()) built = createPipelines() && built;
+  if (layer == surface_->layer()) return;
+  bool built = surface_->setLayer(layer);
+  if (layer == nil) return;
+  if (pipelineFormat_ != surface_->targetFormat()) built = createPipelines() && built;
   if (!built) {
     LOGE("rendering stopped: no pipelines");
-    layer_ = nil;
+    surface_->setLayer(nil);
   }
 }
 
 void MetalSplatRenderer::setDrawableSize(uint32_t width, uint32_t height) {
-  if (width == width_ && height == height_) return;
-  LOGI("drawable %ux%u, was %ux%u", width, height, width_, height_);
-  width_ = width;
-  height_ = height;
-  if (upscaler_->active()) frameLoop_.waitIdle();
-  ++generation_;
-  createTarget();
+  surface_->setDrawableSize(width, height);
 }
 
 void MetalSplatRenderer::setRenderScale(float scale) {
-  scale = std::clamp(scale, 0.1f, 2.0f);
-  if (scale == renderScale_) return;
-  renderScale_ = scale;
-  if (upscaler_->active()) frameLoop_.waitIdle();
-  ++generation_;
-  createTarget();
+  surface_->setRenderScale(scale);
 }
 
 void MetalSplatRenderer::setSpatialUpscaling(bool enabled) {
-  if (enabled == spatialUpscaling_) return;
-  spatialUpscaling_ = enabled;
-  // The scaler is not retained by the command buffers that encode it, so it must not be
-  // replaced while one is in flight.
-  if (upscaler_->active()) frameLoop_.waitIdle();
-  ++generation_;
-  createTarget();
+  surface_->setSpatialUpscaling(enabled);
 }
 
 void MetalSplatRenderer::setLinearBlending(bool linear) {
-  if (linear == linearBlending_) return;
-  linearBlending_ = linear;
-  frameLoop_.waitIdle();
-  if (layer_ != nil) layer_.pixelFormat = pixelFormat();
-  ++generation_;
-  const bool blitReady = upscaler_->setOutputFormat(pixelFormat());
-  createTarget();
+  if (linear == surface_->linearBlending()) return;
+  const bool blitReady = surface_->setLinearBlending(linear);
   const bool pipelinesReady = createPipelines();
   if (!blitReady || !pipelinesReady) {
     LOGE("rendering stopped: no pipelines");
-    layer_ = nil;
+    surface_->setLayer(nil);
   }
 }
 
 void MetalSplatRenderer::setVsync(bool vsync) {
-  // Presentation is tied to the display link that drives the frames; a benchmark
-  // without vsync would need its own loop. Host frame intervals and GPU times differ.
-  (void)vsync;
+  surface_->setVsync(vsync);
 }
 
 DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
@@ -177,37 +146,10 @@ bool MetalSplatRenderer::applyRenderPolicy(const RenderPolicy& policy, std::stri
   return true;
 }
 
-MTLPixelFormat MetalSplatRenderer::pixelFormat() const {
-  return linearBlending_ ? MTLPixelFormatBGRA8Unorm_sRGB : MTLPixelFormatBGRA8Unorm;
-}
-
-Extent MetalSplatRenderer::drawExtent() const {
-  if (id<MTLTexture> color = target_->color()) {
-    return {static_cast<uint32_t>(color.width), static_cast<uint32_t>(color.height)};
-  }
-  return {width_, height_};
-}
-
-MTLPixelFormat MetalSplatRenderer::targetFormat() const {
-  return gpuSort_ ? MTLPixelFormatRGBA16Float : pixelFormat();
-}
-
-bool MetalSplatRenderer::createTarget() {
-  upscaler_->reset();  // before the target is reallocated, so both are never resident
-  bool built = true;
-  if ((renderScale_ == 1.0f && !gpuSort_) || width_ == 0 || height_ == 0) {
-    target_->release();
-  } else {
-    built = target_->resize(width_, height_, renderScale_, targetFormat());
-  }
-  const bool configured = upscaler_->configure(*target_, width_, height_, spatialUpscaling_);
-  return built && configured;
-}
-
 // One splat pipeline per spherical harmonics degree, specialised through a function
-// constant so a degree 0 world pays nothing for SH, plus the render scale pass.
+// constant so a degree 0 world pays nothing for SH, and the pipelines of the GPU order path.
 bool MetalSplatRenderer::createPipelines() {
-  pipelineFormat_ = targetFormat();
+  pipelineFormat_ = surface_->targetFormat();
   NSError* error = nil;
   id<MTLFunction> fragment = [context_->library() newFunctionWithName:@"splatFragment"];
   for (int degree = 0; degree <= kMaxShDegree; ++degree) {
@@ -396,8 +338,8 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
   if (!frameLoop_.acquire()) return false;
   // Until submitFrame(), every failure returns the acquired slot synchronously.
   // Capture requires a readable drawable before nextDrawable() acquires it.
-  if (capture_) layer_.framebufferOnly = NO;
-  id<CAMetalDrawable> drawable = [layer_ nextDrawable];
+  if (capture_) surface_->allowReadback(true);
+  id<CAMetalDrawable> drawable = surface_->nextDrawable();
   if (drawable == nil) {
     frameLoop_.release();
     return false;
@@ -426,7 +368,7 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
 
   id<MTLCommandBuffer> cmd = [context_->queue() commandBuffer];
   encodeRaster(cmd, drawable.texture, frame, slot, drawCount, gpuOrder);
-  upscaler_->encode(cmd, target_->color(), drawable.texture);
+  surface_->upscaler().encode(cmd, surface_->target().color(), drawable.texture);
   CaptureHandler onCapture;
   id<MTLBuffer> captured = encodeCapture(cmd, drawable.texture, &onCapture);
 
@@ -441,7 +383,7 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
 }
 
 void MetalSplatRenderer::updateCameraUniforms(const Frame& frame, uint32_t slot) {
-  const Extent extent = drawExtent();
+  const Extent extent = surface_->drawExtent();
   CameraUniform u{};
   u.view = frame.view;
   u.proj = frame.proj;
@@ -451,7 +393,7 @@ void MetalSplatRenderer::updateCameraUniforms(const Frame& frame, uint32_t slot)
   u.focal[1] = u.screenSize[1] * frame.proj.at(1, 1) / 2;
   u.tanHalfFov[0] = 1 / frame.proj.at(0, 0);
   u.tanHalfFov[1] = 1 / frame.proj.at(1, 1);
-  u.outputLinear = linearBlending_ ? 1u : 0u;
+  u.outputLinear = surface_->linearBlending() ? 1u : 0u;
   u.cameraPosition[0] = frame.cameraPosition.x;
   u.cameraPosition[1] = frame.cameraPosition.y;
   u.cameraPosition[2] = frame.cameraPosition.z;
@@ -529,14 +471,15 @@ void MetalSplatRenderer::encodeRaster(id<MTLCommandBuffer> cmd, id<MTLTexture> d
                                       const Frame& frame, uint32_t slot, uint32_t drawCount,
                                       bool gpuOrder) {
   MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
-  id<MTLTexture> colour = target_->color() != nil ? target_->color() : drawableTexture;
+  MetalRenderTarget& target = surface_->target();
+  id<MTLTexture> colour = target.color() != nil ? target.color() : drawableTexture;
   pass.colorAttachments[0].texture = colour;
   pass.colorAttachments[0].loadAction = MTLLoadActionClear;
   pass.colorAttachments[0].storeAction = MTLStoreActionStore;
   // Front to back accumulates onto nothing and puts the background under at the end.
   pass.colorAttachments[0].clearColor = gpuOrder ? MTLClearColorMake(0, 0, 0, 0) : kBackground;
-  if (target_->ensureDepth(colour.width, colour.height)) {
-    pass.depthAttachment.texture = target_->depth();
+  if (target.ensureDepth(colour.width, colour.height)) {
+    pass.depthAttachment.texture = target.depth();
     pass.depthAttachment.loadAction = MTLLoadActionClear;
     pass.depthAttachment.storeAction = MTLStoreActionDontCare;
     pass.depthAttachment.clearDepth = 1.0;
@@ -594,23 +537,25 @@ id<MTLBuffer> MetalSplatRenderer::encodeCapture(id<MTLCommandBuffer> cmd,
     if (drawableTexture.framebufferOnly) {
       LOGW("capture skipped: the drawable is not readable yet");
     } else {
-      const NSUInteger bytesPerRow = NSUInteger{width_} * 4;
-      captured = [context_->device() newBufferWithLength:bytesPerRow * height_
+      const uint32_t width = surface_->width();
+      const uint32_t height = surface_->height();
+      const NSUInteger bytesPerRow = NSUInteger{width} * 4;
+      captured = [context_->device() newBufferWithLength:bytesPerRow * height
                                                  options:MTLResourceStorageModeShared];
       id<MTLBlitCommandEncoder> copy = [cmd blitCommandEncoder];
       [copy copyFromTexture:drawableTexture
                        sourceSlice:0
                        sourceLevel:0
                       sourceOrigin:MTLOriginMake(0, 0, 0)
-                        sourceSize:MTLSizeMake(width_, height_, 1)
+                        sourceSize:MTLSizeMake(width, height, 1)
                           toBuffer:captured
                  destinationOffset:0
             destinationBytesPerRow:bytesPerRow
-          destinationBytesPerImage:bytesPerRow * height_];
+          destinationBytesPerImage:bytesPerRow * height];
       [copy endEncoding];
       *onCapture = std::move(capture_);
       capture_ = nullptr;
-      layer_.framebufferOnly = YES;
+      surface_->allowReadback(false);
     }
   }
 
@@ -622,8 +567,8 @@ void MetalSplatRenderer::submitFrame(id<MTLCommandBuffer> cmd, id<CAMetalDrawabl
                                      CaptureHandler onCapture) {
   std::function<void(id<MTLCommandBuffer>)> onCompleted;
   if (onCapture) {
-    const uint32_t width = width_;
-    const uint32_t height = height_;
+    const uint32_t width = surface_->width();
+    const uint32_t height = surface_->height();
     onCompleted = [captured, width, height,
                    onCapture = std::move(onCapture)](id<MTLCommandBuffer> done) {
       if (done.status == MTLCommandBufferStatusError) {

@@ -9,7 +9,8 @@
 namespace splatkit {
 
 namespace {
-constexpr size_t kMaxPresentTimes = 1024;
+[[maybe_unused]] constexpr size_t kMaxPresentTimes =
+    1024;  // the simulator has no presented handler
 }  // namespace
 
 MetalFrameLoop::MetalFrameLoop(uint32_t framesInFlight)

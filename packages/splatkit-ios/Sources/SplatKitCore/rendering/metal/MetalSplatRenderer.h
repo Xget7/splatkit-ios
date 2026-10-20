@@ -15,8 +15,7 @@
 #include "rendering/metal/cull/MetalVisibilityPass.h"
 #include "rendering/metal/device/MetalContext.h"
 #include "rendering/metal/presentation/MetalFrameLoop.h"
-#include "rendering/metal/presentation/MetalRenderTarget.h"
-#include "rendering/metal/presentation/MetalUpscaler.h"
+#include "rendering/metal/presentation/MetalSurface.h"
 #include "rendering/metal/selection/MetalLodSelection.h"
 #include "rendering/metal/world/MetalWorld.h"
 #include "splatkit/rendering/GpuLayout.h"
@@ -25,9 +24,10 @@
 namespace splatkit {
 
 // Everything between a CAMetalLayer and a presented frame: the Metal context, the
-// pipelines built for the layer's pixel format, the offscreen target a render scale
-// needs, and the world bound to them. The layer is attached and sized by the view; the
-// world stays through a detach. Render thread only, except where noted.
+// pipelines built for the layer's pixel format, the surface that holds the layer and the
+// offscreen target a render scale needs, and the world bound to them. The layer is attached
+// and sized by the view; the world stays through a detach. Render thread only, except where
+// noted.
 class MetalSplatRenderer final : public SplatRenderer {
  public:
   // Null when the device has no Metal.
@@ -44,23 +44,23 @@ class MetalSplatRenderer final : public SplatRenderer {
   void setDrawableSize(uint32_t width, uint32_t height);
 
   void setRenderScale(float scale) override;
-  float renderScale() const override { return renderScale_; }
+  float renderScale() const override { return surface_->renderScale(); }
   void setSpatialUpscaling(bool enabled) override;
-  bool spatialUpscaling() const override { return spatialUpscaling_; }
+  bool spatialUpscaling() const override { return surface_->spatialUpscaling(); }
   // True while frames go through MetalFX: a scale below one, the setting on, and a device
   // that has the scaler. Otherwise the scaled target is blitted.
-  bool upscalerActive() const { return upscaler_->active(); }
+  bool upscalerActive() const { return surface_->upscaler().active(); }
   void setLinearBlending(bool linear) override;
-  bool linearBlending() const override { return linearBlending_; }
+  bool linearBlending() const override { return surface_->linearBlending(); }
   void setVsync(bool vsync) override;
 
   DeviceCapabilities deviceCapabilities() const override;
   std::optional<std::uint64_t> availableMemory() const override;
   bool applyRenderPolicy(const RenderPolicy& policy, std::string* reason) override;
 
-  bool ready() const override { return layer_ != nil && width_ > 0 && height_ > 0; }
-  Extent drawExtent() const override;
-  uint32_t generation() const override { return generation_; }
+  bool ready() const override { return surface_->ready(); }
+  Extent drawExtent() const override { return surface_->drawExtent(); }
+  uint32_t generation() const override { return surface_->generation(); }
 
   bool uploadWorld(const splat::SplatCloud& cloud, int maxShDegree) override;
   bool selectsLodOnGpu() const override { return gpuSort_; }
@@ -111,11 +111,6 @@ class MetalSplatRenderer final : public SplatRenderer {
  private:
   MetalSplatRenderer() = default;
   bool createPipelines();
-  bool createTarget();
-  MTLPixelFormat pixelFormat() const;
-  // Where the splats are drawn: the drawable's format, or half floats when the GPU order
-  // path accumulates coverage front to back, which 8 bits would round away.
-  MTLPixelFormat targetFormat() const;
 
   void updateCameraUniforms(const Frame& frame, uint32_t slot);
   // Encode only: draw() commits these in dependency order after validation succeeds.
@@ -142,16 +137,8 @@ class MetalSplatRenderer final : public SplatRenderer {
   MTLPixelFormat pipelineFormat_ = MTLPixelFormatInvalid;
   std::array<id<MTLBuffer>, kFramesInFlight> uniforms_{};
 
-  CAMetalLayer* layer_ = nil;
-  uint32_t width_ = 0;
-  uint32_t height_ = 0;
-  std::unique_ptr<MetalRenderTarget> target_;
-  std::unique_ptr<MetalUpscaler> upscaler_;
+  std::unique_ptr<MetalSurface> surface_;
   std::unique_ptr<MetalWorld> world_;
-  float renderScale_ = 1.0f;
-  bool spatialUpscaling_ = true;
-  bool linearBlending_ = false;
-  uint32_t generation_ = 0;
   uint64_t frame_ = 0;
   MetalVisibilityPass visibility_;
   std::unique_ptr<MetalLodSelection> lod_;
