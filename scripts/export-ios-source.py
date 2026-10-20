@@ -74,7 +74,7 @@ def main():
                   "scripts/compare_captures.py", "scripts/requirements-validation.txt", "scripts/tests",
                   ".github/workflows/android.yml", ".github/workflows/lint.yml",
                   ".github/actions/android-sdk",
-                  "docs/AGENT_HARNESS.md", "docs/VALIDATION.md")
+                  "docs/AGENT_HARNESS.md", "docs/VALIDATION.md", "docs/agents")
     names = subprocess.check_output(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *packages, *files],
         cwd=ROOT).decode().split("\0")

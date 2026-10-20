@@ -1,24 +1,27 @@
-## What this changes
+## Summary
 
-<!-- One paragraph. Link the issue if there is one. -->
+<!-- The smallest view that makes the change clear: a call tree, a file tree, a diff sketch, pseudocode or a Mermaid diagram, each beside one or two lines of text. -->
+<!-- Link the issue if there is one, and give the reasoning here: this repo keeps no decision documents. -->
 
-## Where it was tried
+## Evidence
 
-<!-- CONTRIBUTING asks for this: emulator only is fine for logic, renderer changes need a real GPU. -->
+<!-- A failing then passing test, command output, a capture or a screenshot. -->
 
-- Device, GPU and driver:
-- OS version:
-- World and splat count:
+- **Before:**
+- **After:**
+- **Where it ran:** <!-- Physical device or emulator/simulator, GPU and driver, OS version, world and splat count. -->
+  <!-- Emulator only is fine for logic; renderer changes need a real GPU. -->
+- **Checks:** <!-- Which of `python3 scripts/sdk_harness.py check engine`, `scripts/lint-cpp.sh`, the Android validation layer, `npm run check` and `npm run lint` ran, and which were skipped. -->
+  <!-- Changes to decoding, sorting, math, navigation, loading or policy add tests in `splat-core` or `splatkit-engine`. -->
 
-## Checklist
+<!-- A performance claim needs before and after numbers on the same device and world. -->
 
-- [ ] `python3 scripts/sdk_harness.py check engine` passes, with tests added for anything touching decoding, sorting, math, navigation or policy.
-- [ ] `scripts/lint-cpp.sh` is clean.
-- [ ] The Khronos validation layer is silent in an Android debug build.
-- [ ] `npm run check` passes for React Native package changes.
-- [ ] No planning or decision documents; the reasoning is in this description and in comments beside the code.
-- [ ] Markdown uses plain dashes and one sentence per line.
+## Merge Danger
 
-## Numbers, if this claims a performance change
+**Door:** <!-- One-way or two-way. -->
 
-<!-- Before and after, on the same device and world. A claim without a measurement does not land. -->
+<!-- Optional: why it can or cannot be walked back. -->
+
+**Blast Radius:** <!-- One word. -->
+
+<!-- What could break for hosts, the mirrors, releases or CI if this merges. -->
