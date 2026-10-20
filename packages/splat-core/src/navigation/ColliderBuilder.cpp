@@ -231,51 +231,78 @@ bool carve(const Grid& g, Mask& solid, int radius, int halfHeight, Vec3 seed) {
   return true;
 }
 
+// Indices into the packed symmetric 3x3 of its diagonal terms xx, yy and zz.
+constexpr std::array<std::size_t, 3> kCovarianceDiagonal = {0, 3, 5};
+
+// A flat splat has a singular covariance, and float rounding leaves a needle's slightly
+// indefinite, which would put voxels at a negative distance with infinite density. A
+// thickness of a millionth of its size, and at least a micrometer, fixes both.
+std::array<double, 6> thickenedCovariance(const float* c) {
+  const double flat = 1e-12 + 1e-6 * (std::abs(c[0]) + std::abs(c[3]) + std::abs(c[5]));
+  return {c[0] + flat, c[1], c[2], c[3] + flat, c[4], c[5] + flat};
+}
+
+// The voxels, inclusive on both ends, within three sigmas of a splat.
+struct VoxelBox {
+  std::array<int, 3> from{};
+  std::array<int, 3> to{};
+};
+
+// The part of the grid within three sigmas of the splat at `p`, empty when it lies outside.
+std::optional<VoxelBox> footprintBox(const Grid& g, const float* p,
+                                     const std::array<double, 6>& cov) {
+  const float inv = 1.0f / g.size;
+  VoxelBox box;
+  bool outside = false;
+  for (std::size_t axis = 0; axis < 3; ++axis) {
+    const double extent = 3.0 * std::sqrt(std::max(0.0, cov[kCovarianceDiagonal[axis]]));
+    const double at = (p[axis] - g.origin[axis]) * inv;
+    box.from[axis] = std::max(0, static_cast<int>(std::floor(at - extent * inv)));
+    box.to[axis] = std::min(g.n[axis] - 1, static_cast<int>(std::floor(at + extent * inv)));
+    outside = outside || box.from[axis] > box.to[axis];
+  }
+  if (outside) return std::nullopt;
+  return box;
+}
+
+// Calls `add(voxel, weight, p)` for the voxels of `box`; `q` is the splat's inverse
+// covariance.
+template <typename Add>
+void addFootprint(const Grid& g, const float* p, const std::array<double, 6>& q, double alpha,
+                  const VoxelBox& box, Add& add) {
+  for (int z = box.from[2]; z <= box.to[2]; ++z) {
+    const double z0 = g.origin[2] + z * g.size;
+    const double dz = std::clamp(static_cast<double>(p[2]), z0, z0 + g.size) - p[2];
+    for (int y = box.from[1]; y <= box.to[1]; ++y) {
+      const double y0 = g.origin[1] + y * g.size;
+      const double dy = std::clamp(static_cast<double>(p[1]), y0, y0 + g.size) - p[1];
+      const double yz = q[3] * dy * dy + 2 * q[4] * dy * dz + q[5] * dz * dz;
+      const std::size_t row = g.index(0, y, z);
+      for (int x = box.from[0]; x <= box.to[0]; ++x) {
+        const double x0 = g.origin[0] + x * g.size;
+        const double dx = std::clamp(static_cast<double>(p[0]), x0, x0 + g.size) - p[0];
+        const double d2 = q[0] * dx * dx + 2 * (q[1] * dx * dy + q[2] * dx * dz) + yz;
+        if (d2 < 18.0) add(row + static_cast<std::size_t>(x), alpha * std::exp(-0.5 * d2), p);
+      }
+    }
+  }
+}
+
 // Calls `add(voxel, weight, position)` for every voxel within three sigmas of each splat, with
 // the splat's opacity times exp(-d^2 / 2), d being the Mahalanobis distance from its center
 // to the nearest point of the voxel.
 template <typename Add>
 void forEachFootprint(const Grid& g, const SplatCloud& cloud, const std::vector<uint32_t>& used,
                       Add add) {
-  const float inv = 1.0f / g.size;
   for (const uint32_t i : used) {
-    const float* c = &cloud.covariances[static_cast<std::size_t>(i) * 6];
-    // A flat splat has a singular covariance, and float rounding leaves a needle's slightly
-    // indefinite, which would put voxels at a negative distance with infinite density. A
-    // thickness of a millionth of its size, and at least a micrometer, fixes both.
-    const double flat = 1e-12 + 1e-6 * (std::abs(c[0]) + std::abs(c[3]) + std::abs(c[5]));
-    const std::array<double, 6> cov{c[0] + flat, c[1], c[2], c[3] + flat, c[4], c[5] + flat};
+    const std::array<double, 6> cov =
+        thickenedCovariance(&cloud.covariances[static_cast<std::size_t>(i) * 6]);
     std::array<double, 6> q{};
     if (!invertPositiveDefinite(cov, &q)) continue;
     const float* p = &cloud.positions[static_cast<std::size_t>(i) * 3];
-    const double alpha = std::min(cloud.alphas[i], 1.0f);
-    int from[3];
-    int to[3];
-    bool outside = false;
-    for (std::size_t axis = 0; axis < 3; ++axis) {
-      const double extent = 3.0 * std::sqrt(std::max(0.0, cov[axis == 0 ? 0 : axis == 1 ? 3 : 5]));
-      const double at = (p[axis] - g.origin[axis]) * inv;
-      from[axis] = std::max(0, static_cast<int>(std::floor(at - extent * inv)));
-      to[axis] = std::min(g.n[axis] - 1, static_cast<int>(std::floor(at + extent * inv)));
-      outside = outside || from[axis] > to[axis];
-    }
-    if (outside) continue;
-    for (int z = from[2]; z <= to[2]; ++z) {
-      const double z0 = g.origin[2] + z * g.size;
-      const double dz = std::clamp(static_cast<double>(p[2]), z0, z0 + g.size) - p[2];
-      for (int y = from[1]; y <= to[1]; ++y) {
-        const double y0 = g.origin[1] + y * g.size;
-        const double dy = std::clamp(static_cast<double>(p[1]), y0, y0 + g.size) - p[1];
-        const double yz = q[3] * dy * dy + 2 * q[4] * dy * dz + q[5] * dz * dz;
-        const std::size_t row = g.index(0, y, z);
-        for (int x = from[0]; x <= to[0]; ++x) {
-          const double x0 = g.origin[0] + x * g.size;
-          const double dx = std::clamp(static_cast<double>(p[0]), x0, x0 + g.size) - p[0];
-          const double d2 = q[0] * dx * dx + 2 * (q[1] * dx * dy + q[2] * dx * dz) + yz;
-          if (d2 < 18.0) add(row + static_cast<std::size_t>(x), alpha * std::exp(-0.5 * d2), p);
-        }
-      }
-    }
+    const auto box = footprintBox(g, p, cov);
+    if (!box) continue;
+    addFootprint(g, p, q, std::min(cloud.alphas[i], 1.0f), *box, add);
   }
 }
 
@@ -327,131 +354,203 @@ Anchors anchor(const Grid& g, const SplatCloud& cloud, const std::vector<uint32_
   return anchors;
 }
 
+// The eight corners of a cell as offsets from its lowest voxel, bit 0 along x, bit 1 along y
+// and bit 2 along z, and the twelve edges between them as corner pairs.
+constexpr int kCorner[8][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 0},
+                               {0, 0, 1}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1}};
+constexpr int kEdge[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3},
+                              {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
+
+// Whether the voxels at the eight corners of a cell are solid.
+using Corners = std::array<bool, 8>;
+
+bool crossesSurface(const Corners& corner) {
+  const auto solidCorners = std::count(corner.begin(), corner.end(), true);
+  return solidCorners != 0 && solidCorners != 8;
+}
+
 // Naive surface nets over the solid mask, the grid surrounded by `outside`. Cell
 // (x, y, z) has the centers of voxels x - 1..x, y - 1..y, z - 1..z as corners; a mixed cell
 // gets one vertex at the mean midpoint of its crossing edges, and every solid-empty pair of
 // neighbouring voxels gets a quad joining the four cells around the edge between them.
-TriangleMesh surfaceNet(const Grid& g, const Mask& solid, bool outside, const Anchors& anchors) {
-  const auto inside = [&](int x, int y, int z) {
-    return g.contains(x, y, z) ? solid[g.index(x, y, z)] != 0 : outside;
-  };
-  const int cx = g.n[0] + 1;
-  const int cy = g.n[1] + 1;
-  const int cz = g.n[2] + 1;
-  const auto cell = [cx](int x, int y) {
-    return static_cast<std::size_t>(y) * static_cast<std::size_t>(cx) + static_cast<std::size_t>(x);
-  };
-  // Vertex ids of the cells in the previous layer (z - 1) and this one (z).
-  std::vector<uint32_t> below(static_cast<std::size_t>(cx) * static_cast<std::size_t>(cy));
-  std::vector<uint32_t> layer(below.size());
-  TriangleMesh mesh;
+class SurfaceNet {
+ public:
+  SurfaceNet(const Grid& g, const Mask& solid, bool outside, const Anchors& anchors)
+      : g_(g),
+        solid_(solid),
+        outside_(outside),
+        anchors_(anchors),
+        cx_(g.n[0] + 1),
+        cy_(g.n[1] + 1),
+        cz_(g.n[2] + 1),
+        below_(static_cast<std::size_t>(cx_) * static_cast<std::size_t>(cy_)),
+        layer_(below_.size()) {}
+
+  TriangleMesh build() {
+    for (int z = 0; z < cz_; ++z) {
+      addLayerVertices(z);
+      addQuadsAroundLayer(z);
+      below_.swap(layer_);
+    }
+    return std::move(mesh_);
+  }
+
+ private:
+  bool inside(int x, int y, int z) const {
+    return g_.contains(x, y, z) ? solid_[g_.index(x, y, z)] != 0 : outside_;
+  }
+
+  std::size_t cell(int x, int y) const {
+    return static_cast<std::size_t>(y) * static_cast<std::size_t>(cx_) +
+           static_cast<std::size_t>(x);
+  }
+
   // The four cells are listed in a cycle around the edge; `flip` reverses the cycle so every
   // face winds counter-clockwise seen from the empty side.
-  const auto quad = [&](uint32_t a, uint32_t b, uint32_t c, uint32_t d, bool flip) {
+  void addQuad(uint32_t a, uint32_t b, uint32_t c, uint32_t d, bool flip) {
     if (flip) std::swap(b, d);
-    for (const uint32_t v : {a, b, c, a, c, d}) mesh.indices.push_back(v);
-  };
-  constexpr int kCorner[8][3] = {{0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 0},
-                                 {0, 0, 1}, {1, 0, 1}, {0, 1, 1}, {1, 1, 1}};
-  constexpr int kEdge[12][2] = {{0, 1}, {2, 3}, {4, 5}, {6, 7}, {0, 2}, {1, 3},
-                                {4, 6}, {5, 7}, {0, 4}, {1, 5}, {2, 6}, {3, 7}};
-  for (int z = 0; z < cz; ++z) {
-    for (int y = 0; y < cy; ++y) {
-      for (int x = 0; x < cx; ++x) {
-        bool corner[8];
-        int solidCorners = 0;
-        for (int k = 0; k < 8; ++k) {
-          corner[k] = inside(x - 1 + kCorner[k][0], y - 1 + kCorner[k][1], z - 1 + kCorner[k][2]);
-          solidCorners += corner[k] ? 1 : 0;
-        }
-        if (solidCorners == 0 || solidCorners == 8) continue;
-        layer[cell(x, y)] = static_cast<uint32_t>(mesh.vertexCount());
-        const int at[3] = {x, y, z};
-        // The mean of the solid corners' anchors, kept within the voxels around the cell.
-        float sum[3] = {0, 0, 0};
-        int anchored = 0;
-        for (int k = 0; k < 8; ++k) {
-          const int v[3] = {x - 1 + kCorner[k][0], y - 1 + kCorner[k][1], z - 1 + kCorner[k][2]};
-          if (!corner[k] || !g.contains(v[0], v[1], v[2])) continue;
-          const auto* point = anchors.find(g.index(v[0], v[1], v[2]));
-          if (point == nullptr) continue;
-          for (std::size_t axis = 0; axis < 3; ++axis) sum[axis] += (*point)[axis];
-          ++anchored;
-        }
-        if (anchored > 0) {
-          for (std::size_t axis = 0; axis < 3; ++axis) {
-            const float lo = g.origin[axis] + static_cast<float>(at[axis] - 1) * g.size;
-            mesh.positions.push_back(
-                std::clamp(sum[axis] / static_cast<float>(anchored), lo, lo + 2 * g.size));
-          }
-          continue;
-        }
-        // Space the fills or the carve made solid has no splats: the midpoints of the edges
-        // that cross the surface, averaged.
-        int crossings = 0;
-        for (const auto& e : kEdge) {
-          if (corner[e[0]] == corner[e[1]]) continue;
-          for (int axis = 0; axis < 3; ++axis) {
-            sum[axis] += 0.5f * static_cast<float>(kCorner[e[0]][axis] + kCorner[e[1]][axis]);
-          }
-          ++crossings;
-        }
-        for (std::size_t axis = 0; axis < 3; ++axis) {
-          // Corner k's voxel center sits at origin + (at - 0.5 + k) * size.
-          const float offset = sum[axis] / static_cast<float>(crossings);
-          mesh.positions.push_back(g.origin[axis] +
-                                   (static_cast<float>(at[axis]) - 0.5f + offset) * g.size);
-        }
+    for (const uint32_t v : {a, b, c, a, c, d}) mesh_.indices.push_back(v);
+  }
+
+  Corners cornersOf(int x, int y, int z) const {
+    Corners corner{};
+    for (std::size_t k = 0; k < corner.size(); ++k) {
+      corner[k] = inside(x - 1 + kCorner[k][0], y - 1 + kCorner[k][1], z - 1 + kCorner[k][2]);
+    }
+    return corner;
+  }
+
+  // Vertices for the cells of layer z, recording their ids in `layer_`.
+  void addLayerVertices(int z) {
+    for (int y = 0; y < cy_; ++y) {
+      for (int x = 0; x < cx_; ++x) {
+        const Corners corner = cornersOf(x, y, z);
+        if (!crossesSurface(corner)) continue;
+        layer_[cell(x, y)] = static_cast<uint32_t>(mesh_.vertexCount());
+        const std::array<int, 3> at = {x, y, z};
+        if (!addAnchoredVertex(at, corner)) addEdgeVertex(at, corner);
       }
     }
-    // Pairs in voxel plane z - 1, along x and along y: their cells lie in layers z - 1 and z.
+  }
+
+  // The sum of the anchors of the solid corners, and how many there were.
+  int sumCornerAnchors(const std::array<int, 3>& at, const Corners& corner,
+                       std::array<float, 3>& sum) const {
+    int anchored = 0;
+    for (std::size_t k = 0; k < corner.size(); ++k) {
+      const int v[3] = {at[0] - 1 + kCorner[k][0], at[1] - 1 + kCorner[k][1],
+                        at[2] - 1 + kCorner[k][2]};
+      if (!corner[k] || !g_.contains(v[0], v[1], v[2])) continue;
+      const auto* point = anchors_.find(g_.index(v[0], v[1], v[2]));
+      if (point == nullptr) continue;
+      for (std::size_t axis = 0; axis < 3; ++axis) sum[axis] += (*point)[axis];
+      ++anchored;
+    }
+    return anchored;
+  }
+
+  // The mean of the solid corners' anchors, kept within the voxels around the cell. False,
+  // adding nothing, when no corner has an anchor.
+  bool addAnchoredVertex(const std::array<int, 3>& at, const Corners& corner) {
+    std::array<float, 3> sum = {0, 0, 0};
+    const int anchored = sumCornerAnchors(at, corner, sum);
+    if (anchored == 0) return false;
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      const float lo = g_.origin[axis] + static_cast<float>(at[axis] - 1) * g_.size;
+      mesh_.positions.push_back(
+          std::clamp(sum[axis] / static_cast<float>(anchored), lo, lo + 2 * g_.size));
+    }
+    return true;
+  }
+
+  // Space the fills or the carve made solid has no splats: the midpoints of the edges that
+  // cross the surface, averaged.
+  void addEdgeVertex(const std::array<int, 3>& at, const Corners& corner) {
+    std::array<float, 3> sum = {0, 0, 0};
+    int crossings = 0;
+    for (const auto& e : kEdge) {
+      if (corner[e[0]] == corner[e[1]]) continue;
+      for (std::size_t axis = 0; axis < 3; ++axis) {
+        sum[axis] += 0.5f * static_cast<float>(kCorner[e[0]][axis] + kCorner[e[1]][axis]);
+      }
+      ++crossings;
+    }
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      // Corner k's voxel center sits at origin + (at - 0.5 + k) * size.
+      const float offset = sum[axis] / static_cast<float>(crossings);
+      mesh_.positions.push_back(g_.origin[axis] +
+                                (static_cast<float>(at[axis]) - 0.5f + offset) * g_.size);
+    }
+  }
+
+  void addQuadsAroundLayer(int z) {
     const int vz = z - 1;
-    if (vz >= 0 && vz < g.n[2]) {
-      for (int vy = 0; vy < g.n[1]; ++vy) {
-        for (int vx = -1; vx < g.n[0]; ++vx) {
-          const bool here = inside(vx, vy, vz);
-          if (here == inside(vx + 1, vy, vz)) continue;
-          quad(below[cell(vx + 1, vy)], layer[cell(vx + 1, vy)], layer[cell(vx + 1, vy + 1)],
-               below[cell(vx + 1, vy + 1)], here);
-        }
-      }
-      for (int vy = -1; vy < g.n[1]; ++vy) {
-        for (int vx = 0; vx < g.n[0]; ++vx) {
-          const bool here = inside(vx, vy, vz);
-          if (here == inside(vx, vy + 1, vz)) continue;
-          quad(below[cell(vx, vy + 1)], below[cell(vx + 1, vy + 1)], layer[cell(vx + 1, vy + 1)],
-               layer[cell(vx, vy + 1)], here);
-        }
+    if (vz >= 0 && vz < g_.n[2]) {
+      addQuadsAlongX(vz);
+      addQuadsAlongY(vz);
+    }
+    addQuadsAlongZ(z);
+  }
+
+  // Pairs in voxel plane vz along x: their cells lie in layers vz and vz + 1.
+  void addQuadsAlongX(int vz) {
+    for (int vy = 0; vy < g_.n[1]; ++vy) {
+      for (int vx = -1; vx < g_.n[0]; ++vx) {
+        const bool here = inside(vx, vy, vz);
+        if (here == inside(vx + 1, vy, vz)) continue;
+        addQuad(below_[cell(vx + 1, vy)], layer_[cell(vx + 1, vy)], layer_[cell(vx + 1, vy + 1)],
+                below_[cell(vx + 1, vy + 1)], here);
       }
     }
-    // Pairs between voxel planes z - 1 and z: their four cells all lie in layer z.
-    for (int vy = 0; vy < g.n[1]; ++vy) {
-      for (int vx = 0; vx < g.n[0]; ++vx) {
+  }
+
+  // Pairs in voxel plane vz along y: their cells lie in layers vz and vz + 1.
+  void addQuadsAlongY(int vz) {
+    for (int vy = -1; vy < g_.n[1]; ++vy) {
+      for (int vx = 0; vx < g_.n[0]; ++vx) {
+        const bool here = inside(vx, vy, vz);
+        if (here == inside(vx, vy + 1, vz)) continue;
+        addQuad(below_[cell(vx, vy + 1)], below_[cell(vx + 1, vy + 1)],
+                layer_[cell(vx + 1, vy + 1)], layer_[cell(vx, vy + 1)], here);
+      }
+    }
+  }
+
+  // Pairs between voxel planes z - 1 and z: their four cells all lie in layer z.
+  void addQuadsAlongZ(int z) {
+    for (int vy = 0; vy < g_.n[1]; ++vy) {
+      for (int vx = 0; vx < g_.n[0]; ++vx) {
         const bool here = inside(vx, vy, z - 1);
         if (here == inside(vx, vy, z)) continue;
-        quad(layer[cell(vx, vy)], layer[cell(vx + 1, vy)], layer[cell(vx + 1, vy + 1)],
-             layer[cell(vx, vy + 1)], !here);
+        addQuad(layer_[cell(vx, vy)], layer_[cell(vx + 1, vy)], layer_[cell(vx + 1, vy + 1)],
+                layer_[cell(vx, vy + 1)], !here);
       }
     }
-    below.swap(layer);
   }
-  return mesh;
+
+  const Grid& g_;
+  const Mask& solid_;
+  bool outside_;
+  const Anchors& anchors_;
+  int cx_;
+  int cy_;
+  int cz_;
+  // Vertex ids of the cells in the previous layer (z - 1) and this one (z).
+  std::vector<uint32_t> below_;
+  std::vector<uint32_t> layer_;
+  TriangleMesh mesh_;
+};
+
+bool hasInvalidOptions(const ColliderBuildOptions& options) {
+  return !(options.voxelSize > 0) || options.solidOpacity <= 0 || options.solidOpacity >= 1 ||
+         options.maxVoxels < 64 || !(options.exteriorFillRadius >= 0) ||
+         !(options.capsuleHeight >= 0) || !(options.capsuleRadius >= 0) ||
+         options.boundsQuantile < 0 || options.boundsQuantile >= 0.5f;
 }
 
-}  // namespace
-
-Result<TriangleMesh> buildCollider(const SplatCloud& cloud, const ColliderBuildOptions& options,
-                                   ColliderBuildReport* report) {
-  if (!(options.voxelSize > 0) || options.solidOpacity <= 0 || options.solidOpacity >= 1 ||
-      options.maxVoxels < 64 || !(options.exteriorFillRadius >= 0) ||
-      !(options.capsuleHeight >= 0) || !(options.capsuleRadius >= 0) ||
-      options.boundsQuantile < 0 || options.boundsQuantile >= 0.5f) {
-    return Error{ErrorCode::corrupt, "invalid collider build options"};
-  }
+// The splats that can mark a voxel: visible, with finite positions and covariances.
+std::vector<uint32_t> usableSplats(const SplatCloud& cloud) {
   const std::size_t count = cloud.count();
-  if (cloud.covariances.size() < count * 6 || cloud.alphas.size() < count) {
-    return Error{ErrorCode::corrupt, "splat cloud is missing covariances or alphas"};
-  }
   std::vector<uint32_t> used;
   used.reserve(count);
   for (std::size_t i = 0; i < count; ++i) {
@@ -461,58 +560,102 @@ Result<TriangleMesh> buildCollider(const SplatCloud& cloud, const ColliderBuildO
     if (!std::isfinite(p[0] + p[1] + p[2]) || !std::isfinite(c[0] + c[3] + c[5])) continue;
     used.push_back(static_cast<uint32_t>(i));
   }
-  if (used.empty()) return Error{ErrorCode::corrupt, "no splats to build a collider from"};
+  return used;
+}
 
-  // The grid spans the splats' robust bounds, padded with the empty space the fills need.
+struct Bounds {
   std::array<float, 3> lo{};
   std::array<float, 3> hi{};
+};
+
+// The box between the `tail` and 1 - `tail` quantiles of the positions on each axis.
+Bounds robustBounds(const SplatCloud& cloud, const std::vector<uint32_t>& used, float tail) {
+  Bounds bounds;
   for (std::size_t axis = 0; axis < 3; ++axis) {
     std::vector<float> values;
     values.reserve(used.size());
     for (const uint32_t i : used) values.push_back(cloud.positions[i * 3 + axis]);
-    lo[axis] = quantile(values, options.boundsQuantile);
-    hi[axis] = quantile(std::move(values), 1.0f - options.boundsQuantile);
+    bounds.lo[axis] = quantile(values, tail);
+    bounds.hi[axis] = quantile(std::move(values), 1.0f - tail);
   }
-  const bool exterior = options.exteriorFillRadius > 0;
-  const bool floor = options.floorFillRadius >= 0;
-  Grid g;
-  g.size = options.voxelSize;
+  return bounds;
+}
+
+// The grid over the bounds with the empty margin the fills need, and the fill radii in voxels
+// at the voxel size the grid ended up with.
+struct GridPlan {
+  Grid grid;
   int exteriorVoxels = 0;
   int floorVoxels = 0;
+};
+
+GridPlan planGrid(const ColliderBuildOptions& options, const Bounds& bounds) {
+  const bool exterior = options.exteriorFillRadius > 0;
+  const bool floor = options.floorFillRadius >= 0;
+  GridPlan plan;
+  Grid& g = plan.grid;
+  g.size = options.voxelSize;
   for (;;) {
-    exteriorVoxels =
+    plan.exteriorVoxels =
         exterior ? static_cast<int>(std::ceil(options.exteriorFillRadius / g.size)) : 0;
-    floorVoxels = floor ? static_cast<int>(std::ceil(options.floorFillRadius / g.size)) : 0;
+    plan.floorVoxels = floor ? static_cast<int>(std::ceil(options.floorFillRadius / g.size)) : 0;
     // The exterior flood needs room to pass around the scene outside its r-voxel seal, so it
     // gets 2r + 1 voxels where splat-transform pads r + 1.
-    const int padXZ = std::max(2 * exteriorVoxels, floorVoxels) + 1;
-    const int pad[3] = {padXZ, 2 * exteriorVoxels + 1, padXZ};
+    const int padXZ = std::max(2 * plan.exteriorVoxels, plan.floorVoxels) + 1;
+    const int pad[3] = {padXZ, 2 * plan.exteriorVoxels + 1, padXZ};
     for (std::size_t axis = 0; axis < 3; ++axis) {
-      g.n[axis] = static_cast<int>(std::ceil((hi[axis] - lo[axis]) / g.size)) + 1 + 2 * pad[axis];
-      g.origin[axis] = lo[axis] - static_cast<float>(pad[axis]) * g.size;
+      g.n[axis] = static_cast<int>(std::ceil((bounds.hi[axis] - bounds.lo[axis]) / g.size)) + 1 +
+                  2 * pad[axis];
+      g.origin[axis] = bounds.lo[axis] - static_cast<float>(pad[axis]) * g.size;
     }
     if (g.count() <= options.maxVoxels) break;
     const double over = static_cast<double>(g.count()) / static_cast<double>(options.maxVoxels);
     g.size *= std::max(1.02f, static_cast<float>(std::cbrt(over)));
   }
+  return plan;
+}
 
-  // gpu-voxelization.ts: each splat adds opacity * exp(-d^2 / 2) to a voxel, d being the
-  // Mahalanobis distance from its center to the nearest point of the voxel, so a splat
-  // thinner than a voxel still reaches every voxel it passes through. Beer-Lambert turns the
-  // summed density into opacity.
+// gpu-voxelization.ts: each splat adds opacity * exp(-d^2 / 2) to a voxel, d being the
+// Mahalanobis distance from its center to the nearest point of the voxel, so a splat
+// thinner than a voxel still reaches every voxel it passes through. Beer-Lambert turns the
+// summed density into opacity.
+Mask voxelize(const Grid& g, const SplatCloud& cloud, const std::vector<uint32_t>& used,
+              float solidOpacity) {
+  std::vector<float> density(g.count(), 0.0f);
+  forEachFootprint(g, cloud, used, [&](std::size_t voxel, double weight, const float*) {
+    density[voxel] += static_cast<float>(weight);
+  });
+  const float solidDensity = -std::log1p(-solidOpacity);
   Mask solid(g.count());
-  {
-    std::vector<float> density(g.count(), 0.0f);
-    forEachFootprint(g, cloud, used, [&](std::size_t voxel, double weight, const float*) {
-      density[voxel] += static_cast<float>(weight);
-    });
-    const float solidDensity = -std::log1p(-options.solidOpacity);
-    for (std::size_t i = 0; i < solid.size(); ++i) solid[i] = density[i] >= solidDensity ? 1 : 0;
+  for (std::size_t i = 0; i < solid.size(); ++i) solid[i] = density[i] >= solidDensity ? 1 : 0;
+  return solid;
+}
+
+}  // namespace
+
+Result<TriangleMesh> buildCollider(const SplatCloud& cloud, const ColliderBuildOptions& options,
+                                   ColliderBuildReport* report) {
+  if (hasInvalidOptions(options)) {
+    return Error{ErrorCode::corrupt, "invalid collider build options"};
   }
+  const std::size_t count = cloud.count();
+  if (cloud.covariances.size() < count * 6 || cloud.alphas.size() < count) {
+    return Error{ErrorCode::corrupt, "splat cloud is missing covariances or alphas"};
+  }
+  const std::vector<uint32_t> used = usableSplats(cloud);
+  if (used.empty()) return Error{ErrorCode::corrupt, "no splats to build a collider from"};
+
+  // The grid spans the splats' robust bounds, padded with the empty space the fills need.
+  const GridPlan plan = planGrid(options, robustBounds(cloud, used, options.boundsQuantile));
+  const Grid& g = plan.grid;
+  const bool floor = options.floorFillRadius >= 0;
+
+  Mask solid = voxelize(g, cloud, used, options.solidOpacity);
   cleanup(g, solid);
   const Anchors anchors = anchor(g, cloud, used, solid);
-  const bool exteriorFilled = exterior && fillExterior(g, solid, exteriorVoxels, options.seed);
-  if (floor) fillFloor(g, solid, floorVoxels);
+  const bool exteriorFilled =
+      options.exteriorFillRadius > 0 && fillExterior(g, solid, plan.exteriorVoxels, options.seed);
+  if (floor) fillFloor(g, solid, plan.floorVoxels);
   const bool carved =
       options.capsuleHeight > 0 &&
       carve(g, solid, static_cast<int>(std::lround(options.capsuleRadius / g.size)),
@@ -540,7 +683,7 @@ Result<TriangleMesh> buildCollider(const SplatCloud& cloud, const ColliderBuildO
   }
   // After a carve everything the walker cannot reach is solid, beyond the grid too, so only
   // the walkable cavity is meshed rather than also the grid's outer box.
-  return surfaceNet(g, solid, carved, anchors);
+  return SurfaceNet(g, solid, carved, anchors).build();
 }
 
 }  // namespace splat

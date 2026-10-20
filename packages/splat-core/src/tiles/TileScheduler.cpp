@@ -7,6 +7,36 @@
 #include <utility>
 
 namespace splat {
+namespace {
+
+bool inView(const Tile& tile, const TileView& view) {
+  return view.frustum.intersects(tile.bounds.min, tile.bounds.max);
+}
+
+// What swapping a tile for its visible children would show and take.
+struct Refinement {
+  std::vector<std::uint32_t> shown;
+  std::uint64_t cost = 0;  // splats of the shown children
+  bool landed = true;      // every shown child is resident
+  bool blocked = false;    // a shown child cannot be read, which pins the parent
+
+  bool possible() const { return !blocked && !shown.empty(); }
+};
+
+Refinement refinementOf(const Tileset& tileset, const std::vector<TileState>& states,
+                        const Tile& tile, const TileView& view) {
+  Refinement refinement;
+  for (const std::uint32_t child : tile.children) {
+    if (!inView(tileset.tiles[child], view)) continue;
+    if (states[child] == TileState::failed) refinement.blocked = true;
+    if (states[child] != TileState::resident) refinement.landed = false;
+    refinement.shown.push_back(child);
+    refinement.cost += tileset.tiles[child].count;
+  }
+  return refinement;
+}
+
+}  // namespace
 
 TileScheduler::TileScheduler(std::shared_ptr<const Tileset> tileset, std::uint32_t residency)
     : tileset_(std::move(tileset)),
@@ -20,8 +50,7 @@ TileScheduler::TileScheduler(std::shared_ptr<const Tileset> tileset, std::uint32
 }
 
 bool TileScheduler::visible(std::uint32_t index, const TileView& view) const {
-  const Tile& tile = tileset_->tiles[index];
-  return view.frustum.intersects(tile.bounds.min, tile.bounds.max);
+  return inView(tileset_->tiles[index], view);
 }
 
 // The world units per unit depth the tile hides: its error over the distance from the
@@ -77,31 +106,19 @@ std::vector<std::uint32_t> TileScheduler::cover(const TileView& view) {
   while (!open.empty()) {
     const std::uint32_t index = open.top().tile;
     open.pop();
-    const Tile& tile = tileset_->tiles[index];
-    bool refine = !fineEnough(index, view);
-    std::uint64_t cost = 0;
-    std::vector<std::uint32_t> shown;
-    bool landed = true;
-    if (refine) {
-      for (const std::uint32_t child : tile.children) {
-        if (!visible(child, view)) continue;
-        if (states_[child] == TileState::failed) refine = false;
-        if (states_[child] != TileState::resident) landed = false;
-        shown.push_back(child);
-        cost += costOf(child);
-      }
-      if (shown.empty()) refine = false;
-    }
+    Refinement refinement;
+    if (!fineEnough(index, view))
+      refinement = refinementOf(*tileset_, states_, tileset_->tiles[index], view);
     // A resident tile stands in while its children load, so its room stays taken.
     const std::uint64_t freed =
-        (landed || states_[index] != TileState::resident) ? costOf(index) : 0;
-    if (refine && reserved - freed + cost > slab_.capacity()) refine = false;
-    if (!refine) {
+        (refinement.landed || states_[index] != TileState::resident) ? costOf(index) : 0;
+    if (!refinement.possible() || reserved - freed + refinement.cost > slab_.capacity()) {
       out.push_back(index);
       continue;
     }
-    reserved += cost - freed;
-    for (const std::uint32_t child : shown) open.push({screenError(child, origin), child});
+    reserved += refinement.cost - freed;
+    for (const std::uint32_t child : refinement.shown)
+      open.push({screenError(child, origin), child});
   }
   return out;
 }
@@ -163,11 +180,8 @@ void TileScheduler::release(std::uint32_t tile, TileState next) {
   states_[tile] = next;
 }
 
-TileScheduler::Plan TileScheduler::plan(const TileView& view,
-                                        const std::vector<std::uint32_t>& pinned) {
-  ++frame_;
-  for (const std::uint32_t tile : pinned) lastUsed_[tile] = frame_;
-  Plan plan;
+// Marks the cover, walks down to it and returns the tiles it wants.
+std::vector<TileScheduler::Wanted> TileScheduler::walkCover(const TileView& view, Plan& plan) {
   std::vector<Wanted> wanted;
   std::vector<bool> inCover(states_.size(), false);
   for (const std::uint32_t tile : cover(view)) inCover[tile] = true;
@@ -176,40 +190,61 @@ TileScheduler::Plan TileScheduler::plan(const TileView& view,
   if (states_[tileset_->root] != TileState::resident && !inCover[tileset_->root]) {
     want(tileset_->root, std::numeric_limits<float>::infinity(), wanted);
   }
+  return wanted;
+}
 
-  std::stable_sort(wanted.begin(), wanted.end(),
-                   [](const Wanted& a, const Wanted& b) { return a.priority > b.priority; });
-
-  // Eviction candidates, most recently used last so the back is the least recent.
+// Resident tiles this plan does not use, most recently used last so the back is the least recent.
+std::vector<std::uint32_t> TileScheduler::evictionCandidates() const {
   std::vector<std::uint32_t> evictable;
   for (std::uint32_t i = 0; i < states_.size(); ++i) {
     if (states_[i] == TileState::resident && lastUsed_[i] != frame_) evictable.push_back(i);
   }
   std::sort(evictable.begin(), evictable.end(),
             [&](std::uint32_t a, std::uint32_t b) { return lastUsed_[a] > lastUsed_[b]; });
-  // Loads placed for tiles no longer wanted are abandoned so the room goes to the cover.
+  return evictable;
+}
+
+// Loads placed for tiles no longer wanted are abandoned so the room goes to the cover.
+void TileScheduler::abandonStaleLoads(Plan& plan) {
   for (std::uint32_t i = 0; i < states_.size(); ++i) {
     if (states_[i] == TileState::loading && lastUsed_[i] != frame_ && !fetchAll_) {
       plan.drop.push_back({i, offsets_[i], tileset_->tiles[i].count});
       release(i, TileState::absent);
     }
   }
+}
 
+void TileScheduler::queueWanted(const std::vector<Wanted>& wanted, Plan& plan,
+                                std::vector<std::uint32_t>& evictable) {
   for (const Wanted& w : wanted) {
     if (states_[w.tile] == TileState::absent && !place(w.tile, plan, evictable)) continue;
     if (states_[w.tile] != TileState::loading) continue;
     plan.load.push_back({w.tile, offsets_[w.tile], w.priority});
   }
+}
 
-  // The rest of a scene that fits whole, last and at the lowest priority. Nothing is ever
-  // evicted in this case, so a tile fetched for a turn stays for it.
-  if (fetchAll_) {
-    for (std::uint32_t tile = 0; tile < states_.size(); ++tile) {
-      if (lastUsed_[tile] == frame_ || states_[tile] == TileState::failed) continue;
-      if (states_[tile] == TileState::absent && !place(tile, plan, evictable)) continue;
-      if (states_[tile] == TileState::loading) plan.load.push_back({tile, offsets_[tile], 0.0f});
-    }
+// The rest of a scene that fits whole, last and at the lowest priority. Nothing is ever
+// evicted in this case, so a tile fetched for a turn stays for it.
+void TileScheduler::queueRemainder(Plan& plan, std::vector<std::uint32_t>& evictable) {
+  for (std::uint32_t tile = 0; tile < states_.size(); ++tile) {
+    if (lastUsed_[tile] == frame_ || states_[tile] == TileState::failed) continue;
+    if (states_[tile] == TileState::absent && !place(tile, plan, evictable)) continue;
+    if (states_[tile] == TileState::loading) plan.load.push_back({tile, offsets_[tile], 0.0f});
   }
+}
+
+TileScheduler::Plan TileScheduler::plan(const TileView& view,
+                                        const std::vector<std::uint32_t>& pinned) {
+  ++frame_;
+  for (const std::uint32_t tile : pinned) lastUsed_[tile] = frame_;
+  Plan plan;
+  std::vector<Wanted> wanted = walkCover(view, plan);
+  std::stable_sort(wanted.begin(), wanted.end(),
+                   [](const Wanted& a, const Wanted& b) { return a.priority > b.priority; });
+  std::vector<std::uint32_t> evictable = evictionCandidates();
+  abandonStaleLoads(plan);
+  queueWanted(wanted, plan, evictable);
+  if (fetchAll_) queueRemainder(plan, evictable);
   return plan;
 }
 

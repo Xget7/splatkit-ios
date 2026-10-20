@@ -21,6 +21,7 @@
 #include <exception>
 #include <filesystem>
 #include <limits>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -60,76 +61,116 @@ bool parseCount(const char* flag, const char* text, uint32_t least, uint32_t& va
   return true;
 }
 
-int run(int argc, char** argv) {
-  if (argc < 3) return usage();
-  const std::string in = argv[1];
-  const std::string out = argv[2];
-  splat::TileBuildOptions options;
+struct TileOptions {
+  std::string in;
+  std::string out;
+  splat::TileBuildOptions build;
   int sh = -1;
   float pruneAlpha = -1.0f;
-  for (int i = 3; i < argc; ++i) {
-    if (std::strcmp(argv[i], "--tile") == 0 && i + 1 < argc) {
-      if (!parseCount("--tile", argv[i + 1], kLeastTile, options.chunks.chunkSplats))
-        return usage();
-      ++i;
-    } else if (std::strcmp(argv[i], "--fan-out") == 0 && i + 1 < argc) {
-      if (!parseCount("--fan-out", argv[i + 1], kLeastFanOut, options.chunks.fanOut))
-        return usage();
-      ++i;
-    } else if (std::strcmp(argv[i], "--sh") == 0 && i + 1 < argc)
-      sh = std::atoi(argv[++i]);
-    else if (std::strcmp(argv[i], "--prune-alpha") == 0 && i + 1 < argc)
-      pruneAlpha = std::strtof(argv[++i], nullptr);
-    else
-      return usage();
-  }
-  if (sh > 3 || pruneAlpha > 1.0f) return usage();
+};
 
-  const auto start = std::chrono::steady_clock::now();
+// Applies `flag value` to `options`; false for an unknown flag or a value it rejects.
+bool applyFlag(const char* flag, const char* value, TileOptions& options) {
+  if (std::strcmp(flag, "--tile") == 0) {
+    return parseCount(flag, value, kLeastTile, options.build.chunks.chunkSplats);
+  }
+  if (std::strcmp(flag, "--fan-out") == 0) {
+    return parseCount(flag, value, kLeastFanOut, options.build.chunks.fanOut);
+  }
+  if (std::strcmp(flag, "--sh") == 0) {
+    options.sh = std::atoi(value);
+    return true;
+  }
+  if (std::strcmp(flag, "--prune-alpha") == 0) {
+    options.pruneAlpha = std::strtof(value, nullptr);
+    return true;
+  }
+  return false;
+}
+
+// Reads `in out_dir [flags]`; empty when the command line is not one the tool accepts.
+std::optional<TileOptions> parseOptions(int argc, char** argv) {
+  TileOptions options;
+  options.in = argv[1];
+  options.out = argv[2];
+  for (int i = 3; i < argc; i += 2) {
+    if (i + 1 >= argc || !applyFlag(argv[i], argv[i + 1], options)) return std::nullopt;
+  }
+  if (options.sh > 3 || options.pruneAlpha > 1.0f) return std::nullopt;
+  return options;
+}
+
+// Reads the scene, empty after saying on stderr why it cannot be tiled.
+std::optional<spz::GaussianCloud> loadCloud(const std::string& in) {
   spz::GaussianCloud cloud =
       endsWith(in, ".spz") ? spz::loadSpz(in, {}) : spz::loadSplatFromPly(in, {});
   if (cloud.numPoints <= 0) {
     std::fprintf(stderr, "could not read %s as a Gaussian splat scene\n", in.c_str());
-    return 1;
+    return std::nullopt;
   }
-  std::printf("%d splats, sh degree %d\n", cloud.numPoints, cloud.shDegree);
-  if (pruneAlpha >= 0.0f) {
-    const int dropped = splat::tools::pruneAlpha(cloud, pruneAlpha);
-    std::printf("pruned %d splats below opacity %.4f\n", dropped, pruneAlpha);
-  }
-  if (sh >= 0) splat::tools::truncateSh(cloud, sh);
-  std::filesystem::create_directories(out);
+  return cloud;
+}
 
-  auto built = splat::buildTiles(cloud, out, options);
+// What the tiles of each level of detail add up to, level 0 being the finest.
+struct LevelTotals {
+  std::vector<std::size_t> tiles;
+  std::vector<std::size_t> splats;
+  std::vector<std::uintmax_t> bytes;
+  std::size_t treeNodes = 0;
+};
+
+LevelTotals totalLevels(const splat::Tileset& set, const std::string& dir) {
+  LevelTotals totals;
+  for (const splat::Tile& t : set.tiles) {
+    const auto level = static_cast<std::size_t>(t.level);
+    if (level >= totals.tiles.size()) {
+      totals.tiles.resize(level + 1);
+      totals.splats.resize(level + 1);
+      totals.bytes.resize(level + 1);
+    }
+    ++totals.tiles[level];
+    totals.splats[level] += t.count;
+    totals.treeNodes += t.count;
+    totals.bytes[level] += std::filesystem::file_size(std::filesystem::path(dir) / t.file);
+  }
+  return totals;
+}
+
+void printSummary(const splat::Tileset& set, const LevelTotals& totals, double seconds) {
+  std::printf("wrote %zu tiles in %.1f s\n", set.tiles.size(), seconds);
+  std::printf("%zu tree nodes over %zu leaves\n", totals.treeNodes, set.splatCount);
+  for (std::size_t level = 0; level < totals.tiles.size(); ++level) {
+    std::printf("level %zu: %zu tiles, %zu splats, %.1f MB\n", level, totals.tiles[level],
+                totals.splats[level], totals.bytes[level] / 1048576.0);
+  }
+}
+
+int run(int argc, char** argv) {
+  if (argc < 3) return usage();
+  const auto options = parseOptions(argc, argv);
+  if (!options) return usage();
+
+  const auto start = std::chrono::steady_clock::now();
+  auto cloud = loadCloud(options->in);
+  if (!cloud) return 1;
+  std::printf("%d splats, sh degree %d\n", cloud->numPoints, cloud->shDegree);
+  if (options->pruneAlpha >= 0.0f) {
+    const int dropped = splat::tools::pruneAlpha(*cloud, options->pruneAlpha);
+    std::printf("pruned %d splats below opacity %.4f\n", dropped, options->pruneAlpha);
+  }
+  if (options->sh >= 0) splat::tools::truncateSh(*cloud, options->sh);
+  std::filesystem::create_directories(options->out);
+
+  auto built = splat::buildTiles(*cloud, options->out, options->build);
   if (!built.ok()) {
     std::fprintf(stderr, "%s\n", built.error().message.c_str());
     return 1;
   }
   const splat::Tileset& set = built.value();
-  std::vector<std::size_t> tilesPerLevel;
-  std::vector<std::size_t> splatsPerLevel;
-  std::vector<std::uintmax_t> bytesPerLevel;
-  std::size_t treeNodes = 0;
-  for (const splat::Tile& t : set.tiles) {
-    const auto level = static_cast<std::size_t>(t.level);
-    if (level >= tilesPerLevel.size()) {
-      tilesPerLevel.resize(level + 1);
-      splatsPerLevel.resize(level + 1);
-      bytesPerLevel.resize(level + 1);
-    }
-    ++tilesPerLevel[level];
-    splatsPerLevel[level] += t.count;
-    treeNodes += t.count;
-    bytesPerLevel[level] += std::filesystem::file_size(std::filesystem::path(out) / t.file);
-  }
+  const LevelTotals totals = totalLevels(set, options->out);
   const double seconds =
       std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-  std::printf("wrote %zu tiles in %.1f s\n", set.tiles.size(), seconds);
-  std::printf("%zu tree nodes over %zu leaves\n", treeNodes, set.splatCount);
-  for (std::size_t level = 0; level < tilesPerLevel.size(); ++level) {
-    std::printf("level %zu: %zu tiles, %zu splats, %.1f MB\n", level, tilesPerLevel[level],
-                splatsPerLevel[level], bytesPerLevel[level] / 1048576.0);
-  }
+  printSummary(set, totals, seconds);
   return 0;
 }
 

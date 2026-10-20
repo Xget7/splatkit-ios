@@ -174,6 +174,76 @@ int openDirections(const Collider& collider, const CharacterSettings& settings, 
   return open;
 }
 
+// Rings of grid points out to the far corner, which is `reach` away.
+int ringsFor(float reach, float spacing) {
+  return static_cast<int>(reach / spacing) + 1;
+}
+
+// Arm's length apart, coarser only if the collider is vast.
+float candidateSpacing(float reach, float bodyRadius) {
+  float spacing = std::max(2.0f * bodyRadius, 0.1f);
+  while (ringsFor(reach, spacing) * ringsFor(reach, spacing) * 4 > kMaxCandidates) spacing *= 2.0f;
+  return spacing;
+}
+
+// A camera standing over the collider names a place, and the search keeps it. One outside
+// names none, so the middle of the collider is the better start than the edge nearest it:
+// the walker arrives in the space rather than pressed against its boundary.
+Vec3 searchStart(Vec3 lo, Vec3 hi, Vec3 from) {
+  const bool over = from.x >= lo.x && from.x <= hi.x && from.z >= lo.z && from.z <= hi.z;
+  return over ? from : Vec3{(lo.x + hi.x) * 0.5f, from.y, (lo.z + hi.z) * 0.5f};
+}
+
+// The square rings of columns around `start`, each ring only its new perimeter. Remembers the
+// best spot that was not open on every side.
+struct StandingSearch {
+  const Collider& collider;
+  const CharacterSettings& settings;
+  Vec3 lo;
+  Vec3 hi;
+  Vec3 start;
+  float fromY;
+  float spacing;
+  std::vector<float> surfaces{};
+  std::optional<Vec3> fallback{};
+  int fallbackOpen = 0;
+
+  bool outOfBounds(float x, float z) const { return x < lo.x || x > hi.x || z < lo.z || z > hi.z; }
+
+  // The eye of the first floor in the column at (x, z) with room on every side, if any.
+  std::optional<Vec3> searchColumn(float x, float z) {
+    columnSurfaces(collider, x, z, surfaces);
+    // Nearest floor in height first, so a teleport lands on the storey it aimed at.
+    std::sort(surfaces.begin(), surfaces.end(), [&](float a, float b) {
+      return std::abs(a + settings.eyeHeight - fromY) < std::abs(b + settings.eyeHeight - fromY);
+    });
+    for (const float floor : surfaces) {
+      const Vec3 eye{x, floor + settings.eyeHeight, z};
+      const int open = openDirections(collider, settings, eye);
+      if (open == kProbeDirections) return eye;
+      if (open > fallbackOpen) {
+        fallbackOpen = open;
+        fallback = eye;
+      }
+    }
+    return std::nullopt;
+  }
+
+  std::optional<Vec3> searchRing(int ring) {
+    for (int ix = -ring; ix <= ring; ++ix) {
+      for (int iz = -ring; iz <= ring; ++iz) {
+        // Only the new perimeter: the inside of the square was searched by earlier rings.
+        if (ring > 0 && std::abs(ix) != ring && std::abs(iz) != ring) continue;
+        const float x = start.x + static_cast<float>(ix) * spacing;
+        const float z = start.z + static_cast<float>(iz) * spacing;
+        if (outOfBounds(x, z)) continue;
+        if (const auto eye = searchColumn(x, z)) return eye;
+      }
+    }
+    return std::nullopt;
+  }
+};
+
 }  // namespace
 
 std::optional<Vec3> findStandingSpot(const Collider& collider, const CharacterSettings& settings,
@@ -182,49 +252,17 @@ std::optional<Vec3> findStandingSpot(const Collider& collider, const CharacterSe
   const Vec3 hi = collider.boundsMax();
   const float width = hi.x - lo.x;
   const float depth = hi.z - lo.z;
-  float spacing = std::max(2.0f * settings.bodyRadius, 0.1f);
-  // Rings out to the far corner, coarser than arm's length only if the collider is vast.
   const float reach = std::sqrt(width * width + depth * depth);
-  const auto ringsFor = [&](float step) { return static_cast<int>(reach / step) + 1; };
-  while (ringsFor(spacing) * ringsFor(spacing) * 4 > kMaxCandidates) spacing *= 2.0f;
-
-  // A camera standing over the collider names a place, and the search keeps it. One outside
-  // names none, so the middle of the collider is the better start than the edge nearest it:
-  // the walker arrives in the space rather than pressed against its boundary.
-  const bool over = from.x >= lo.x && from.x <= hi.x && from.z >= lo.z && from.z <= hi.z;
-  const Vec3 start = over ? from : Vec3{(lo.x + hi.x) * 0.5f, from.y, (lo.z + hi.z) * 0.5f};
-  std::vector<float> surfaces;
-  std::optional<Vec3> fallback;
-  int fallbackOpen = 0;
-  for (int ring = 0; ring <= ringsFor(spacing); ++ring) {
-    for (int ix = -ring; ix <= ring; ++ix)
-      for (int iz = -ring; iz <= ring; ++iz) {
-        // Only the new perimeter: the inside of the square was searched by earlier rings.
-        if (ring > 0 && std::abs(ix) != ring && std::abs(iz) != ring) continue;
-        const float x = start.x + static_cast<float>(ix) * spacing;
-        const float z = start.z + static_cast<float>(iz) * spacing;
-        if (x < lo.x || x > hi.x || z < lo.z || z > hi.z) continue;
-        columnSurfaces(collider, x, z, surfaces);
-        // Nearest floor in height first, so a teleport lands on the storey it aimed at.
-        std::sort(surfaces.begin(), surfaces.end(), [&](float a, float b) {
-          return std::abs(a + settings.eyeHeight - from.y) <
-                 std::abs(b + settings.eyeHeight - from.y);
-        });
-        for (const float floor : surfaces) {
-          const Vec3 eye{x, floor + settings.eyeHeight, z};
-          const int open = openDirections(collider, settings, eye);
-          if (open == kProbeDirections) return eye;
-          if (open > fallbackOpen) {
-            fallbackOpen = open;
-            fallback = eye;
-          }
-        }
-      }
+  const float spacing = candidateSpacing(reach, settings.bodyRadius);
+  StandingSearch search{collider, settings, lo, hi, searchStart(lo, hi, from), from.y, spacing};
+  const int rings = ringsFor(reach, spacing);
+  for (int ring = 0; ring <= rings; ++ring) {
+    if (const auto eye = search.searchRing(ring)) return eye;
     // A spot with room on every side beats a nearer one that is half boxed in, but only
     // within the ring that found it: no need to search the whole collider for a better one.
-    if (fallback && ring > 0) return fallback;
+    if (search.fallback && ring > 0) return search.fallback;
   }
-  return fallback;
+  return search.fallback;
 }
 
 }  // namespace splat

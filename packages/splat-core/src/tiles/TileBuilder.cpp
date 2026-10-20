@@ -58,6 +58,43 @@ Gaussian decodeGaussian(const Cloud& c, std::size_t i) {
   return g;
 }
 
+// Zeroes a[p][q] with a plane rotation applied to `a` (both sides) and accumulated into the
+// eigenvector columns `v`. a[p][q] must be nonzero.
+void rotateJacobi(double a[3][3], double v[3][3], int p, int q) {
+  const double theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
+  const double t = (theta >= 0 ? 1.0 : -1.0) / (std::abs(theta) + std::sqrt(theta * theta + 1));
+  const double c = 1 / std::sqrt(t * t + 1);
+  const double s = t * c;
+  for (int k = 0; k < 3; ++k) {
+    const double akp = a[k][p];
+    const double akq = a[k][q];
+    a[k][p] = c * akp - s * akq;
+    a[k][q] = s * akp + c * akq;
+  }
+  for (int k = 0; k < 3; ++k) {
+    const double apk = a[p][k];
+    const double aqk = a[q][k];
+    a[p][k] = c * apk - s * aqk;
+    a[q][k] = s * apk + c * aqk;
+  }
+  for (int k = 0; k < 3; ++k) {
+    const double vkp = v[k][p];
+    const double vkq = v[k][q];
+    v[k][p] = c * vkp - s * vkq;
+    v[k][q] = s * vkp + c * vkq;
+  }
+}
+
+// One pass over the three off-diagonal entries.
+void sweepJacobi(double a[3][3], double v[3][3]) {
+  for (int p = 0; p < 2; ++p) {
+    for (int q = p + 1; q < 3; ++q) {
+      if (std::abs(a[p][q]) < 1e-30) continue;
+      rotateJacobi(a, v, p, q);
+    }
+  }
+}
+
 // Eigenvalues and eigenvectors (columns) of a symmetric 3x3 matrix by cyclic Jacobi
 // rotations. Offline the cost does not matter; what matters is that the vectors are
 // orthonormal, since they become the rotation of a node.
@@ -70,34 +107,7 @@ void jacobiEigen(const std::array<float, 6>& upper, std::array<float, 3>& values
   for (int sweep = 0; sweep < 50; ++sweep) {
     const double off = a[0][1] * a[0][1] + a[0][2] * a[0][2] + a[1][2] * a[1][2];
     if (off < 1e-30) break;
-    for (int p = 0; p < 2; ++p) {
-      for (int q = p + 1; q < 3; ++q) {
-        if (std::abs(a[p][q]) < 1e-30) continue;
-        const double theta = (a[q][q] - a[p][p]) / (2 * a[p][q]);
-        const double t =
-            (theta >= 0 ? 1.0 : -1.0) / (std::abs(theta) + std::sqrt(theta * theta + 1));
-        const double c = 1 / std::sqrt(t * t + 1);
-        const double s = t * c;
-        for (auto& k : a) {
-          const double akp = k[p];
-          const double akq = k[q];
-          k[p] = c * akp - s * akq;
-          k[q] = s * akp + c * akq;
-        }
-        for (int k = 0; k < 3; ++k) {
-          const double apk = a[p][k];
-          const double aqk = a[q][k];
-          a[p][k] = c * apk - s * aqk;
-          a[q][k] = s * apk + c * aqk;
-        }
-        for (auto& k : v) {
-          const double vkp = k[p];
-          const double vkq = k[q];
-          k[p] = c * vkp - s * vkq;
-          k[q] = s * vkp + c * vkq;
-        }
-      }
-    }
+    sweepJacobi(a, v);
   }
   for (int k = 0; k < 3; ++k) {
     values[k] = static_cast<float>(a[k][k]);

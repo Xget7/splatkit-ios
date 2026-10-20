@@ -1,6 +1,7 @@
 #include "splat/navigation/Collider.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 
@@ -84,67 +85,115 @@ void Collider::buildGrid() {
   }
 }
 
-std::optional<RayHit> Collider::raycast(Vec3 origin, Vec3 direction, float maxDistance) const {
-  if (tri0_.empty()) return std::nullopt;
-  const Vec3 dir = normalize(direction);
-  if (length(dir) == 0) return std::nullopt;
+namespace {
 
-  // Clip the ray to the grid bounds (slab test) so traversal starts inside.
+struct RaySpan {
+  float tMin;
+  float tMax;
+};
+
+// The ray as it is walked: unit direction, and the distance past which nothing counts.
+struct Ray {
+  Vec3 origin;
+  Vec3 direction;
+  float tMax;
+};
+
+// Amanatides-Woo state per axis: the cell step, the distance along the ray to the next cell
+// boundary, and the distance between boundaries.
+struct CellWalk {
+  std::array<int, 3> step{};
+  std::array<float, 3> tNext{};
+  std::array<float, 3> tDelta{};
+};
+
+// The part of the ray inside the box (slab test), so grid traversal starts inside.
+std::optional<RaySpan> clipToBox(Vec3 origin, Vec3 dir, float maxDistance, Vec3 boxMin,
+                                 Vec3 boxMax) {
   float tMin = 0;
   float tMax = maxDistance;
   for (int k = 0; k < 3; ++k) {
     if (dir[k] == 0) {
-      if (origin[k] < boundsMin_[k] || origin[k] > boundsMax_[k]) return std::nullopt;
+      if (origin[k] < boxMin[k] || origin[k] > boxMax[k]) return std::nullopt;
       continue;
     }
     const float inv = 1 / dir[k];
-    float t0 = (boundsMin_[k] - origin[k]) * inv;
-    float t1 = (boundsMax_[k] - origin[k]) * inv;
+    float t0 = (boxMin[k] - origin[k]) * inv;
+    float t1 = (boxMax[k] - origin[k]) * inv;
     if (t0 > t1) std::swap(t0, t1);
     tMin = std::max(tMin, t0);
     tMax = std::min(tMax, t1);
     if (tMin > tMax) return std::nullopt;
   }
+  return RaySpan{tMin, tMax};
+}
 
-  const Vec3 start = origin + dir * tMin;
-  Cell cell = cellOf(start);
-  int* cellAxis[3] = {&cell.x, &cell.y, &cell.z};
-  int step[3];
-  float tNext[3];
-  float tDelta[3];
+// `start` is the ray's point at distance `tMin`, inside `cell`.
+CellWalk startCellWalk(Vec3 gridMin, float cellSize, const std::array<int, 3>& cell, Vec3 start,
+                       float tMin, Vec3 dir) {
   constexpr float kInf = std::numeric_limits<float>::infinity();
-  for (int k = 0; k < 3; ++k) {
-    step[k] = dir[k] >= 0 ? 1 : -1;
-    if (dir[k] == 0) {
-      tNext[k] = tDelta[k] = kInf;
+  CellWalk walk;
+  for (std::size_t k = 0; k < 3; ++k) {
+    const int axis = static_cast<int>(k);
+    walk.step[k] = dir[axis] >= 0 ? 1 : -1;
+    if (dir[axis] == 0) {
+      walk.tNext[k] = walk.tDelta[k] = kInf;
       continue;
     }
     const float boundary =
-        boundsMin_[k] + static_cast<float>(*cellAxis[k] + (step[k] > 0 ? 1 : 0)) * cellSize_;
-    tNext[k] = tMin + (boundary - start[k]) / dir[k];
-    tDelta[k] = cellSize_ / std::fabs(dir[k]);
+        gridMin[axis] + static_cast<float>(cell[k] + (walk.step[k] > 0 ? 1 : 0)) * cellSize;
+    walk.tNext[k] = tMin + (boundary - start[axis]) / dir[axis];
+    walk.tDelta[k] = cellSize / std::fabs(dir[axis]);
   }
+  return walk;
+}
+
+// The axis whose cell boundary is closest.
+std::size_t nearestBoundaryAxis(const std::array<float, 3>& tNext) {
+  return tNext[0] < tNext[1] ? (tNext[0] < tNext[2] ? 0 : 2) : (tNext[1] < tNext[2] ? 1 : 2);
+}
+
+// Replaces `best` with the hit at distance `t` on triangle v0 v1 v2 when it is in range and
+// nearer.
+void keepNearest(std::optional<RayHit>& best, const Ray& ray, std::optional<float> t, Vec3 v0,
+                 Vec3 v1, Vec3 v2) {
+  const bool nearer = t && *t <= ray.tMax && (!best || *t < best->distance);
+  if (!nearer) return;
+  Vec3 n = normalize(cross(v1 - v0, v2 - v0));
+  if (dot(n, ray.direction) > 0) n = -n;  // face the ray, whatever the winding
+  best = RayHit{*t, ray.origin + ray.direction * *t, n};
+}
+
+}  // namespace
+
+std::optional<RayHit> Collider::raycast(Vec3 origin, Vec3 direction, float maxDistance) const {
+  if (tri0_.empty()) return std::nullopt;
+  const Vec3 dir = normalize(direction);
+  if (length(dir) == 0) return std::nullopt;
+
+  const auto span = clipToBox(origin, dir, maxDistance, boundsMin_, boundsMax_);
+  if (!span) return std::nullopt;
+
+  const Ray ray{origin, dir, span->tMax};
+  const Vec3 start = origin + dir * span->tMin;
+  const Cell first = cellOf(start);
+  std::array<int, 3> cell = {first.x, first.y, first.z};
+  CellWalk walk = startCellWalk(boundsMin_, cellSize_, cell, start, span->tMin, dir);
 
   std::optional<RayHit> best;
   for (;;) {
-    const std::size_t ci = cellIndex(cell.x, cell.y, cell.z);
+    const std::size_t ci = cellIndex(cell[0], cell[1], cell[2]);
     for (uint32_t j = cellStart_[ci]; j < cellStart_[ci + 1]; ++j) {
       const uint32_t i = cellTris_[j];
-      const auto t = intersect(origin, dir, tri0_[i], tri1_[i], tri2_[i]);
-      if (t && *t <= tMax && (!best || *t < best->distance)) {
-        Vec3 n = normalize(cross(tri1_[i] - tri0_[i], tri2_[i] - tri0_[i]));
-        if (dot(n, dir) > 0) n = -n;  // face the ray, whatever the winding
-        best = RayHit{*t, origin + dir * *t, n};
-      }
+      keepNearest(best, ray, intersect(origin, dir, tri0_[i], tri1_[i], tri2_[i]), tri0_[i],
+                  tri1_[i], tri2_[i]);
     }
-    // Advance along the axis whose cell boundary is closest.
-    const int axis =
-        tNext[0] < tNext[1] ? (tNext[0] < tNext[2] ? 0 : 2) : (tNext[1] < tNext[2] ? 1 : 2);
-    if (best && best->distance <= tNext[axis]) return best;  // nothing closer can appear later
-    if (tNext[axis] > tMax) return best;
-    *cellAxis[axis] += step[axis];
-    if (*cellAxis[axis] < 0 || *cellAxis[axis] >= dims_[axis]) return best;
-    tNext[axis] += tDelta[axis];
+    const std::size_t axis = nearestBoundaryAxis(walk.tNext);
+    if (best && best->distance <= walk.tNext[axis]) return best;  // nothing closer can appear later
+    if (walk.tNext[axis] > ray.tMax) return best;
+    cell[axis] += walk.step[axis];
+    if (cell[axis] < 0 || cell[axis] >= dims_[axis]) return best;
+    walk.tNext[axis] += walk.tDelta[axis];
   }
 }
 

@@ -50,6 +50,283 @@ void putF32(uint8_t* p, float f) {
 size_t shStride(int degree) {
   return static_cast<size_t>((degree + 1) * (degree + 1) - 1) * 3;
 }
+
+// A failed check names the corruption; nullptr means the part is valid.
+using Failure = const char*;
+
+bool isNonNegativeFinite(float value) {
+  return std::isfinite(value) && value >= 0;
+}
+
+Failure checkDimensions(const LodTree& tree) {
+  const size_t n = tree.nodeCount();
+  const auto& c = tree.nodes;
+  if (n == 0 || n > kMaxNodes || c.shDegree < 0 || c.shDegree > 3 || tree.leafCount > n ||
+      c.positions.size() != n * 3 || c.covariances.size() != n * 6 || c.colors.size() != n * 3 ||
+      c.alphas.size() != n || c.sh.size() != n * shStride(c.shDegree))
+    return "LOD attribute dimensions or node count invalid";
+  return nullptr;
+}
+
+Failure checkBounds(const SplatCloud& c) {
+  for (int j = 0; j < 3; ++j)
+    if (!std::isfinite(c.bounds.min[j]) || !std::isfinite(c.bounds.max[j]) ||
+        c.bounds.min[j] > c.bounds.max[j])
+      return "LOD bounds invalid";
+  return nullptr;
+}
+
+Failure checkNodeAttributes(const LodNode& node, const SplatCloud& c, size_t i) {
+  if (!std::isfinite(node.size) || node.size < 0 || !std::isfinite(c.alphas[i]) ||
+      c.alphas[i] < 0 || c.alphas[i] > 1000)
+    return "LOD size or opacity invalid";
+  for (int j = 0; j < 3; ++j)
+    if (!std::isfinite(node.position[j]) || node.position[j] != c.positions[i * 3 + j] ||
+        !std::isfinite(c.colors[i * 3 + j]) || c.colors[i * 3 + j] < 0 || c.colors[i * 3 + j] > 1)
+      return "LOD position or colour invalid";
+  return nullptr;
+}
+
+Failure checkNodeCovariance(const SplatCloud& c, size_t i) {
+  std::array<float, 6> covariance{};
+  for (size_t j = 0; j < 6; ++j) {
+    covariance[j] = c.covariances[i * 6 + j];
+    if (!std::isfinite(covariance[j])) return "LOD covariance is non-finite";
+  }
+  const auto eigen = symmetricEigenvalues(covariance);
+  if (eigen[2] < -1e-5f * std::max(eigen[0], 1e-20f))
+    return "LOD covariance is not positive semidefinite";
+  return nullptr;
+}
+
+// What the breadth-first scan of the nodes accumulates.
+struct NodeScan {
+  std::vector<uint8_t> depths;
+  uint32_t deepest = 0;
+  size_t next = 1;
+  size_t leaves = 0;
+};
+
+// The children of a node are the next unclaimed run, which is what makes the order breadth first.
+Failure scanNodeChildren(const LodNode& node, size_t i, size_t n, NodeScan& scan) {
+  if (node.childCount == 0) {
+    ++scan.leaves;
+    return nullptr;
+  }
+  if (node.childStart != scan.next || node.childCount > n - scan.next ||
+      scan.depths[i] >= kMaxDepth)
+    return "LOD child ranges are not a bounded BFS tree";
+  for (size_t k = scan.next; k < scan.next + node.childCount; ++k)
+    scan.depths[k] = scan.depths[i] + 1;
+  scan.deepest = std::max(scan.deepest, uint32_t{scan.depths[i]} + 1);
+  scan.next += node.childCount;
+  return nullptr;
+}
+
+Failure scanNode(const LodTree& tree, size_t i, NodeScan& scan) {
+  if (i >= scan.next) return "LOD has unreachable nodes";
+  const LodNode& node = tree.layout[i];
+  if (const Failure failure = checkNodeAttributes(node, tree.nodes, i)) return failure;
+  if (const Failure failure = checkNodeCovariance(tree.nodes, i)) return failure;
+  return scanNodeChildren(node, i, tree.nodeCount(), scan);
+}
+
+Failure scanNodes(const LodTree& tree, NodeScan& scan) {
+  const size_t n = tree.nodeCount();
+  scan.depths.assign(n, 0);
+  for (size_t i = 0; i < n; ++i)
+    if (const Failure failure = scanNode(tree, i, scan)) return failure;
+  if (scan.next != n || scan.leaves != tree.leafCount) return "LOD topology or leaf count invalid";
+  return nullptr;
+}
+
+bool allFinite(const std::vector<float>& values) {
+  return std::all_of(values.begin(), values.end(), [](float v) { return std::isfinite(v); });
+}
+
+// The records the selection check has consumed so far; each cluster must start where they end.
+struct SelectionCursor {
+  size_t cluster = 1;
+  size_t leaf = 0;
+};
+
+Failure checkClusterRanges(const LodTree& tree, const LodCluster& cluster, size_t k,
+                           const SelectionCursor& cursor, size_t leaves) {
+  const size_t clusters = tree.selection.clusters.size();
+  if (k >= cursor.cluster || cluster.node >= tree.nodeCount() ||
+      cluster.childStart != cursor.cluster || cluster.childCount > clusters - cursor.cluster ||
+      cluster.leafStart != cursor.leaf || cluster.leafCount > leaves - cursor.leaf)
+    return "LOD selection ranges or error metadata invalid";
+  return nullptr;
+}
+
+Failure checkClusterMetadata(const LodCluster& cluster) {
+  if (!isNonNegativeFinite(cluster.error) || !isNonNegativeFinite(cluster.colorVariance) ||
+      !isNonNegativeFinite(cluster.opacity) || cluster.opacity > 1 ||
+      !isNonNegativeFinite(cluster.radius))
+    return "LOD selection ranges or error metadata invalid";
+  return nullptr;
+}
+
+Failure checkClusterSphere(const LodCluster& cluster) {
+  float radius2 = 0;
+  for (int j = 0; j < 3; ++j) {
+    if (!std::isfinite(cluster.center[j]) || !isNonNegativeFinite(cluster.extent[j]))
+      return "LOD selection bounds invalid";
+    radius2 += cluster.extent[j] * cluster.extent[j];
+  }
+  if (cluster.radius + 1e-5f * std::max(cluster.radius, 1.0f) < std::sqrt(radius2))
+    return "LOD sphere does not enclose its bounds";
+  return nullptr;
+}
+
+// The member's box must sit inside the cluster's. A leaf member (`child` is null) has no
+// cluster, so its box comes from its splat, with the same reach as buildLodSelectionData.
+Failure checkMemberSupport(const SplatCloud& c, const LodCluster& cluster, uint32_t index,
+                           const LodCluster* child) {
+  constexpr std::array<size_t, 3> kCovarianceDiagonal{0, 3, 5};
+  const float reach = std::sqrt(2 * std::log(std::max(255.0f * c.alphas[index], 1.0f)));
+  for (int axis = 0; axis < 3; ++axis) {
+    const float center = child ? child->center[axis] : c.positions[index * 3 + axis];
+    const float variance = std::max(c.covariances[index * 6 + kCovarianceDiagonal[axis]], 0.0f);
+    const float extent = child ? child->extent[axis] : reach * std::sqrt(variance);
+    const float tolerance = 1e-4f * std::max({1.0f, std::abs(center), extent});
+    if (std::abs(center - cluster.center[axis]) + extent > cluster.extent[axis] + tolerance)
+      return "LOD bounds do not enclose descendant support";
+  }
+  return nullptr;
+}
+
+// What a cluster's members add up to; compared with the counts the cluster declares.
+struct ClusterMembers {
+  uint32_t interior = 0;
+  uint32_t leaves = 0;
+  uint32_t subtreeLeaves = 0;
+};
+
+Failure checkClusterMember(const LodTree& tree, const LodCluster& cluster, uint32_t index,
+                           ClusterMembers& members) {
+  const auto& selection = tree.selection;
+  const LodCluster* child = nullptr;
+  if (tree.layout[index].childCount > 0) {
+    if (members.interior >= cluster.childCount) return "LOD missing interior child";
+    child = &selection.clusters[cluster.childStart + members.interior++];
+    if (child->node != index) return "LOD selection interior mapping invalid";
+    members.subtreeLeaves += child->subtreeLeaves;
+  } else {
+    if (members.leaves >= cluster.leafCount ||
+        selection.leaves[cluster.leafStart + members.leaves] != index)
+      return "LOD selection leaf mapping invalid";
+    ++members.leaves;
+    ++members.subtreeLeaves;
+  }
+  return checkMemberSupport(tree.nodes, cluster, index, child);
+}
+
+Failure checkClusterMembers(const LodTree& tree, const LodCluster& cluster,
+                            ClusterMembers& members) {
+  const auto& original = tree.layout[cluster.node];
+  for (uint32_t j = 0; j < std::max(original.childCount, 1u); ++j) {
+    const uint32_t index = original.childCount ? original.childStart + j : cluster.node;
+    if (const Failure failure = checkClusterMember(tree, cluster, index, members)) return failure;
+  }
+  if (members.interior != cluster.childCount || members.leaves != cluster.leafCount ||
+      members.subtreeLeaves != cluster.subtreeLeaves)
+    return "LOD selection subtree mismatch";
+  return nullptr;
+}
+
+Failure checkCluster(const LodTree& tree, size_t k, size_t leaves, SelectionCursor& cursor) {
+  const LodCluster& cluster = tree.selection.clusters[k];
+  if (const Failure failure = checkClusterRanges(tree, cluster, k, cursor, leaves)) return failure;
+  if (const Failure failure = checkClusterMetadata(cluster)) return failure;
+  if (const Failure failure = checkClusterSphere(cluster)) return failure;
+  ClusterMembers members;
+  if (const Failure failure = checkClusterMembers(tree, cluster, members)) return failure;
+  cursor.cluster += members.interior;
+  cursor.leaf += members.leaves;
+  return nullptr;
+}
+
+Failure checkSelection(const LodTree& tree, size_t leaves) {
+  const auto& selection = tree.selection;
+  if (selection.clusters.empty())
+    return selection.leaves.empty() ? nullptr : "LOD selection leaves without clusters";
+  if (selection.clusters.size() != std::max(size_t{1}, tree.nodeCount() - leaves) ||
+      selection.leaves.size() != leaves || selection.clusters[0].node != 0)
+    return "LOD selection dimensions invalid";
+  SelectionCursor cursor;
+  for (size_t k = 0; k < selection.clusters.size(); ++k)
+    if (const Failure failure = checkCluster(tree, k, leaves, cursor)) return failure;
+  if (cursor.cluster != selection.clusters.size() || cursor.leaf != leaves)
+    return "LOD selection has unreachable records";
+  return nullptr;
+}
+
+std::array<uint8_t, kHeader> encodeHeader(const LodTree& tree, uint32_t depth) {
+  const auto& c = tree.nodes;
+  const auto& selection = tree.selection;
+  std::array<uint8_t, kHeader> header{};
+  std::copy(kMagic.begin(), kMagic.end(), header.begin());
+  putU32(header.data() + 8, selection.clusters.empty() ? 1 : 2);
+  putU32(header.data() + 12, static_cast<uint32_t>(tree.nodeCount()));
+  putU32(header.data() + 16, static_cast<uint32_t>(tree.leafCount));
+  putU32(header.data() + 20, static_cast<uint32_t>(c.shDegree));
+  putU32(header.data() + 24, depth);
+  putU32(header.data() + 28, static_cast<uint32_t>(selection.clusters.size()));
+  putU32(header.data() + 56, static_cast<uint32_t>(selection.leaves.size()));
+  putU32(header.data() + 60, selection.clusters.empty() ? 0 : static_cast<uint32_t>(kClusterBytes));
+  for (int j = 0; j < 3; ++j) {
+    putF32(header.data() + 32 + j * 4, c.bounds.min[j]);
+    putF32(header.data() + 44 + j * 4, c.bounds.max[j]);
+  }
+  return header;
+}
+
+// Fills `block` with the records [start, start + count) laid out as the file stores them.
+void packNodes(const LodTree& tree, size_t start, size_t count, size_t stride, uint8_t* block) {
+  const auto& c = tree.nodes;
+  const size_t sh = shStride(c.shDegree);
+  for (size_t k = 0; k < count; ++k) {
+    const size_t i = start + k;
+    uint8_t* p = block + k * stride;
+    const auto& node = tree.layout[i];
+    for (size_t j = 0; j < 3; ++j) putF32(p + j * 4, node.position[j]);
+    putF32(p + 12, node.size);
+    putU32(p + 16, node.childStart);
+    putU32(p + 20, node.childCount);
+    for (size_t j = 0; j < 6; ++j) putF32(p + 24 + j * 4, c.covariances[i * 6 + j]);
+    for (size_t j = 0; j < 3; ++j) putF32(p + 48 + j * 4, c.colors[i * 3 + j]);
+    putF32(p + 60, c.alphas[i]);
+    for (size_t j = 0; j < sh; ++j) putF32(p + kNodeFixedBytes + j * 4, c.sh[i * sh + j]);
+  }
+}
+
+void packClusters(const std::vector<LodCluster>& clusters, size_t start, size_t count,
+                  uint8_t* block) {
+  for (size_t k = 0; k < count; ++k)
+    for (size_t j = 0; j < kClusterWords; ++j) {
+      uint32_t word = 0;
+      std::memcpy(&word, reinterpret_cast<const uint8_t*>(&clusters[start + k]) + j * 4, 4);
+      putU32(block + k * kClusterBytes + j * 4, word);
+    }
+}
+
+void packLeafRefs(const std::vector<uint32_t>& leaves, size_t start, size_t count, uint8_t* block) {
+  for (size_t k = 0; k < count; ++k) putU32(block + k * 4, leaves[start + k]);
+}
+
+// Writes `total` records of `recordBytes` in batches; `pack(start, count)` fills `block`.
+template <typename Pack>
+bool writeBatches(FILE* file, std::vector<uint8_t>& block, size_t total, size_t recordBytes,
+                  Pack pack) {
+  for (size_t start = 0; start < total; start += kWriteBatch) {
+    const size_t count = std::min(kWriteBatch, total - start);
+    pack(start, count);
+    if (std::fwrite(block.data(), recordBytes, count, file) != count) return false;
+  }
+  return true;
+}
 }  // namespace
 
 bool isLodSplat(const uint8_t* data, size_t size) {
@@ -57,120 +334,13 @@ bool isLodSplat(const uint8_t* data, size_t size) {
 }
 
 Result<uint32_t> validateLodTree(const LodTree& tree) {
-  const size_t n = tree.nodeCount();
-  const auto& c = tree.nodes;
-  if (n == 0 || n > kMaxNodes || c.shDegree < 0 || c.shDegree > 3 || tree.leafCount > n ||
-      c.positions.size() != n * 3 || c.covariances.size() != n * 6 || c.colors.size() != n * 3 ||
-      c.alphas.size() != n || c.sh.size() != n * shStride(c.shDegree))
-    return corrupt("LOD attribute dimensions or node count invalid");
-  for (int j = 0; j < 3; ++j)
-    if (!std::isfinite(c.bounds.min[j]) || !std::isfinite(c.bounds.max[j]) ||
-        c.bounds.min[j] > c.bounds.max[j])
-      return corrupt("LOD bounds invalid");
-  std::vector<uint8_t> depths(n, 0);
-  uint32_t deepest = 0;
-  size_t next = 1;
-  size_t leaves = 0;
-  for (size_t i = 0; i < n; ++i) {
-    if (i >= next) return corrupt("LOD has unreachable nodes");
-    const LodNode& node = tree.layout[i];
-    if (!std::isfinite(node.size) || node.size < 0 || !std::isfinite(c.alphas[i]) ||
-        c.alphas[i] < 0 || c.alphas[i] > 1000)
-      return corrupt("LOD size or opacity invalid");
-    for (int j = 0; j < 3; ++j)
-      if (!std::isfinite(node.position[j]) || node.position[j] != c.positions[i * 3 + j] ||
-          !std::isfinite(c.colors[i * 3 + j]) || c.colors[i * 3 + j] < 0 || c.colors[i * 3 + j] > 1)
-        return corrupt("LOD position or colour invalid");
-    std::array<float, 6> covariance{};
-    for (size_t j = 0; j < 6; ++j) {
-      covariance[j] = c.covariances[i * 6 + j];
-      if (!std::isfinite(covariance[j])) return corrupt("LOD covariance is non-finite");
-    }
-    const auto eigen = symmetricEigenvalues(covariance);
-    if (eigen[2] < -1e-5f * std::max(eigen[0], 1e-20f))
-      return corrupt("LOD covariance is not positive semidefinite");
-    if (node.childCount == 0) {
-      ++leaves;
-    } else {
-      if (node.childStart != next || node.childCount > n - next || depths[i] >= kMaxDepth)
-        return corrupt("LOD child ranges are not a bounded BFS tree");
-      for (size_t k = next; k < next + node.childCount; ++k) depths[k] = depths[i] + 1;
-      deepest = std::max(deepest, uint32_t{depths[i]} + 1);
-      next += node.childCount;
-    }
-  }
-  if (next != n || leaves != tree.leafCount) return corrupt("LOD topology or leaf count invalid");
-  for (const float value : c.sh)
-    if (!std::isfinite(value)) return corrupt("LOD SH is non-finite");
-  const auto& selection = tree.selection;
-  if (!selection.clusters.empty()) {
-    if (selection.clusters.size() != std::max(size_t{1}, n - leaves) ||
-        selection.leaves.size() != leaves || selection.clusters[0].node != 0)
-      return corrupt("LOD selection dimensions invalid");
-    size_t nextCluster = 1;
-    size_t nextLeaf = 0;
-    for (size_t k = 0; k < selection.clusters.size(); ++k) {
-      const auto& cluster = selection.clusters[k];
-      if (k >= nextCluster || cluster.node >= n || cluster.childStart != nextCluster ||
-          cluster.childCount > selection.clusters.size() - nextCluster ||
-          cluster.leafStart != nextLeaf || cluster.leafCount > leaves - nextLeaf ||
-          !std::isfinite(cluster.error) || cluster.error < 0 ||
-          !std::isfinite(cluster.colorVariance) || cluster.colorVariance < 0 ||
-          !std::isfinite(cluster.opacity) || cluster.opacity < 0 || cluster.opacity > 1 ||
-          !std::isfinite(cluster.radius) || cluster.radius < 0)
-        return corrupt("LOD selection ranges or error metadata invalid");
-      float radius2 = 0;
-      for (int j = 0; j < 3; ++j) {
-        if (!std::isfinite(cluster.center[j]) || !std::isfinite(cluster.extent[j]) ||
-            cluster.extent[j] < 0)
-          return corrupt("LOD selection bounds invalid");
-        radius2 += cluster.extent[j] * cluster.extent[j];
-      }
-      if (cluster.radius + 1e-5f * std::max(cluster.radius, 1.0f) < std::sqrt(radius2))
-        return corrupt("LOD sphere does not enclose its bounds");
-      const auto& original = tree.layout[cluster.node];
-      uint32_t ci = 0;
-      uint32_t li = 0;
-      uint32_t subtree = 0;
-      for (uint32_t j = 0; j < std::max(original.childCount, 1u); ++j) {
-        const uint32_t index = original.childCount ? original.childStart + j : cluster.node;
-        const bool interior = tree.layout[index].childCount > 0;
-        const LodCluster* child = nullptr;
-        if (interior) {
-          if (ci >= cluster.childCount) return corrupt("LOD missing interior child");
-          child = &selection.clusters[cluster.childStart + ci++];
-          if (child->node != index) return corrupt("LOD selection interior mapping invalid");
-          subtree += child->subtreeLeaves;
-        } else {
-          if (li >= cluster.leafCount || selection.leaves[cluster.leafStart + li] != index)
-            return corrupt("LOD selection leaf mapping invalid");
-          ++li;
-          ++subtree;
-        }
-        // Same leaf reach as buildLodSelectionData, which the bounds below are checked against.
-        const float reach = std::sqrt(2 * std::log(std::max(255.0f * c.alphas[index], 1.0f)));
-        for (int axis = 0; axis < 3; ++axis) {
-          const int diagonal = axis == 0 ? 0 : axis == 1 ? 3 : 5;
-          const float center = child ? child->center[axis] : c.positions[index * 3 + axis];
-          const float extent =
-              child ? child->extent[axis]
-                    : reach * std::sqrt(std::max(c.covariances[index * 6 + diagonal], 0.0f));
-          const float tolerance = 1e-4f * std::max({1.0f, std::abs(center), extent});
-          if (std::abs(center - cluster.center[axis]) + extent > cluster.extent[axis] + tolerance)
-            return corrupt("LOD bounds do not enclose descendant support");
-        }
-      }
-      if (ci != cluster.childCount || li != cluster.leafCount || subtree != cluster.subtreeLeaves)
-        return corrupt("LOD selection subtree mismatch");
-      nextCluster += ci;
-      nextLeaf += li;
-    }
-    if (nextCluster != selection.clusters.size() || nextLeaf != leaves)
-      return corrupt("LOD selection has unreachable records");
-  } else if (!selection.leaves.empty()) {
-    return corrupt("LOD selection leaves without clusters");
-  }
-  return deepest;
+  if (const Failure failure = checkDimensions(tree)) return corrupt(failure);
+  if (const Failure failure = checkBounds(tree.nodes)) return corrupt(failure);
+  NodeScan scan;
+  if (const Failure failure = scanNodes(tree, scan)) return corrupt(failure);
+  if (!allFinite(tree.nodes.sh)) return corrupt("LOD SH is non-finite");
+  if (const Failure failure = checkSelection(tree, scan.leaves)) return corrupt(failure);
+  return scan.deepest;
 }
 
 Result<LodSplatHeader> readLodSplatHeader(const uint8_t* data, size_t size) {
@@ -264,59 +434,24 @@ Result<Ok> writeLodSplat(const LodTree& tree, const std::string& path) {
   std::unique_ptr<FILE, decltype(closeFile)> file(std::fopen(path.c_str(), "wbx"), closeFile);
   if (!file)
     return Error{ErrorCode::unreadable, "cannot create LODSPLAT output (exists or unwritable)"};
-  const auto& c = tree.nodes;
-  std::array<uint8_t, kHeader> header{};
-  std::copy(kMagic.begin(), kMagic.end(), header.begin());
   const auto& selection = tree.selection;
-  putU32(header.data() + 8, selection.clusters.empty() ? 1 : 2);
-  putU32(header.data() + 12, static_cast<uint32_t>(tree.nodeCount()));
-  putU32(header.data() + 16, static_cast<uint32_t>(tree.leafCount));
-  putU32(header.data() + 20, static_cast<uint32_t>(c.shDegree));
-  putU32(header.data() + 24, valid.value());
-  putU32(header.data() + 28, static_cast<uint32_t>(selection.clusters.size()));
-  putU32(header.data() + 56, static_cast<uint32_t>(selection.leaves.size()));
-  putU32(header.data() + 60, selection.clusters.empty() ? 0 : static_cast<uint32_t>(kClusterBytes));
-  for (int j = 0; j < 3; ++j) {
-    putF32(header.data() + 32 + j * 4, c.bounds.min[j]);
-    putF32(header.data() + 44 + j * 4, c.bounds.max[j]);
-  }
-  bool ok = std::fwrite(header.data(), 1, header.size(), file.get()) == header.size();
-  const size_t sh = shStride(c.shDegree);
-  const size_t stride = kNodeFixedBytes + sh * 4;
+  const auto header = encodeHeader(tree, valid.value());
+  const size_t stride = kNodeFixedBytes + shStride(tree.nodes.shDegree) * 4;
+  // One buffer serves every section; node records are the widest.
   std::vector<uint8_t> block(stride * kWriteBatch);
-  for (size_t start = 0; start < tree.nodeCount() && ok; start += kWriteBatch) {
-    const size_t count = std::min(kWriteBatch, tree.nodeCount() - start);
-    for (size_t k = 0; k < count; ++k) {
-      const size_t i = start + k;
-      uint8_t* p = block.data() + k * stride;
-      const auto& node = tree.layout[i];
-      for (size_t j = 0; j < 3; ++j) putF32(p + j * 4, node.position[j]);
-      putF32(p + 12, node.size);
-      putU32(p + 16, node.childStart);
-      putU32(p + 20, node.childCount);
-      for (size_t j = 0; j < 6; ++j) putF32(p + 24 + j * 4, c.covariances[i * 6 + j]);
-      for (size_t j = 0; j < 3; ++j) putF32(p + 48 + j * 4, c.colors[i * 3 + j]);
-      putF32(p + 60, c.alphas[i]);
-      for (size_t j = 0; j < sh; ++j) putF32(p + kNodeFixedBytes + j * 4, c.sh[i * sh + j]);
-    }
-    ok = std::fwrite(block.data(), stride, count, file.get()) == count;
-  }
-  for (size_t start = 0; start < selection.clusters.size() && ok; start += kWriteBatch) {
-    const size_t count = std::min(kWriteBatch, selection.clusters.size() - start);
-    for (size_t k = 0; k < count; ++k)
-      for (size_t j = 0; j < kClusterWords; ++j) {
-        uint32_t word = 0;
-        std::memcpy(&word, reinterpret_cast<const uint8_t*>(&selection.clusters[start + k]) + j * 4,
-                    4);
-        putU32(block.data() + k * kClusterBytes + j * 4, word);
-      }
-    ok = std::fwrite(block.data(), kClusterBytes, count, file.get()) == count;
-  }
-  for (size_t start = 0; start < selection.leaves.size() && ok; start += kWriteBatch) {
-    const size_t count = std::min(kWriteBatch, selection.leaves.size() - start);
-    for (size_t k = 0; k < count; ++k) putU32(block.data() + k * 4, selection.leaves[start + k]);
-    ok = std::fwrite(block.data(), 4, count, file.get()) == count;
-  }
+  FILE* out = file.get();
+  bool ok = std::fwrite(header.data(), 1, header.size(), out) == header.size() &&
+            writeBatches(out, block, tree.nodeCount(), stride,
+                         [&](size_t start, size_t count) {
+                           packNodes(tree, start, count, stride, block.data());
+                         }) &&
+            writeBatches(out, block, selection.clusters.size(), kClusterBytes,
+                         [&](size_t start, size_t count) {
+                           packClusters(selection.clusters, start, count, block.data());
+                         }) &&
+            writeBatches(out, block, selection.leaves.size(), 4, [&](size_t start, size_t count) {
+              packLeafRefs(selection.leaves, start, count, block.data());
+            });
   ok = std::fclose(file.release()) == 0 && ok;
   if (!ok) return Error{ErrorCode::unreadable, "LODSPLAT write failed; output is incomplete"};
   return Ok{};

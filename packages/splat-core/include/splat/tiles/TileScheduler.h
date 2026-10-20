@@ -88,6 +88,13 @@ class TileScheduler {
     float priority;
   };
   std::vector<std::uint32_t> cover(const TileView& view);
+  // The steps of `plan`, in the order it takes them.
+  std::vector<Wanted> walkCover(const TileView& view, Plan& plan);
+  std::vector<std::uint32_t> evictionCandidates() const;
+  void abandonStaleLoads(Plan& plan);
+  void queueWanted(const std::vector<Wanted>& wanted, Plan& plan,
+                   std::vector<std::uint32_t>& evictable);
+  void queueRemainder(Plan& plan, std::vector<std::uint32_t>& evictable);
   bool visit(std::uint32_t index, const TileView& view, Plan& plan, std::vector<Wanted>& wanted,
              const std::vector<bool>& inCover);
   bool visible(std::uint32_t index, const TileView& view) const;
