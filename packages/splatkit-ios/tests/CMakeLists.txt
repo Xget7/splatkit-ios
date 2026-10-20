@@ -1,14 +1,16 @@
 add_executable(splatkit_ios_tests
+  rendering/metal/MetalSplatRendererTest.mm
   rendering/metal/cull/MetalVisibilityPassTest.mm
   rendering/metal/device/MetalContextTest.mm
+  rendering/metal/frame/MetalFrameComputeTest.mm
   rendering/metal/presentation/MetalFrameLoopTest.mm
   rendering/metal/presentation/MetalRenderTargetTest.mm
   rendering/metal/presentation/MetalSurfaceTest.mm
   rendering/metal/presentation/MetalUpscalerTest.mm
+  rendering/metal/raster/MetalSplatPipelineTest.mm
   rendering/metal/selection/MetalLodSelectionTest.mm
   rendering/metal/sort/MetalRadixSortTest.mm
   rendering/metal/world/MetalWorldTest.mm
-  rendering/metal/MetalSplatRendererTest.mm
 )
 target_include_directories(splatkit_ios_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../Sources/SplatKitCore ${CMAKE_CURRENT_BINARY_DIR}/../embedded

@@ -28,6 +28,10 @@ class MetalRenderTarget {
 
   // Nil when the frame draws straight to the drawable.
   id<MTLTexture> color() const { return color_; }
+  // The colour a frame draws into: the target, or `drawable` when there is none.
+  id<MTLTexture> colorOr(id<MTLTexture> drawable) const {
+    return color_ != nil ? color_ : drawable;
+  }
   id<MTLTexture> depth() const { return depth_; }
   // Pixel format of color(); invalid while there is none.
   MTLPixelFormat format() const { return format_; }

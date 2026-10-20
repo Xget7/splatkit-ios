@@ -2,9 +2,11 @@
 
 #import <Metal/Metal.h>
 
+#include <algorithm>
 #include <array>
 #include <memory>
 
+#include "rendering/metal/layout/MetalShaderTypes.h"
 #include "splatkit/rendering/SplatRenderer.h"
 
 namespace splatkit {
@@ -23,6 +25,11 @@ class MetalWorld {
   bool writeOrder(const uint32_t* order, uint32_t count);
 
   GpuWorldInfo info() const { return {count_, shDegree_}; }
+  // The spherical harmonics degree a frame asking for `requested` draws this world with: what
+  // the world carries, at most what the shaders specialise for.
+  int drawDegree(int requested) const {
+    return std::clamp(std::min(requested, shDegree_), 0, kMaxShDegree);
+  }
   id<MTLBuffer> splats() const { return splats_; }
   id<MTLBuffer> harmonics() const { return sh_; }
   id<MTLBuffer> order() const { return orders_[currentOrder_]; }

@@ -35,6 +35,19 @@ TEST_F(MetalRenderTargetTest, ResizeKeepsAtLeastOnePixelPerAxis) {
   EXPECT_EQ(target.color().height, 1u);
 }
 
+TEST_F(MetalRenderTargetTest, ColorOrFallsBackToTheDrawableWhileThereIsNoTarget) {
+  MTLTextureDescriptor* desc =
+      [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm
+                                                         width:8
+                                                        height:8
+                                                     mipmapped:NO];
+  id<MTLTexture> drawable = [device_ newTextureWithDescriptor:desc];
+  MetalRenderTarget target(device_);
+  EXPECT_EQ(target.colorOr(drawable), drawable);
+  ASSERT_TRUE(target.resize(8, 8, 0.5f, MTLPixelFormatBGRA8Unorm));
+  EXPECT_EQ(target.colorOr(drawable), target.color());
+}
+
 TEST_F(MetalRenderTargetTest, ZeroSizeAndReleaseLeaveNoColor) {
   MetalRenderTarget target(device_);
   ASSERT_TRUE(target.resize(64, 64, 1.0f, MTLPixelFormatBGRA8Unorm));

@@ -18,6 +18,17 @@ splat::SplatCloud cloud() {
   return c;
 }
 
+TEST(MetalWorldTest, ADrawDegreeNeverExceedsTheWorldOrTheShaders) {
+  auto& gpu = test::Gpu::get();
+  auto world = MetalWorld::slab(gpu.device, 4, 2);
+  ASSERT_NE(world, nullptr);
+  EXPECT_EQ(world->drawDegree(-1), 0);
+  EXPECT_EQ(world->drawDegree(1), 1);
+  EXPECT_EQ(world->drawDegree(2), 2);
+  EXPECT_EQ(world->drawDegree(3), 2);
+  EXPECT_EQ(world->drawDegree(99), 2);
+}
+
 TEST(MetalWorldTest, SharedUploadMatchesCorePackingAndAcceptsCpuOrder) {
   auto& gpu = test::Gpu::get();
   const auto source = cloud();

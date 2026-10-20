@@ -4,6 +4,7 @@
 #include <cstring>
 
 #include "rendering/metal/device/MetalShaderLibrary.h"
+#include "splatkit/Log.h"
 
 namespace splatkit {
 
@@ -22,7 +23,7 @@ bool MetalVisibilityPass::create(id<MTLDevice> device, id<MTLLibrary> library,
     ok = ok && count_[slot] != nil && drawArguments_[slot] != nil && ranges_[slot] != nil &&
          rangeStarts_[slot] != nil;
   }
-  return ok && sort_.create(device, library);
+  return ok;
 }
 
 // Only the pipelines depend on the key width; the buffers and the radix scratch are reused.
@@ -63,17 +64,21 @@ bool MetalVisibilityPass::createPipelines() {
   return ok && prepareDraw_ != nil;
 }
 
+uint32_t MetalVisibilityPass::slotsFor(uint32_t capacity, uint32_t activeCapacity) {
+  if (activeCapacity > 0) capacity = std::min(capacity, activeCapacity);
+  return std::max(capacity, 1u);
+}
+
 bool MetalVisibilityPass::reserve(uint32_t capacity, uint32_t activeCapacity) {
   const uint32_t sourceCapacity = capacity;
-  if (activeCapacity > 0) capacity = std::min(capacity, activeCapacity);
-  capacity = std::max(capacity, 1u);
+  capacity = slotsFor(capacity, activeCapacity);
   if (capacity <= capacity_) {
     sourceCapacity_ = sourceCapacity;
     indexedOnly_ = activeCapacity > 0 && activeCapacity < sourceCapacity;
     return true;
   }
   id<MTLBuffer> projected = metal::buffer(device_, size_t{capacity} * sizeof(ProjectedSplat));
-  if (projected == nil || !sort_.reserve(capacity)) {
+  if (projected == nil) {
     LOGE("visibility buffers for %u splats failed", capacity);
     return false;
   }
@@ -84,16 +89,20 @@ bool MetalVisibilityPass::reserve(uint32_t capacity, uint32_t activeCapacity) {
   return true;
 }
 
-bool MetalVisibilityPass::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms,
-                                 id<MTLBuffer> splats, id<MTLBuffer> sh, int shDegree,
-                                 const SplatRenderer::Range* ranges, uint32_t rangeCount,
-                                 id<MTLBuffer> indices, id<MTLBuffer> activeCount) {
+bool MetalVisibilityPass::encodeProject(id<MTLCommandBuffer> cmd, uint32_t slot,
+                                        id<MTLBuffer> uniforms, id<MTLBuffer> splats,
+                                        id<MTLBuffer> sh, int shDegree,
+                                        const SplatRenderer::Range* ranges, uint32_t rangeCount,
+                                        id<MTLBuffer> keys, id<MTLBuffer> values,
+                                        id<MTLBuffer> indices, id<MTLBuffer> activeCount) {
   const bool indexed = indices != nil;
   if (indexedOnly_ && !indexed) return false;
   if (indexed != (activeCount != nil)) return false;
   if (slot >= kSlots || rangeCount > kMaxRanges || capacity_ == 0 ||
       (rangeCount > 0 && ranges == nullptr))
     return false;
+  const size_t sortBytes = size_t{capacity_} * sizeof(uint32_t);
+  if (keys.length < sortBytes || values.length < sortBytes) return false;
   // Validate before writing slot inputs, so a rejected request cannot corrupt them.
   uint32_t total = 0;
   for (uint32_t i = 0; i < rangeCount; ++i) {
@@ -124,8 +133,8 @@ bool MetalVisibilityPass::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTL
   [cull setBuffer:ranges_[slot] offset:0 atIndex:2];
   [cull setBuffer:rangeStarts_[slot] offset:0 atIndex:3];
   [cull setBytes:&rangeCount length:sizeof(rangeCount) atIndex:4];
-  [cull setBuffer:sort_.keys() offset:0 atIndex:5];
-  [cull setBuffer:sort_.values() offset:0 atIndex:6];
+  [cull setBuffer:keys offset:0 atIndex:5];
+  [cull setBuffer:values offset:0 atIndex:6];
   [cull setBuffer:count_[slot] offset:0 atIndex:7];
   [cull setBuffer:sh offset:0 atIndex:8];
   [cull setBuffer:projected_ offset:0 atIndex:9];
@@ -138,8 +147,10 @@ bool MetalVisibilityPass::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTL
   [cull dispatchThreadgroups:MTLSizeMake(groups, 1, 1)
        threadsPerThreadgroup:MTLSizeMake(kThreads, 1, 1)];
   [cull endEncoding];
+  return true;
+}
 
-  sort_.encode(cmd, count_[slot], depthBits_);
+void MetalVisibilityPass::encodeIndirect(id<MTLCommandBuffer> cmd, uint32_t slot) {
   id<MTLComputeCommandEncoder> draw = [cmd computeCommandEncoder];
   draw.label = @"Splat indirect draw arguments";
   [draw setComputePipelineState:prepareDraw_];
@@ -147,7 +158,6 @@ bool MetalVisibilityPass::encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTL
   [draw setBuffer:drawArguments_[slot] offset:0 atIndex:1];
   [draw dispatchThreadgroups:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
   [draw endEncoding];
-  return true;
 }
 
 }  // namespace splatkit

@@ -11,7 +11,8 @@
 
 namespace splatkit {
 
-// Projects and compacts requested ranges, sorts survivors, prepares indirect draws.
+// Projects and compacts requested ranges and prepares indirect draws. The sort between the two
+// belongs to the caller, which hands over the key and value buffers the projection fills.
 // Owns per-frame CPU inputs and GPU scratch; never commits or waits on a command buffer.
 // Call reserve only while idle. All encodes and raster consumers use one command queue.
 class MetalVisibilityPass {
@@ -25,22 +26,32 @@ class MetalVisibilityPass {
   // both move together. Render thread, while idle. On failure the previous key width is
   // restored.
   bool reconfigure(MetalRadixSort::KeyBits depthBits);
+  // The key width the pipelines were built for.
+  MetalRadixSort::KeyBits depthBits() const { return depthBits_; }
   // Space for every source splat, or an explicitly bounded GPU index list when
   // activeCapacity is nonzero. The latter must only be used with indexed encode.
-  // Failure preserves the previous allocation.
+  // Failure preserves the previous allocation. The caller reserves its sort for
+  // slotsFor(capacity, activeCapacity) pairs first, so the sort is never smaller than this.
   bool reserve(uint32_t capacity, uint32_t activeCapacity = 0);
+  // The projections, and so the sort pairs, reserve(capacity, activeCapacity) makes room for.
+  static uint32_t slotsFor(uint32_t capacity, uint32_t activeCapacity = 0);
   uint32_t capacity() const { return capacity_; }
 
-  // Invalid ranges fail before encoding any work. Empty ranges produce an empty draw.
-  // Caller owns uniforms/source buffers and must keep slot inputs unchanged until
-  // this frame completes. Ranges must be disjoint and refer to the reserved source.
-  bool encode(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms, id<MTLBuffer> splats,
-              id<MTLBuffer> sh, int shDegree, const SplatRenderer::Range* ranges,
-              uint32_t rangeCount, id<MTLBuffer> indices = nil, id<MTLBuffer> activeCount = nil);
+  // Resets the slot's count, then culls and projects the ranges into `projected()`, writing one
+  // uint32 depth key into `keys` and the projection's index into `values` per survivor (Low16
+  // only uses the lower 16 bits of a key). Both buffers must hold at least capacity() entries,
+  // or this returns false. Invalid ranges fail before encoding any work. Empty ranges produce an
+  // empty draw. Caller owns uniforms/source buffers and must keep slot inputs unchanged until this
+  // frame completes. Ranges must be disjoint and refer to the reserved source.
+  bool encodeProject(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms,
+                     id<MTLBuffer> splats, id<MTLBuffer> sh, int shDegree,
+                     const SplatRenderer::Range* ranges, uint32_t rangeCount, id<MTLBuffer> keys,
+                     id<MTLBuffer> values, id<MTLBuffer> indices = nil,
+                     id<MTLBuffer> activeCount = nil);
+  // Turns the slot's survivor count into the indirect draw arguments. Encode it after the
+  // sort of the same command buffer.
+  void encodeIndirect(id<MTLCommandBuffer> cmd, uint32_t slot);
 
-  id<MTLBuffer> order() const { return sort_.values(); }
-  // GPU-owned uint32 slots as the cull wrote them, unsorted; Low16 only uses the lower 16 bits.
-  id<MTLBuffer> depthKeys() const { return sort_.keys(); }
   id<MTLBuffer> projected() const { return projected_; }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return drawArguments_[slot]; }
   id<MTLBuffer> countBuffer(uint32_t slot) const { return count_[slot]; }
@@ -65,7 +76,6 @@ class MetalVisibilityPass {
   std::array<id<MTLComputePipelineState>, kShDegrees> visibility_{};
   std::array<id<MTLComputePipelineState>, kShDegrees> indexedVisibility_{};
   id<MTLComputePipelineState> prepareDraw_ = nil;
-  MetalRadixSort sort_;
   MetalRadixSort::KeyBits depthBits_ = MetalRadixSort::KeyBits::Full32;
   uint32_t capacity_ = 0;
   uint32_t sourceCapacity_ = 0;

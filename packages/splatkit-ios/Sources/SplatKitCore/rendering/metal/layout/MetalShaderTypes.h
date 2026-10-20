@@ -42,6 +42,9 @@ static_assert(offsetof(ProjectedSplat, index) == 28);
 inline constexpr float kMinPixelRadius = 1.0f;
 inline constexpr float kQuadMinAlpha = 2.0f / 255.0f;
 
+// The highest spherical harmonics degree the shaders specialise for.
+inline constexpr int kMaxShDegree = 3;
+
 // Indices of the shaders' [[function_constant(n)]] declarations.
 inline constexpr size_t kFnShDegree = 0;
 inline constexpr size_t kFnIndexedLod = 3;
