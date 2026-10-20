@@ -22,7 +22,7 @@ MetalFrameLoop::~MetalFrameLoop() {
 
 bool MetalFrameLoop::acquire() {
   dispatch_semaphore_wait(inFlight_, DISPATCH_TIME_FOREVER);
-  if (gpuFailed_.load()) {
+  if (gpuFailed_->load()) {
     dispatch_semaphore_signal(inFlight_);
     return false;
   }
@@ -66,7 +66,7 @@ void MetalFrameLoop::submit(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawab
   [cmd presentDrawable:drawable];
   dispatch_semaphore_t inFlight = inFlight_;
   std::atomic<double>* gpuMillis = &lastGpuMillis_;
-  std::atomic<bool>* failed = &gpuFailed_;
+  std::atomic<bool>* failed = gpuFailed_.get();
   auto* worldFrame = &completedWorldFrame_;
   [cmd addCompletedHandler:^(id<MTLCommandBuffer> done) {
     if (done.status == MTLCommandBufferStatusError) {

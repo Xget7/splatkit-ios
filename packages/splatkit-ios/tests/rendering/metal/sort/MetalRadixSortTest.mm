@@ -20,7 +20,7 @@ struct Pair {
 
 // Fills the key and value buffers with `pairs`, sorts on the GPU, returns what came out.
 std::vector<Pair> sortOnGpu(MetalRadixSort& v, const std::vector<Pair>& pairs,
-                            MetalRadixSort::KeyBits bits = MetalRadixSort::KeyBits::Full32) {
+                            KeyBits bits = KeyBits::Full32) {
   Gpu& gpu = Gpu::get();
   auto* keys = static_cast<uint32_t*>(v.keys().contents);
   auto* values = static_cast<uint32_t*>(v.values().contents);
@@ -113,11 +113,11 @@ TEST_F(MetalRadixSortTest, TwoPassKeysMatchFourPassAndStableCpuIncludingTiesAndT
       pairs.back().key = 0;
     }
     const auto expected = sortOnCpu(pairs);
-    EXPECT_EQ(sortOnGpu(sort, pairs, MetalRadixSort::KeyBits::Low16), expected);
+    EXPECT_EQ(sortOnGpu(sort, pairs, KeyBits::Low16), expected);
     EXPECT_EQ(sortOnGpu(sort, pairs), expected);
   }
   const auto ties = randomPairs(70000, 0x7u, 17);
-  EXPECT_EQ(sortOnGpu(sort, ties, MetalRadixSort::KeyBits::Low16), sortOnCpu(ties));
+  EXPECT_EQ(sortOnGpu(sort, ties, KeyBits::Low16), sortOnCpu(ties));
 }
 
 // Not a check, a number: the GPU time of a sort at the scale a phone draws.

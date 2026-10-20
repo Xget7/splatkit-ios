@@ -5,8 +5,10 @@
 #include <array>
 #include <cstdint>
 
+#include "rendering/metal/layout/MetalDrawArguments.h"
+#include "rendering/metal/layout/MetalFrameSlots.h"
 #include "rendering/metal/layout/MetalShaderTypes.h"
-#include "rendering/metal/sort/MetalRadixSort.h"
+#include "rendering/metal/layout/MetalSortKeys.h"
 #include "splatkit/rendering/SplatRenderer.h"
 
 namespace splatkit {
@@ -19,15 +21,14 @@ class MetalVisibilityPass {
  public:
   // Both widths sort by linear view depth: Full32 by its float bits, Low16 quantized between
   // finite forward-Z Mat4::perspective planes. Shader key width and radix passes agree.
-  bool create(id<MTLDevice> device, id<MTLLibrary> library,
-              MetalRadixSort::KeyBits depthBits = MetalRadixSort::KeyBits::Full32);
+  bool create(id<MTLDevice> device, id<MTLLibrary> library, KeyBits depthBits = KeyBits::Full32);
   // Rebuilds the visibility pipelines for a new key width, keeping every reserved buffer
   // and the radix scratch. The key width and the shader's quantized flag must agree, so
   // both move together. Render thread, while idle. On failure the previous key width is
   // restored.
-  bool reconfigure(MetalRadixSort::KeyBits depthBits);
+  bool reconfigure(KeyBits depthBits);
   // The key width the pipelines were built for.
-  MetalRadixSort::KeyBits depthBits() const { return depthBits_; }
+  KeyBits depthBits() const { return depthBits_; }
   // Space for every source splat, or an explicitly bounded GPU index list when
   // activeCapacity is nonzero. The latter must only be used with indexed encode.
   // Failure preserves the previous allocation. The caller reserves its sort for
@@ -60,10 +61,6 @@ class MetalVisibilityPass {
     return *static_cast<const uint32_t*>(count_[slot].contents);
   }
 
-  static constexpr uint32_t kSlots = 2;
-  static constexpr uint32_t kDrawBatches = 7;
-  static constexpr uint32_t kDrawArgumentBytes = sizeof(MTLDrawPrimitivesIndirectArguments);
-
  private:
   static constexpr uint32_t kThreads = 256;
   static constexpr uint32_t kMaxRanges = 65536;
@@ -76,15 +73,15 @@ class MetalVisibilityPass {
   std::array<id<MTLComputePipelineState>, kShDegrees> visibility_{};
   std::array<id<MTLComputePipelineState>, kShDegrees> indexedVisibility_{};
   id<MTLComputePipelineState> prepareDraw_ = nil;
-  MetalRadixSort::KeyBits depthBits_ = MetalRadixSort::KeyBits::Full32;
+  KeyBits depthBits_ = KeyBits::Full32;
   uint32_t capacity_ = 0;
   uint32_t sourceCapacity_ = 0;
   bool indexedOnly_ = false;
   id<MTLBuffer> projected_ = nil;
-  std::array<id<MTLBuffer>, kSlots> count_{};
-  std::array<id<MTLBuffer>, kSlots> drawArguments_{};
-  std::array<id<MTLBuffer>, kSlots> ranges_{};
-  std::array<id<MTLBuffer>, kSlots> rangeStarts_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> count_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> drawArguments_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> ranges_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> rangeStarts_{};
 };
 
 }  // namespace splatkit

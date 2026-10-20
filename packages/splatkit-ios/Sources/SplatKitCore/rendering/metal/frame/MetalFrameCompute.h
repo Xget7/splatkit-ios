@@ -9,6 +9,7 @@
 #include <string>
 
 #include "rendering/metal/cull/MetalVisibilityPass.h"
+#include "rendering/metal/layout/MetalFrameSlots.h"
 #include "rendering/metal/presentation/MetalFrameLoop.h"
 #include "rendering/metal/selection/MetalLodSelection.h"
 #include "rendering/metal/sort/MetalRadixSort.h"
@@ -25,8 +26,6 @@ namespace splatkit {
 // frame loop must outlive it. Encode only; draw() commits what is returned.
 class MetalFrameCompute {
  public:
-  static constexpr uint32_t kSlots = MetalVisibilityPass::kSlots;
-
   MetalFrameCompute(id<MTLDevice> device, id<MTLCommandQueue> queue, id<MTLLibrary> library,
                     MetalFrameLoop& frameLoop);
 
@@ -38,7 +37,7 @@ class MetalFrameCompute {
   // gpuSort() false.
   bool create();
   bool gpuSort() const { return gpuSort_; }
-  MetalRadixSort::KeyBits depthBits() const { return visibility_.depthBits(); }
+  KeyBits depthBits() const { return visibility_.depthBits(); }
 
   // The sort key width and the LOD threshold and splat limit of `policy`. Waits for the frames
   // in flight when something changes. False, with `reason`, when the GPU cannot order or the
@@ -56,7 +55,7 @@ class MetalFrameCompute {
   // The slot the frame being encoded uses: the per-slot uniforms, counts and readbacks of a
   // frame the GPU may still be reading are never touched. advance() moves to the next slot once
   // the frame was submitted.
-  uint32_t slot() const { return static_cast<uint32_t>(frames_ % kSlots); }
+  uint32_t slot() const { return static_cast<uint32_t>(frames_ % kFramesInFlight); }
   void advance() { ++frames_; }
 
   // Writes the camera of `frame` into the slot's uniforms, for a frame drawn at `extent`.
@@ -75,43 +74,50 @@ class MetalFrameCompute {
   id<MTLBuffer> order() const { return sort_.values(); }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return visibility_.drawArguments(slot); }
 
-  double lastSortMillis() const { return lastSortMillis_.load(); }
-  uint32_t lastDrawCount() const { return lastDrawCount_.load(); }
-  uint32_t lastSelectedCount() const { return lastSelectedCount_.load(); }
-  double lastSelectMillis() const { return lastSelectMillis_.load(); }
-  uint32_t lastLodLimitedCount() const { return lod_ ? lastLodLimitedCount_.load() : 0; }
-  uint32_t lastLodEvaluatedCount() const { return lod_ ? lastLodEvaluatedCount_.load() : 0; }
+  double lastSortMillis() const { return report_->sortMillis.load(); }
+  uint32_t lastDrawCount() const { return report_->drawCount.load(); }
+  uint32_t lastSelectedCount() const { return report_->selectedCount.load(); }
+  double lastSelectMillis() const { return report_->selectMillis.load(); }
+  uint32_t lastLodLimitedCount() const { return lod_ ? report_->lodLimitedCount.load() : 0; }
+  uint32_t lastLodEvaluatedCount() const { return lod_ ? report_->lodEvaluatedCount.load() : 0; }
   // The threshold the next selection runs at, at least the policy's.
   float lodPixels() const { return lodPixels_; }
 
  private:
-  bool createOrdering(MetalVisibilityPass& visibility, MetalRadixSort& sort,
-                      MetalRadixSort::KeyBits bits) const;
+  // What the selection and sort completion handlers write. The handlers hold a share of it:
+  // Metal documents no order between one command buffer's handlers and another's, so a handler
+  // can still be running after the render buffer's has released the last frame slot.
+  struct GpuReport {
+    std::atomic<uint32_t> selectedCount{0};
+    std::atomic<uint32_t> lodLimitedCount{0};
+    std::atomic<uint32_t> lodEvaluatedCount{0};
+    std::atomic<uint32_t> lodReadbacks{0};  // completed selections, so each adapts once
+    std::atomic<uint32_t> drawCount{0};
+    std::atomic<double> selectMillis{0};
+    std::atomic<double> sortMillis{0};
+  };
+
+  bool createOrdering(MetalVisibilityPass& visibility, MetalRadixSort& sort, KeyBits bits) const;
   void adaptLodThreshold();
 
   id<MTLDevice> device_ = nil;
   id<MTLCommandQueue> queue_ = nil;
   id<MTLLibrary> library_ = nil;
   MetalFrameLoop& frameLoop_;
-  std::array<id<MTLBuffer>, kSlots> uniforms_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> uniforms_{};
   MetalVisibilityPass visibility_;
   MetalRadixSort sort_;
   bool gpuSort_ = false;
   std::unique_ptr<MetalLodSelection> lod_;
-  std::array<id<MTLBuffer>, kSlots> lodReadback_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> lodReadback_{};
   float lodErrorPixels_ = 1.0f;
   uint32_t lodSplatLimit_ = 0;
   // The threshold selection runs at: the policy's, raised while a cut would exceed the splat
   // limit so detail thins evenly instead of stopping wherever traversal ran out of room.
   float lodPixels_ = 1.0f;
-  std::atomic<uint32_t> lodReadbacks_{0};  // completed selections, so each adapts once
   uint32_t lodAdaptedReadback_ = 0;
   uint64_t frames_ = 0;  // submitted so far, which also paces the LOD log
-  std::atomic<uint32_t> lastSelectedCount_{0};
-  std::atomic<uint32_t> lastLodLimitedCount_{0}, lastLodEvaluatedCount_{0};
-  std::atomic<double> lastSelectMillis_{0};
-  std::atomic<double> lastSortMillis_{0};
-  std::atomic<uint32_t> lastDrawCount_{0};
+  std::shared_ptr<GpuReport> report_ = std::make_shared<GpuReport>();
 };
 
 }  // namespace splatkit

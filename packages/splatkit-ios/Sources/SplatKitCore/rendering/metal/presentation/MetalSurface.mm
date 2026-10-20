@@ -37,7 +37,7 @@ void MetalSurface::setDrawableSize(uint32_t width, uint32_t height) {
 }
 
 void MetalSurface::setRenderScale(float scale) {
-  scale = std::clamp(scale, 0.1f, 2.0f);
+  scale = std::clamp(scale, kMinRenderScale, kMaxRenderScale);
   if (scale == renderScale_) return;
   renderScale_ = scale;
   if (upscaler_.active()) frameLoop_.waitIdle();

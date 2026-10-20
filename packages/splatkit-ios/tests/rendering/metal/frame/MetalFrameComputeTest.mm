@@ -76,14 +76,14 @@ class MetalFrameComputeTest : public testing::Test {
   }
 
   test::Gpu* gpu_ = nullptr;
-  MetalFrameLoop loop_{MetalFrameCompute::kSlots};
+  MetalFrameLoop loop_{kFramesInFlight};
   std::unique_ptr<MetalFrameCompute> compute_;
   SplatRenderer::Frame frame_;
 };
 
 TEST_F(MetalFrameComputeTest, StartsWithGpuOrderingAndFullWidthKeys) {
   EXPECT_TRUE(compute_->gpuSort());
-  EXPECT_EQ(compute_->depthBits(), MetalRadixSort::KeyBits::Full32);
+  EXPECT_EQ(compute_->depthBits(), KeyBits::Full32);
   EXPECT_FALSE(compute_->hasLod());
   EXPECT_EQ(compute_->lodPixels(), 1.0f);
   EXPECT_NE(compute_->uniforms(0), nil);
@@ -120,9 +120,9 @@ TEST_F(MetalFrameComputeTest, APolicyChangesTheKeyWidthAndTheLodLimits) {
   std::string reason;
   EXPECT_TRUE(compute_->configure(policy(1.0f), &reason));
   EXPECT_TRUE(compute_->configure(policy(1.0f, 0, SortKeyBits::low16), &reason)) << reason;
-  EXPECT_EQ(compute_->depthBits(), MetalRadixSort::KeyBits::Low16);
+  EXPECT_EQ(compute_->depthBits(), KeyBits::Low16);
   EXPECT_TRUE(compute_->configure(policy(4.0f, 100), &reason));
-  EXPECT_EQ(compute_->depthBits(), MetalRadixSort::KeyBits::Full32);
+  EXPECT_EQ(compute_->depthBits(), KeyBits::Full32);
   EXPECT_EQ(compute_->lodPixels(), 4.0f);
 }
 
@@ -147,7 +147,7 @@ TEST_F(MetalFrameComputeTest, AFlatWorldIsProjectedSortedFrontToBackAndCounted) 
   const auto* draws =
       static_cast<const MTLDrawPrimitivesIndirectArguments*>(compute_->drawArguments(0).contents);
   uint32_t next = 0;
-  for (uint32_t b = 0; b < MetalVisibilityPass::kDrawBatches; ++b) {
+  for (uint32_t b = 0; b < kDrawBatches; ++b) {
     EXPECT_EQ(draws[b].baseInstance, next);
     next += draws[b].instanceCount;
   }
@@ -214,7 +214,7 @@ TEST_F(MetalFrameComputeTest, ALodWorldSelectsACutAndTheThresholdFollowsThePolic
   // A limit below the refined cut denies the split and raises the threshold; lifting it
   // restores the policy's threshold at once.
   ASSERT_TRUE(compute_->configure(policy(0.1f, 32), &reason));
-  for (uint32_t i = 0; i < 4; ++i) frame(i % MetalFrameCompute::kSlots);
+  for (uint32_t i = 0; i < 4; ++i) frame(i % kFramesInFlight);
   EXPECT_EQ(compute_->lastSelectedCount(), 1u);
   EXPECT_GT(compute_->lastLodLimitedCount(), 0u);
   EXPECT_GT(compute_->lodPixels(), 0.1f);

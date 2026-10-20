@@ -41,15 +41,17 @@ class MetalFrameLoop {
   // Fills `times` with the display times, in nanoseconds, of the frames presented since the
   // last call and returns how many frames were dropped. Zero where the platform reports none.
   uint32_t takePresentTimes(std::vector<int64_t>* times);
-  double lastGpuMillis() const { return gpuFailed_.load() ? 0 : lastGpuMillis_.load(); }
+  double lastGpuMillis() const { return gpuFailed_->load() ? 0 : lastGpuMillis_.load(); }
 
   // A GPU error latches this loop off. Never repeatedly resubmit failed work.
-  bool gpuFailed() const { return gpuFailed_.load(); }
+  bool gpuFailed() const { return gpuFailed_->load(); }
   // For work that fails outside submit(), such as the selection and visibility buffers.
-  void markFailed() { gpuFailed_.store(true); }
+  void markFailed() { gpuFailed_->store(true); }
+  // The latch itself, for completion handlers that can run after the loop is destroyed.
+  std::shared_ptr<std::atomic<bool>> failureLatch() const { return gpuFailed_; }
   // A successful GPU frame of the current world has finished; uploads alone and background
   // frames do not qualify.
-  bool hasCompletedWorldFrame() const { return !gpuFailed_.load() && completedWorldFrame_.load(); }
+  bool hasCompletedWorldFrame() const { return !gpuFailed_->load() && completedWorldFrame_.load(); }
   // The world was replaced.
   void clearCompletedWorldFrame() { completedWorldFrame_.store(false); }
 
@@ -65,7 +67,7 @@ class MetalFrameLoop {
   dispatch_semaphore_t inFlight_;
   std::shared_ptr<PresentLog> presents_ = std::make_shared<PresentLog>();
   std::atomic<double> lastGpuMillis_{0};
-  std::atomic<bool> gpuFailed_{false};
+  std::shared_ptr<std::atomic<bool>> gpuFailed_ = std::make_shared<std::atomic<bool>>(false);
   std::atomic<bool> completedWorldFrame_{false};
 };
 

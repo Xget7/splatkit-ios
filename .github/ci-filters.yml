@@ -1,0 +1,95 @@
+# Which pull request changes run which CI jobs, read by .github/actions/changes with
+# predicate-quantifier some-with-excludes: a file counts when it matches a pattern and no '!' one.
+# Each filter lists every path its jobs build or read, so a package wakes the packages built on it.
+# Markdown wakes nothing. A file outside every filter and the exemptions in `unknown` sets it,
+# which wakes every job.
+# Pushes to main run every job, whatever this file says, for the release and mirror gates.
+
+splat-core: &splat-core
+  - 'packages/splat-core/**'
+  - &no-markdown '!**/*.md'
+
+engine: &engine
+  - *splat-core
+  - 'packages/splatkit-engine/**'
+
+ios:
+  - *engine
+  - 'packages/splatkit-ios/**'
+  - 'scripts/build-ios.sh'
+
+# The library alone, which the React Native adapter also compiles; no job reads this output.
+android-library: &android-library
+  - *engine
+  - 'packages/splatkit-android/**'
+
+android:
+  - *android-library
+  - 'apps/android-dev/**'
+  - 'scripts/check_android_alignment.py'
+
+cpp-lint:
+  - *engine
+  - 'packages/splatkit-android/**'
+  - 'packages/splatkit-ios/**'
+  - 'scripts/lint-cpp.sh'
+  - '.clang-format'
+  - '.clang-tidy'
+
+prepare-world:
+  - *splat-core
+  - 'scripts/prepare-world.sh'
+  - 'scripts/tests/make_room_ply.py'
+
+# Builds from the checkout and from the iOS export, which reads the native packages and scripts.
+spz-interop:
+  - *engine
+  - 'packages/splatkit-ios/**'
+  - 'scripts/**'
+  - 'docs/benchmarks/**'
+
+# scripts/tests export every platform's tree, so they read nearly the whole repository.
+scripts:
+  - '**'
+  - *no-markdown
+
+# tests/contracts.test.cjs checks the camera modes and lens ranges against these native files.
+rn-package: &rn-package
+  - 'packages/react-native-splatkit/**'
+  - 'packages/splatkit-engine/include/splatkit/camera/Lens.h'
+  - 'packages/splatkit-engine/include/splatkit/camera/CameraRequest.h'
+  - 'packages/splatkit-android/src/main/kotlin/com/splatkit/CameraRequest.kt'
+  - 'packages/splatkit-ios/Sources/SplatKitCore/include/SplatKit/SKSplatEngine.h'
+  - *no-markdown
+
+rn-mirror:
+  - *rn-package
+  - 'scripts/export-ios-source.py'
+
+rn-android:
+  - *rn-package
+  - *android-library
+  - 'apps/react-native/android/**'
+
+rn-app:
+  - *rn-package
+  - 'apps/react-native/**'
+
+unknown:
+  - '**'
+  - '!packages/splat-core/**'
+  - '!packages/splatkit-engine/**'
+  - '!packages/splatkit-ios/**'
+  - '!packages/splatkit-android/**'
+  - '!packages/react-native-splatkit/**'
+  - '!apps/android-dev/**'
+  - '!apps/react-native/**'
+  # No CI job builds the iOS dev app yet.
+  - '!apps/ios-dev/**'
+  - '!scripts/**'
+  - '!docs/**'
+  - '!.clang-format'
+  - '!.clang-tidy'
+  - '!.githooks/**'
+  - '!.vscode/**'
+  - *no-markdown

@@ -2,13 +2,12 @@
 
 #include <vector>
 
+#include "rendering/metal/layout/MetalFrameSlots.h"
 #include "rendering/metal/presentation/MetalSurface.h"
 #include "support/MetalTestContext.h"
 
 namespace splatkit {
 namespace {
-
-constexpr uint32_t kSlots = 2;
 
 class MetalSurfaceTest : public testing::Test {
  protected:
@@ -28,7 +27,7 @@ class MetalSurfaceTest : public testing::Test {
   }
 
   test::Gpu* gpu_ = nullptr;
-  MetalFrameLoop loop_{kSlots};
+  MetalFrameLoop loop_{kFramesInFlight};
   CAMetalLayer* layer_ = nil;
 };
 

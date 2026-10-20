@@ -7,6 +7,18 @@
 #include "splatkit/Log.h"
 
 namespace splatkit {
+namespace {
+
+// The residency range reported to the adapters.
+constexpr uint32_t kMinResidencyCapacity = 100'000;
+constexpr uint32_t kMaxResidencyCapacity = 32'000'000;
+// The LOD error threshold range, in pixels, a policy may request.
+constexpr float kMinLodErrorPixels = 0.1f;
+constexpr float kMaxLodErrorPixels = 16.0f;
+// Apple family 7, the minimum this renderer accepts, supports 16384x16384 textures.
+constexpr uint32_t kAppleFamily7MaxTextureDimension = 16384;
+
+}  // namespace
 
 std::unique_ptr<MetalSplatRenderer> MetalSplatRenderer::create() {
   std::unique_ptr<MetalSplatRenderer> r(new MetalSplatRenderer());
@@ -70,34 +82,30 @@ void MetalSplatRenderer::setVsync(bool vsync) {
 
 DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   DeviceCapabilities caps;
-  // MetalLodSelection caps a selected cut at 4M nodes; the engine's residency window is
-  // [100k, 32M].
   caps.limits.maxLodCapacitySplats = MetalLodSelection::kMaxBudget;
-  caps.limits.minResidencyCapacitySplats = 100'000;
-  caps.limits.maxResidencyCapacitySplats = 32'000'000;
+  caps.limits.minResidencyCapacitySplats = kMinResidencyCapacity;
+  caps.limits.maxResidencyCapacitySplats = kMaxResidencyCapacity;
   caps.supportsComputeTiles = false;
   caps.supportsHiZOcclusion = false;
   caps.supportsSubgroups = compute_->gpuSort();
-  // Metal exposes no texture-dimension query; Apple family 7, the minimum this renderer
-  // accepts, supports 16384x16384.
-  caps.maxTextureDimension = context_->device() != nil ? 16384u : 0u;
+  // Metal exposes no texture-dimension query.
+  caps.maxTextureDimension = context_->device() != nil ? kAppleFamily7MaxTextureDimension : 0u;
   RenderPolicySupport& policy = caps.policy;
   policy.fallback.raster = RasterStrategy::hardware;
   policy.fallback.tileSize = 16;
   policy.fallback.lodErrorPixels = 1.0f;
   policy.fallback.alphaThreshold = kQuadMinAlpha;
   policy.fallback.subpixelThreshold = kMinPixelRadius;
-  policy.fallback.sortDepth = compute_->depthBits() == MetalRadixSort::KeyBits::Low16
-                                  ? SortKeyBits::low16
-                                  : SortKeyBits::full32;
+  policy.fallback.sortDepth =
+      compute_->depthBits() == KeyBits::Low16 ? SortKeyBits::low16 : SortKeyBits::full32;
   policy.fallback.enableFrustumCulling = true;
   policy.fallback.enableEarlyTermination = true;
   // The key width is a public per-instance control. The raster strategy, sub-pixel radius,
   // alpha, tile size and occlusion stay fixed shader/rasterization choices.
   // The LOD error threshold applies live to a hierarchy world and at its next upload.
   policy.lodErrorPixels = compute_->gpuSort();
-  policy.minLodErrorPixels = 0.1f;
-  policy.maxLodErrorPixels = 16.0f;
+  policy.minLodErrorPixels = kMinLodErrorPixels;
+  policy.maxLodErrorPixels = kMaxLodErrorPixels;
   policy.lodSplatLimit = compute_->gpuSort();
   policy.sortDepth = compute_->gpuSort();
   return caps;

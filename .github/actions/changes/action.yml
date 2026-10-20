@@ -1,0 +1,39 @@
+name: changes
+description: >-
+  Report which CI jobs a pull request reaches, from .github/ci-filters.yml.
+  A file the `unknown` filter matches reaches them all. Needs the checkout and pull-requests read access.
+
+outputs:
+  splat-core:
+    value: ${{ steps.filter.outputs.splat-core == 'true' || steps.filter.outputs.unknown == 'true' }}
+  engine:
+    value: ${{ steps.filter.outputs.engine == 'true' || steps.filter.outputs.unknown == 'true' }}
+  ios:
+    value: ${{ steps.filter.outputs.ios == 'true' || steps.filter.outputs.unknown == 'true' }}
+  android:
+    value: ${{ steps.filter.outputs.android == 'true' || steps.filter.outputs.unknown == 'true' }}
+  cpp-lint:
+    value: ${{ steps.filter.outputs.cpp-lint == 'true' || steps.filter.outputs.unknown == 'true' }}
+  prepare-world:
+    value: ${{ steps.filter.outputs.prepare-world == 'true' || steps.filter.outputs.unknown == 'true' }}
+  spz-interop:
+    value: ${{ steps.filter.outputs.spz-interop == 'true' || steps.filter.outputs.unknown == 'true' }}
+  scripts:
+    value: ${{ steps.filter.outputs.scripts == 'true' || steps.filter.outputs.unknown == 'true' }}
+  rn-package:
+    value: ${{ steps.filter.outputs.rn-package == 'true' || steps.filter.outputs.unknown == 'true' }}
+  rn-mirror:
+    value: ${{ steps.filter.outputs.rn-mirror == 'true' || steps.filter.outputs.unknown == 'true' }}
+  rn-android:
+    value: ${{ steps.filter.outputs.rn-android == 'true' || steps.filter.outputs.unknown == 'true' }}
+  rn-app:
+    value: ${{ steps.filter.outputs.rn-app == 'true' || steps.filter.outputs.unknown == 'true' }}
+
+runs:
+  using: composite
+  steps:
+    - id: filter
+      uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+      with:
+        filters: .github/ci-filters.yml
+        predicate-quantifier: some-with-excludes

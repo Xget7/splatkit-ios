@@ -11,7 +11,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Pull requests run only the jobs their files reach (.github/ci-filters.yml); main runs all.
+  changes:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      splat-core: ${{ steps.changes.outputs.splat-core }}
+      prepare-world: ${{ steps.changes.outputs.prepare-world }}
+      spz-interop: ${{ steps.changes.outputs.spz-interop }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: .github
+      - id: changes
+        uses: ./.github/actions/changes
+
   test:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.splat-core == 'true') }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -32,6 +52,8 @@ jobs:
   # The README sends every PLY through scripts/prepare-world.sh, so run it the way a user
   # would: from a clean checkout, on a closed room of splats, with every output requested.
   prepare-world:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.prepare-world == 'true') }}
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -59,6 +81,8 @@ jobs:
           cmp "$RUNNER_TEMP/room-v4/room.collider.glb" "$RUNNER_TEMP/room-normalized/room-rub.collider.glb"
 
   spz-interop:
+    needs: changes
+    if: ${{ !cancelled() && (github.event_name != 'pull_request' || needs.changes.outputs.spz-interop == 'true') }}
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false

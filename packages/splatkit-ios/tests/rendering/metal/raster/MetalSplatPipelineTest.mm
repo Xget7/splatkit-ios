@@ -72,7 +72,7 @@ class MetalSplatPipelineTest : public testing::Test {
   }
 
   test::Gpu* gpu_ = nullptr;
-  MetalFrameLoop loop_{MetalFrameCompute::kSlots};
+  MetalFrameLoop loop_{kFramesInFlight};
   std::unique_ptr<MetalFrameCompute> compute_;
   MetalSplatPipeline pipeline_;
   std::unique_ptr<MetalRenderTarget> target_;

@@ -14,7 +14,7 @@ struct VisibilityRig {
   MetalVisibilityPass pass;
   MetalRadixSort sort;
 
-  bool create(MetalRadixSort::KeyBits bits = MetalRadixSort::KeyBits::Full32) {
+  bool create(KeyBits bits = KeyBits::Full32) {
     return pass.create(Gpu::get().device, Gpu::get().library, bits) &&
            sort.create(Gpu::get().device, Gpu::get().library);
   }

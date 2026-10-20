@@ -171,6 +171,8 @@ class SplatEngine {
   // Runs a reproducible capture: gyroscope off, a fixed pose, one full yaw turn over
   // `seconds`, then logs the frame time distribution. Waits for a world if none is up.
   void startBenchmark(float seconds);
+  // Render thread: true from the first recorded frame of the turn until its summary.
+  bool benchmarkRunning() const { return benchmark_.running(); }
   const std::string& gpuDescription() const { return renderer_->deviceDescription(); }
 
  private:

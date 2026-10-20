@@ -1,6 +1,6 @@
 #include "rendering/metal/raster/MetalSplatPipeline.h"
 
-#include "rendering/metal/cull/MetalVisibilityPass.h"
+#include "rendering/metal/layout/MetalDrawArguments.h"
 #include "splatkit/Log.h"
 
 namespace splatkit {
@@ -120,7 +120,7 @@ void MetalSplatPipeline::encode(id<MTLCommandBuffer> cmd, const MetalRenderTarge
       [encoder setVertexBuffer:gpu.projected offset:0 atIndex:1];
       [encoder setVertexBuffer:gpu.order offset:0 atIndex:2];
       id<MTLBuffer> arguments = gpu.arguments;
-      for (uint32_t batch = 0; batch < MetalVisibilityPass::kDrawBatches; ++batch) {
+      for (uint32_t batch = 0; batch < kDrawBatches; ++batch) {
         if (batch > 0) {
           [encoder setRenderPipelineState:maskPipeline_];
           [encoder setDepthStencilState:maskDepth_];
@@ -130,7 +130,7 @@ void MetalSplatPipeline::encode(id<MTLCommandBuffer> cmd, const MetalRenderTarge
         [encoder setDepthStencilState:splatDepth_];
         [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
                   indirectBuffer:arguments
-            indirectBufferOffset:batch * MetalVisibilityPass::kDrawArgumentBytes];
+            indirectBufferOffset:batch * kDrawArgumentBytes];
       }
     } else {
       const int degree = world->drawDegree(shDegree);

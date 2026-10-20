@@ -6,7 +6,8 @@ DerivedData/
 *.glb
 .DS_Store
 .argent/
-.claude/
+.claude/*
+!.claude/skills/
 .idea/
 .gradle/
 local.properties

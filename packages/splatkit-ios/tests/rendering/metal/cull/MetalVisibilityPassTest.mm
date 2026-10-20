@@ -39,9 +39,9 @@ TEST(MetalVisibilityPassSizingTest, ReconfigureKeepsTheReservationAndTheKeyWidth
   VisibilityRig rig;
   ASSERT_TRUE(rig.create());
   ASSERT_TRUE(rig.reserve(16));
-  EXPECT_EQ(rig.pass.depthBits(), MetalRadixSort::KeyBits::Full32);
-  EXPECT_TRUE(rig.pass.reconfigure(MetalRadixSort::KeyBits::Low16));
-  EXPECT_EQ(rig.pass.depthBits(), MetalRadixSort::KeyBits::Low16);
+  EXPECT_EQ(rig.pass.depthBits(), KeyBits::Full32);
+  EXPECT_TRUE(rig.pass.reconfigure(KeyBits::Low16));
+  EXPECT_EQ(rig.pass.depthBits(), KeyBits::Low16);
   EXPECT_EQ(rig.pass.capacity(), 16u);
 }
 
@@ -108,7 +108,7 @@ TEST_F(MetalVisibilityPassTest, EmptyFrameClearsPreviousIndirectDraws) {
   }
   const auto* draws =
       static_cast<const MTLDrawPrimitivesIndirectArguments*>(visibility.drawArguments(0).contents);
-  for (uint32_t i = 0; i < MetalVisibilityPass::kDrawBatches; ++i) {
+  for (uint32_t i = 0; i < kDrawBatches; ++i) {
     EXPECT_EQ(draws[i].instanceCount, 0u);
   }
 }
@@ -121,8 +121,8 @@ TEST_F(MetalVisibilityPassTest, RejectsRangesOutsideANewerSmallerWorld) {
   id<MTLCommandBuffer> cmd = [Gpu::get().queue commandBuffer];
   EXPECT_FALSE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1));
   EXPECT_FALSE(visibility.encode(cmd, 0, input.uniforms, input.splats, nil, 0, nullptr, 1));
-  EXPECT_FALSE(visibility.encode(cmd, MetalVisibilityPass::kSlots, input.uniforms, input.splats,
-                                 nil, 0, nullptr, 0));
+  EXPECT_FALSE(
+      visibility.encode(cmd, kFramesInFlight, input.uniforms, input.splats, nil, 0, nullptr, 0));
   [cmd commit];
   [cmd waitUntilCompleted];
 }
@@ -203,7 +203,7 @@ TEST_F(MetalVisibilityPassTest, CullsAndOrdersTheRangesFrontToBack) {
   // The batches partition the instances, in order.
   const auto* draw = static_cast<const uint32_t*>(visibility.drawArguments(1).contents);
   uint32_t next = 0;
-  for (uint32_t b = 0; b < MetalVisibilityPass::kDrawBatches; ++b) {
+  for (uint32_t b = 0; b < kDrawBatches; ++b) {
     EXPECT_EQ(draw[b * 4], 4u);        // vertices per instance
     EXPECT_EQ(draw[b * 4 + 3], next);  // base instance
     next += draw[b * 4 + 1];           // instances
@@ -363,7 +363,7 @@ TEST(MetalVisibilityPassKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIn
   for (bool indexed : {false, true}) {
     SCOPED_TRACE(indexed);
     VisibilityRig visibility;
-    ASSERT_TRUE(visibility.create(MetalRadixSort::KeyBits::Low16));
+    ASSERT_TRUE(visibility.create(KeyBits::Low16));
     ASSERT_TRUE(visibility.reserve(n));
     const SplatRenderer::Range range{0, n};
     auto cmd = [gpu.queue commandBuffer];
@@ -408,7 +408,7 @@ TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
   const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
   const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
   for (uint32_t n : {1u, 31u, 32u, 33u, 255u, 256u, 257u, 513u, 0u}) {
-    const uint32_t slot = n % MetalVisibilityPass::kSlots;
+    const uint32_t slot = n % kFramesInFlight;
     const SplatRenderer::Range range{0, n};
     id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
     ASSERT_TRUE(visibility.encode(cmd, slot, input.uniforms, input.splats, nil, 0,
@@ -430,7 +430,7 @@ TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
     const auto* draws = static_cast<const MTLDrawPrimitivesIndirectArguments*>(
         visibility.drawArguments(slot).contents);
     uint32_t next = 0;
-    for (uint32_t b = 0; b < MetalVisibilityPass::kDrawBatches; ++b) {
+    for (uint32_t b = 0; b < kDrawBatches; ++b) {
       EXPECT_EQ(draws[b].vertexCount, 4u);
       EXPECT_EQ(draws[b].vertexStart, 0u);
       EXPECT_EQ(draws[b].baseInstance, next);

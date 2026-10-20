@@ -102,7 +102,8 @@ class SplatRenderer {
     uint32_t count = 0;
   };
   // True when the renderer culls and sorts on the GPU: the engine then hands it the
-  // ranges to draw in every frame instead of an order.
+  // ranges to draw in every frame instead of an order. Asked before the first upload, so
+  // it describes the device, not a loaded world.
   virtual bool sortsOnGpu() const { return false; }
 
   enum class OrderSource { cpu, gpu };

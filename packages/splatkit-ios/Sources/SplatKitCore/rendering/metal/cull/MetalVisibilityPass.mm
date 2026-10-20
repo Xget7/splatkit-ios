@@ -8,14 +8,13 @@
 
 namespace splatkit {
 
-bool MetalVisibilityPass::create(id<MTLDevice> device, id<MTLLibrary> library,
-                                 MetalRadixSort::KeyBits depthBits) {
+bool MetalVisibilityPass::create(id<MTLDevice> device, id<MTLLibrary> library, KeyBits depthBits) {
   device_ = device;
   library_ = library;
   depthBits_ = depthBits;
   if (!createPipelines()) return false;
   bool ok = true;
-  for (uint32_t slot = 0; slot < kSlots; ++slot) {
+  for (uint32_t slot = 0; slot < kFramesInFlight; ++slot) {
     count_[slot] = metal::buffer(device, sizeof(uint32_t));
     drawArguments_[slot] = metal::buffer(device, kDrawBatches * kDrawArgumentBytes);
     ranges_[slot] = metal::buffer(device, size_t{kMaxRanges} * sizeof(SplatRenderer::Range));
@@ -27,9 +26,9 @@ bool MetalVisibilityPass::create(id<MTLDevice> device, id<MTLLibrary> library,
 }
 
 // Only the pipelines depend on the key width; the buffers and the radix scratch are reused.
-bool MetalVisibilityPass::reconfigure(MetalRadixSort::KeyBits depthBits) {
+bool MetalVisibilityPass::reconfigure(KeyBits depthBits) {
   if (device_ == nil || library_ == nil) return false;
-  const MetalRadixSort::KeyBits previousBits = depthBits_;
+  const KeyBits previousBits = depthBits_;
   depthBits_ = depthBits;
   if (!createPipelines()) {
     depthBits_ = previousBits;
@@ -39,7 +38,7 @@ bool MetalVisibilityPass::reconfigure(MetalRadixSort::KeyBits depthBits) {
 }
 
 bool MetalVisibilityPass::createPipelines() {
-  const bool quantized = depthBits_ == MetalRadixSort::KeyBits::Low16;
+  const bool quantized = depthBits_ == KeyBits::Low16;
   bool ok = true;
   for (int degree = 0; degree < kShDegrees; ++degree) {
     MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
@@ -98,7 +97,7 @@ bool MetalVisibilityPass::encodeProject(id<MTLCommandBuffer> cmd, uint32_t slot,
   const bool indexed = indices != nil;
   if (indexedOnly_ && !indexed) return false;
   if (indexed != (activeCount != nil)) return false;
-  if (slot >= kSlots || rangeCount > kMaxRanges || capacity_ == 0 ||
+  if (slot >= kFramesInFlight || rangeCount > kMaxRanges || capacity_ == 0 ||
       (rangeCount > 0 && ranges == nullptr))
     return false;
   const size_t sortBytes = size_t{capacity_} * sizeof(uint32_t);

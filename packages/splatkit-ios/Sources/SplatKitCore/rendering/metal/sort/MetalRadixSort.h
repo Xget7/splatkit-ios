@@ -5,6 +5,8 @@
 #include <array>
 #include <cstdint>
 
+#include "rendering/metal/layout/MetalSortKeys.h"
+
 namespace splatkit {
 
 // Stable ascending sort of uint32 key/value pairs. No camera or splat knowledge.
@@ -14,8 +16,6 @@ namespace splatkit {
 // Scratch is shared across frames: all encodes and their consumers use one queue.
 class MetalRadixSort {
  public:
-  // Low16 requires zero upper bits. Keys remain uint32 storage in both modes.
-  enum class KeyBits : uint32_t { Low16 = 16, Full32 = 32 };
   bool create(id<MTLDevice> device, id<MTLLibrary> library);
   // Transactional allocation: failure preserves the previous buffers and capacity.
   bool reserve(uint32_t capacity);

@@ -20,6 +20,9 @@ namespace splatkit {
 // thread only.
 class MetalSurface {
  public:
+  static constexpr float kMinRenderScale = 0.1f;
+  static constexpr float kMaxRenderScale = 2.0f;
+
   // `compositesInHalfFloat`: the splats are accumulated in a half-float target at every scale,
   // which the GPU order path needs because 8 bits would round away the coverage.
   MetalSurface(id<MTLDevice> device, id<MTLLibrary> library, MetalFrameLoop& frameLoop,
@@ -33,6 +36,7 @@ class MetalSurface {
   bool setLayer(CAMetalLayer* layer);
   // The layer's size in pixels.
   void setDrawableSize(uint32_t width, uint32_t height);
+  // Clamped to [kMinRenderScale, kMaxRenderScale]; below or above 1 draws offscreen.
   void setRenderScale(float scale);
   void setSpatialUpscaling(bool enabled);
   // False when the blit pipeline for the new format could not be built.

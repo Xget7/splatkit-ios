@@ -350,5 +350,41 @@ TEST_F(MetalSplatRendererTest, IssFixtureProducesVisiblePixels) {
   }
 }
 
+TEST_F(MetalSplatRendererTest, DestroyingTheRendererWithSelectionAndSortInFlightIsSafe) {
+  constexpr uint32_t kLeaves = 4096;
+  constexpr int kRepeats = 50;
+  splat::LodTree tree;
+  tree.leafCount = kLeaves;
+  tree.nodes.positions = {0, 0, -8};
+  tree.nodes.colors = {1, 1, 1};
+  tree.nodes.alphas = {1};
+  tree.nodes.covariances = {0.04f, 0, 0, 0.04f, 0, 0.04f};
+  tree.layout.push_back({{0, 0, -8}, 0.4f, 1, kLeaves});
+  for (uint32_t i = 0; i < kLeaves; ++i) {
+    const float x = (static_cast<float>(i % 64) - 31.5f) * 0.02f;
+    const float y = (static_cast<float>(i / 64) - 31.5f) * 0.02f;
+    tree.nodes.positions.insert(tree.nodes.positions.end(), {x, y, -8});
+    tree.nodes.colors.insert(tree.nodes.colors.end(), {1, 1, 1});
+    tree.nodes.alphas.push_back(1);
+    tree.nodes.covariances.insert(tree.nodes.covariances.end(), {0.001f, 0, 0, 0.001f, 0, 0.001f});
+    tree.layout.push_back({{x, y, -8}, 0, 0, 0});
+  }
+  SplatRenderer::Frame frame;
+  frame.orderSource = SplatRenderer::OrderSource::gpu;
+  frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
+  for (int repeat = 0; repeat < kRepeats; ++repeat) {
+    auto renderer = MetalSplatRenderer::create();
+    ASSERT_NE(renderer, nullptr);
+    auto layer = [CAMetalLayer layer];
+    layer.drawableSize = CGSizeMake(64, 64);
+    renderer->setLayer(layer);
+    renderer->setDrawableSize(64, 64);
+    ASSERT_TRUE(renderer->uploadLodWorld(tree, 0, kLeaves));
+    // Both frame slots hold a selection, a sort and a render buffer when the renderer goes.
+    for (uint32_t i = 0; i < kFramesInFlight; ++i) ASSERT_TRUE(renderer->draw(frame));
+    renderer.reset();
+  }
+}
+
 }  // namespace
 }  // namespace splatkit
