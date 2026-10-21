@@ -56,9 +56,9 @@ bool MetalUpscaler::configure(const MetalRenderTarget& target,
       desc.outputHeight = drawableHeight;
       desc.colorTextureFormat = color.pixelFormat;
       desc.outputTextureFormat = outputFormat_;
-      desc.colorProcessingMode = outputFormat_ == MTLPixelFormatBGRA8Unorm_sRGB
-                                     ? MTLFXSpatialScalerColorProcessingModeLinear
-                                     : MTLFXSpatialScalerColorProcessingModePerceptual;
+      // MetalFX asserts on an sRGB input or output in any other mode, so a linear-blended frame
+      // is scaled as perceptual too.
+      desc.colorProcessingMode = MTLFXSpatialScalerColorProcessingModePerceptual;
       scaler_ = [desc newSpatialScalerWithDevice:device_];
       if (scaler_ == nil) {
         LOGE("MetalFX spatial scaler %lux%lu to %ux%u failed; the scaled frame is blitted",

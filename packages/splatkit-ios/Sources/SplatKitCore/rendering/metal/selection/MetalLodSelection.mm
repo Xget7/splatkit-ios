@@ -14,12 +14,13 @@ namespace {
 constexpr uint32_t kSimdWidth = 32;
 constexpr uint32_t kGroupThreads = 256;
 constexpr uint32_t kBlockGroups = 256;
-// LodState in SplatLOD.metal: its size and the offsets of the three indirect dispatch
-// arguments (dispatchX, emitX, scanX).
-constexpr size_t kStateBytes = 80;
+// LodState in SplatLOD.metal: its size and the offsets of the four indirect dispatch
+// arguments (dispatchX, emitX, scanX, scatterX).
+constexpr size_t kStateBytes = 88;
 constexpr NSUInteger kDispatchArgumentsOffset = 32;
 constexpr NSUInteger kEmitArgumentsOffset = 44;
 constexpr NSUInteger kScanArgumentsOffset = 64;
+constexpr NSUInteger kScatterArgumentsOffset = 76;
 
 }  // namespace
 
@@ -29,14 +30,12 @@ bool MetalLodSelection::create(id<MTLDevice> device, id<MTLLibrary> library) {
   evaluate_ = metal::pipeline(device, library, "evaluateSplatLOD");
   budget_ = metal::pipeline(device, library, "budgetSplatLOD");
   compact_ = metal::pipeline(device, library, "compactSplatLOD");
-  allocate_ = metal::pipeline(device, library, "allocateSplatLOD");
+  commit_ = metal::pipeline(device, library, "commitSplatLOD");
   scatter_ = metal::pipeline(device, library, "scatterSplatLOD");
-  advance_ = metal::pipeline(device, library, "advanceSplatLOD");
   emit_ = metal::pipeline(device, library, "emitSplatLOD");
   scanGroups_ = metal::pipeline(device, library, "scanSplatLODGroups");
-  scanBlocks_ = metal::pipeline(device, library, "scanSplatLODBlocks");
-  if (!initialize_ || !evaluate_ || !budget_ || !compact_ || !allocate_ || !scatter_ || !advance_ ||
-      !emit_ || !scanGroups_ || !scanBlocks_)
+  if (!initialize_ || !evaluate_ || !budget_ || !compact_ || !commit_ || !scatter_ || !emit_ ||
+      !scanGroups_)
     return false;
   for (auto p : {evaluate_, compact_, scatter_, emit_, scanGroups_})
     if (p.threadExecutionWidth != kSimdWidth || p.maxTotalThreadsPerThreadgroup < kGroupThreads)
@@ -93,42 +92,37 @@ bool MetalLodSelection::upload(const splat::LodTree& tree, uint32_t capacity, fl
   return true;
 }
 void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms) {
-  auto start = [&](id<MTLComputePipelineState> pipeline, NSString* label) {
-    auto e = [command computeCommandEncoder];
-    e.label = label;
+  // Serial: each dispatch sees the writes and indirect arguments of the ones before it.
+  auto e = [command computeCommandEncoderWithDispatchType:MTLDispatchTypeSerial];
+  e.label = @"LOD selection";
+  // A phase's debug group closes with its dispatch.
+  auto phase = [&](id<MTLComputePipelineState> pipeline, NSString* label) {
+    [e pushDebugGroup:label];
     [e setComputePipelineState:pipeline];
-    return e;
   };
-  auto one = [](id<MTLComputeCommandEncoder> e) {
+  auto one = [&] {
     [e dispatchThreadgroups:MTLSizeMake(1, 1, 1) threadsPerThreadgroup:MTLSizeMake(1, 1, 1)];
-    [e endEncoding];
+    [e popDebugGroup];
   };
-  auto active = [&](id<MTLComputeCommandEncoder> e) {
+  auto indirect = [&](NSUInteger offset) {
     [e dispatchThreadgroupsWithIndirectBuffer:state_
-                         indirectBufferOffset:kDispatchArgumentsOffset
+                         indirectBufferOffset:offset
                         threadsPerThreadgroup:MTLSizeMake(kGroupThreads, 1, 1)];
-    [e endEncoding];
+    [e popDebugGroup];
   };
   auto scan = [&](id<MTLBuffer> groups) {
-    auto e = start(scanGroups_, @"LOD parallel scan of SIMD totals");
+    phase(scanGroups_, @"LOD parallel scan of SIMD totals");
     [e setBuffer:groups offset:0 atIndex:0];
     [e setBuffer:blocks_ offset:0 atIndex:1];
     [e setBuffer:state_ offset:0 atIndex:2];
-    [e dispatchThreadgroupsWithIndirectBuffer:state_
-                         indirectBufferOffset:kScanArgumentsOffset
-                        threadsPerThreadgroup:MTLSizeMake(kGroupThreads, 1, 1)];
-    [e endEncoding];
-    e = start(scanBlocks_, @"LOD scan of block totals");
-    [e setBuffer:blocks_ offset:0 atIndex:0];
-    [e setBuffer:state_ offset:0 atIndex:1];
-    one(e);
+    indirect(kScanArgumentsOffset);
   };
-  auto e = start(initialize_, @"Initialize interior LOD frontier");
+  phase(initialize_, @"Initialize interior LOD frontier");
   [e setBuffer:frontier_[0] offset:0 atIndex:0];
   [e setBuffer:state_ offset:0 atIndex:1];
-  one(e);
+  one();
   for (uint32_t level = 0; level < depth_; ++level) {
-    e = start(evaluate_, @"LOD node bounds and screen error");
+    phase(evaluate_, @"LOD node bounds and screen error");
     [e setBuffer:uniforms offset:0 atIndex:0];
     [e setBuffer:nodes_ offset:0 atIndex:1];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:2];
@@ -136,16 +130,16 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e setBytes:&config_ length:sizeof(config_) atIndex:4];
     [e setBuffer:costs_ offset:0 atIndex:5];
     [e setBuffer:costGroups_ offset:0 atIndex:6];
-    active(e);
+    indirect(kDispatchArgumentsOffset);
     scan(costGroups_);
-    e = start(budget_, @"LOD deterministic capacity guard");
+    phase(budget_, @"LOD block scan and deterministic capacity guard");
     [e setBuffer:costGroups_ offset:0 atIndex:0];
     [e setBuffer:costs_ offset:0 atIndex:1];
     [e setBuffer:state_ offset:0 atIndex:2];
     [e setBytes:&config_ length:sizeof(config_) atIndex:3];
     [e setBuffer:blocks_ offset:0 atIndex:4];
-    one(e);
-    e = start(compact_, @"LOD SIMD prefix compaction");
+    one();
+    phase(compact_, @"LOD SIMD prefix compaction");
     [e setBuffer:nodes_ offset:0 atIndex:0];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:1];
     [e setBuffer:costs_ offset:0 atIndex:2];
@@ -154,13 +148,13 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e setBuffer:offsets_ offset:0 atIndex:5];
     [e setBuffer:groups_ offset:0 atIndex:6];
     [e setBuffer:blocks_ offset:0 atIndex:7];
-    active(e);
+    indirect(kDispatchArgumentsOffset);
     scan(groups_);
-    e = start(allocate_, @"LOD deterministic packet offsets");
+    phase(commit_, @"LOD block scan, packet offsets and next round");
     [e setBuffer:blocks_ offset:0 atIndex:0];
     [e setBuffer:state_ offset:0 atIndex:1];
-    one(e);
-    e = start(scatter_, @"LOD child frontier and leaf packets");
+    one();
+    phase(scatter_, @"LOD child frontier and leaf packets");
     [e setBuffer:nodes_ offset:0 atIndex:0];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:1];
     [e setBuffer:offsets_ offset:0 atIndex:2];
@@ -171,19 +165,14 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e setBuffer:indices_ offset:0 atIndex:7];
     [e setBuffer:leaves_ offset:0 atIndex:8];
     [e setBuffer:blocks_ offset:0 atIndex:9];
-    active(e);
-    e = start(advance_, @"Advance LOD indirect work");
-    [e setBuffer:state_ offset:0 atIndex:0];
-    one(e);
+    indirect(kScatterArgumentsOffset);
   }
-  e = start(emit_, @"Emit LOD leaf indices cooperatively");
+  phase(emit_, @"Emit LOD leaf indices cooperatively");
   [e setBuffer:packets_ offset:0 atIndex:0];
   [e setBuffer:leaves_ offset:0 atIndex:1];
   [e setBuffer:state_ offset:0 atIndex:2];
   [e setBuffer:indices_ offset:0 atIndex:3];
-  [e dispatchThreadgroupsWithIndirectBuffer:state_
-                       indirectBufferOffset:kEmitArgumentsOffset
-                      threadsPerThreadgroup:MTLSizeMake(kGroupThreads, 1, 1)];
+  indirect(kEmitArgumentsOffset);
   [e endEncoding];
 }
 }  // namespace splatkit

@@ -11,7 +11,7 @@ struct Camera {
   float2 tanHalfFov;   // 1 / proj[0][0], 1 / proj[1][1]
   float2 screenSize;   // pixels
   uint outputLinear;   // 1 when the target is sRGB and expects linear values
-  uint pad;
+  float minPixelRadius;  // pixels: smallest source sigma times quad radius that is drawn
   float4 cameraPosition;  // world space
 };
 
@@ -79,13 +79,11 @@ constant float kSaturated = 254.0 / 255.0;  // coverage at which a pixel counts 
 // 2.5 sigma keeps 4 % of its peak, and an LOD opacity of 1000 stays visible out to 4.9 sigma.
 constant float kBoundsRadius = 2.5;
 constant float kLodBoundsRadius = 5.0;
-// The host defines this cutoff and kMinPixelRadius (MetalShaderTypes.h) so the reported policy
-// fallback cannot drift from the shader.
+// The host defines this cutoff (MetalShaderTypes.h) so the reported policy fallback cannot drift
+// from the shader.
 constant float kQuadMinAlpha = SPLAT_QUAD_MIN_ALPHA;
 // A splat near the camera can project to thousands of pixels; its quad is cut here instead.
 constant float kMaxPixelRadius = 512.0;
-// Smallest footprint, in pixels, a splat is drawn at.
-constant float kMinPixelRadius = SPLAT_MIN_PIXEL_RADIUS;
 // Variance, in squared pixels, added to every projected covariance: the low-pass filter of
 // the reference 3DGS rasterizer, which stops a splat shrinking below about a pixel.
 constant float kLowPassVariance = 0.3;

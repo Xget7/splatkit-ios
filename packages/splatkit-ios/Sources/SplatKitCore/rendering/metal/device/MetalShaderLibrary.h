@@ -15,9 +15,7 @@ namespace splatkit::metal {
 inline id<MTLLibrary> shaderLibrary(id<MTLDevice> device, NSError** error) {
   MTLCompileOptions* options = [MTLCompileOptions new];
   options.languageVersion = MTLLanguageVersion2_3;
-  options.preprocessorMacros =
-      @{@"SPLAT_MIN_PIXEL_RADIUS" : @(kMinPixelRadius),
-        @"SPLAT_QUAD_MIN_ALPHA" : @(kQuadMinAlpha)};
+  options.preprocessorMacros = @{@"SPLAT_QUAD_MIN_ALPHA" : @(kQuadMinAlpha)};
   return [device newLibraryWithSource:@(SplatShaderSource) options:options error:error];
 }
 

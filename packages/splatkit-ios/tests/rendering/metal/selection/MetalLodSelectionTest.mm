@@ -336,6 +336,30 @@ TEST(MetalLodSelectionTest, ParallelScanCrossesBlocksWithoutHolesOrDuplicates) {
   }
 }
 
+// Root 0 holds leaf 1 and interior 2, which holds leaves 3 and 4: both rounds emit, the second
+// after the first round has advanced the count.
+TEST(MetalLodSelectionTest, EachRoundEmitsAfterTheCountOfTheRoundsBefore) {
+  splat::LodTree tree;
+  tree.leafCount = 3;
+  for (uint32_t i = 0; i < 5; ++i) {
+    const uint32_t childStart = i == 0 ? 1u : i == 2 ? 3u : 0u;
+    tree.layout.push_back({{0, 0, -2}, 0.02f, childStart, childStart != 0 ? 2u : 0u});
+    tree.nodes.positions.insert(tree.nodes.positions.end(), {0, 0, -2});
+    tree.nodes.covariances.insert(tree.nodes.covariances.end(),
+                                  {0.0001f, 0, 0, 0.0001f, 0, 0.0001f});
+    tree.nodes.colors.insert(tree.nodes.colors.end(), {0.5f, 0.5f, 0.5f});
+    tree.nodes.alphas.push_back(0.1f);
+  }
+  tree.selection = splat::buildLodSelectionData(tree);
+  auto& gpu = test::Gpu::get();
+  MetalLodSelection lod;
+  ASSERT_TRUE(lod.create(gpu.device, gpu.library));
+  ASSERT_TRUE(lod.upload(tree, 3, 0, 4, false));
+  std::array<uint32_t, 6> stats{};
+  EXPECT_EQ(select(lod, camera(), &stats), (std::vector<uint32_t>{1, 3, 4}));
+  EXPECT_EQ(stats[5], 2u);
+}
+
 TEST(MetalLodSelectionTest, LargeLeafPacketUsesCooperativeEmissionWithoutOverflow) {
   splat::LodTree tree;
   tree.leafCount = 513;

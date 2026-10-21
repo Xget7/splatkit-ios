@@ -43,9 +43,8 @@ class MetalLodSelection {
   uint32_t capacity_ = 0;
   id<MTLDevice> device_ = nil;
   id<MTLComputePipelineState> initialize_ = nil, evaluate_ = nil, budget_ = nil;
-  id<MTLComputePipelineState> compact_ = nil, allocate_ = nil, scatter_ = nil;
-  id<MTLComputePipelineState> advance_ = nil, emit_ = nil;
-  id<MTLComputePipelineState> scanGroups_ = nil, scanBlocks_ = nil;
+  id<MTLComputePipelineState> compact_ = nil, commit_ = nil, scatter_ = nil;
+  id<MTLComputePipelineState> emit_ = nil, scanGroups_ = nil;
   id<MTLBuffer> nodes_ = nil, leaves_ = nil, indices_ = nil, packets_ = nil;
   id<MTLBuffer> costs_ = nil, costGroups_ = nil, offsets_ = nil, groups_ = nil, state_ = nil;
   id<MTLBuffer> blocks_ = nil;

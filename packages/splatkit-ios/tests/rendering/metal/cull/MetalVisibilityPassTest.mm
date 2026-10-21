@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <utility>
 #include <vector>
 
 #include "rendering/metal/cull/MetalVisibilityPass.h"
@@ -105,15 +106,19 @@ struct VisibilityInput {
     splats = [gpu.device newBufferWithBytes:source.data()
                                      length:source.size() * sizeof(GpuSplat)
                                     options:MTLResourceStorageModeShared];
+    uniforms = cameraBuffer();
+  }
+  // Focal 500 px over a 1000 px square, looking down -z, without a sub-pixel cutoff.
+  static id<MTLBuffer> cameraBuffer() {
     CameraUniform u{};
     u.view = splat::Mat4::identity();
     u.proj = splat::Mat4::perspective(1.0f, 1.0f, 0.1f, 100.0f);
     u.focal[0] = u.focal[1] = 500;
     u.tanHalfFov[0] = u.tanHalfFov[1] = 1;
     u.screenSize[0] = u.screenSize[1] = 1000;
-    uniforms = [gpu.device newBufferWithBytes:&u
-                                       length:sizeof(u)
-                                      options:MTLResourceStorageModeShared];
+    return [Gpu::get().device newBufferWithBytes:&u
+                                          length:sizeof(u)
+                                         options:MTLResourceStorageModeShared];
   }
 };
 
@@ -281,6 +286,7 @@ TEST_F(MetalVisibilityPassTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
   u.focal[0] = u.focal[1] = 500.0f;
   u.tanHalfFov[0] = u.tanHalfFov[1] = 1.0f;
   u.screenSize[0] = u.screenSize[1] = 1000.0f;
+  u.minPixelRadius = 0.5f;
   id<MTLBuffer> uniforms = [gpu.device newBufferWithBytes:&u
                                                    length:sizeof(u)
                                                   options:MTLResourceStorageModeShared];
@@ -293,6 +299,35 @@ TEST_F(MetalVisibilityPassTest, DropsAProjectedSubpixelGaussianBeforeSorting) {
   ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
 
   EXPECT_EQ(visibility.count(0), 1u);
+}
+
+// VulkanVisibilityPassTest.KeepsOnlySplatsAtOrOverTheCameraCutoff is the same case.
+TEST_F(MetalVisibilityPassTest, KeepsOnlySplatsAtOrOverTheCameraCutoff) {
+  Gpu& gpu = Gpu::get();
+  // An opaque splat at depth 20 with focal 500: source sigma 0.3 px, a 2.5 sigma quad, so a
+  // 0.75 px footprint.
+  GpuSplat splat{};
+  splat.position[2] = -20.0f;
+  splat.rgba8 = 0xffffffffu;
+  const uint32_t variance = splat::toHalf(1.44e-4f);
+  splat.cov[0] = variance;
+  splat.cov[1] = variance << 16;
+  splat.cov[2] = variance << 16;
+  id<MTLBuffer> splatBuffer = [gpu.device newBufferWithBytes:&splat
+                                                      length:sizeof(splat)
+                                                     options:MTLResourceStorageModeShared];
+  ASSERT_TRUE(visibility.reserve(1));
+  for (const auto [cutoff, kept] : {std::pair{0.5f, 1u}, std::pair{1.0f, 0u}}) {
+    id<MTLBuffer> uniforms = VisibilityInput::cameraBuffer();
+    static_cast<CameraUniform*>(uniforms.contents)->minPixelRadius = cutoff;
+    const SplatRenderer::Range range{0, 1};
+    id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
+    ASSERT_TRUE(visibility.encode(cmd, 0, uniforms, splatBuffer, nil, 0, &range, 1));
+    [cmd commit];
+    [cmd waitUntilCompleted];
+    ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+    EXPECT_EQ(visibility.count(0), kept) << "cutoff " << cutoff << " px";
+  }
 }
 
 TEST_F(MetalVisibilityPassTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSplats) {
@@ -337,18 +372,18 @@ TEST_F(MetalVisibilityPassTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSpla
 TEST_F(MetalVisibilityPassTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadius) {
   Gpu& gpu = Gpu::get();
   VisibilityInput input(6);
+  static_cast<CameraUniform*>(input.uniforms.contents)->minPixelRadius = 1.0f;
   auto* source = static_cast<GpuSplat*>(input.splats.contents);
-  // Depth 2 and focal 500: a world sigma of s projects to 250 s pixels. The quad reaches
-  // 2.5 sigma of the source after the 0.3 px^2 low-pass and ellipseAxes' 0.1 px^2 eigenvalue
-  // floor are taken off, so a 0.6 px sigma leaves a 1.7 px footprint and 0.2 px leaves 0.94 px.
+  // Depth 2 and focal 500: a world sigma of s projects to 250 s pixels, and the footprint is
+  // 2.5 of those sigmas against the 1 px cutoff.
   struct Case {
     float z, sigma;
     uint32_t rgba8, lodAlpha;
   };
   const uint32_t two = 0x40000000u;  // float bits of 2.0
   const Case cases[] = {
-      {-2.0f, 0.0024f, 0xffffffffu, 0},  // 0.6 px sigma, 1.7 px footprint: kept
-      {-2.0f, 0.0008f, 0xffffffffu, 0},  // 0.2 px sigma, 0.94 px footprint: culled
+      {-2.0f, 0.0024f, 0xffffffffu, 0},  // 0.6 px sigma, 1.5 px footprint: kept
+      {-2.0f, 0.0008f, 0xffffffffu, 0},  // 0.2 px sigma, 0.5 px footprint: culled
       {-0.05f, 0.1f, 0xffffffffu, 0},    // centre inside the 0.1 near plane: culled
       {-150.0f, 1.0f, 0xffffffffu, 0},   // centre past the 100 far plane: culled
       {-2.0f, 0.1f, 0x00000000u, two},   // black and transparent, LOD opacity 2: kept

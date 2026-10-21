@@ -63,7 +63,7 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `cameraPoseInterval` | Seconds between `cameraPoseChanged` delegate calls; 0, the default, never |
 | `startBenchmark(seconds:)` | A reproducible turn with the frame time distribution logged |
 | `captureFrame(to:completion:)` | The next frame as a PNG |
-| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth, the LOD error threshold and the LOD splat limit apply with GPU sort, the sub-pixel threshold is fixed and a different request resolves to it with a warning |
+| `renderPolicy`, `deviceCapabilities` | Per-view renderer policy, re-validated on the render thread; invalid or unpreparable requests keep the previous policy. Sort depth, the LOD error threshold and the LOD splat limit apply with GPU sort, the sub-pixel threshold from the next frame on both order paths |
 | `readStats()`, `gpuDescription` | Frame, GPU and sort times, splats drawn, device name |
 | `delegate` | World, collider and camera pose outcomes, on the main thread |
 

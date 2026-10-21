@@ -96,16 +96,18 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   policy.fallback.tileSize = kFallbackTileSize;
   policy.fallback.lodErrorPixels = kFallbackLodErrorPixels;
   policy.fallback.alphaThreshold = kQuadMinAlpha;
-  policy.fallback.subpixelThreshold = kMinPixelRadius;
+  policy.fallback.subpixelThreshold = RenderPolicy{}.subpixelThreshold;
   policy.fallback.sortDepth =
       compute_->depthBits() == KeyBits::Low16 ? SortKeyBits::low16 : SortKeyBits::full32;
   policy.fallback.enableFrustumCulling = true;
   // The GPU order path draws front to back and stops at saturated pixels; the CPU path
   // draws back to front.
   policy.fallback.enableEarlyTermination = compute_->gpuSort();
-  // The key width is a public per-instance control. The raster strategy, sub-pixel radius,
-  // alpha, tile size and occlusion stay fixed shader/rasterization choices.
-  // The LOD error threshold applies live to a hierarchy world and at its next upload.
+  // The key width is a public per-instance control. The raster strategy, alpha, tile size and
+  // occlusion stay fixed shader/rasterization choices.
+  // The LOD error threshold applies live to a hierarchy world and at its next upload; the
+  // sub-pixel cutoff from the next frame, on both order paths.
+  policy.subpixelThreshold = true;
   policy.lodErrorPixels = compute_->gpuSort();
   policy.minLodErrorPixels = LodThreshold::kMinPolicyPixels;
   policy.maxLodErrorPixels = LodThreshold::kMaxPolicyPixels;

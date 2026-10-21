@@ -7,13 +7,16 @@ struct LodCluster {
   float colorVariance, opacity;
   uint node, childStart, childCount, leafStart, leafCount, subtreeLeaves;
 };
+// The scatter words keep the round the scatter writes for, since the commit before it already
+// advanced count, packets, active and the dispatch arguments to the next round.
 struct LodState {
   uint count, active, packets, accepted;
-  uint limited, evaluated, groups, next;
+  uint limited, evaluated, groups, scatterActive;
   uint dispatchX, dispatchY, dispatchZ;
   uint emitX, emitY, emitZ;
-  uint outputDelta, packetDelta;
+  uint scatterCount, scatterPackets;
   uint scanX, scanY, scanZ;
+  uint scatterX, scatterY, scatterZ;
 };
 struct LodConfig { uint capacity; float pixelLimit, colorWeight; uint cull; };
 constant uint kLodSplit = 0x80000000u;
@@ -44,9 +47,9 @@ kernel void initializeSplatLOD(device uint* frontier [[buffer(0)]],
   // One root to evaluate in one group, and every indirect grid is 1x1x1 (emit starts
   // empty: its x is 0).
   state = {/*count*/ 0, /*active*/ 1, /*packets*/ 0, /*accepted*/ 0,
-           /*limited*/ 0, /*evaluated*/ 0, /*groups*/ 1, /*next*/ 0,
+           /*limited*/ 0, /*evaluated*/ 0, /*groups*/ 1, /*scatterActive*/ 0,
            /*dispatch*/ 1, 1, 1, /*emit*/ 0, 1, 1,
-           /*outputDelta*/ 0, /*packetDelta*/ 0, /*scan*/ 1, 1, 1};
+           /*scatterCount*/ 0, /*scatterPackets*/ 0, /*scan*/ 1, 1, 1, /*scatter*/ 0, 1, 1};
 }
 kernel void evaluateSplatLOD(uint t [[thread_position_in_grid]],
                              uint lane [[thread_index_in_simdgroup]],
@@ -100,12 +103,13 @@ kernel void scanSplatLODGroups(uint t [[thread_position_in_grid]],
   threadgroup_barrier(mem_flags::mem_threadgroup);
   if (t < state.groups) groups[t] = prefix + sums[tid / 32];
 }
-kernel void scanSplatLODBlocks(device uint4* blocks [[buffer(0)]],
-                               const device LodState& state [[buffer(1)]]) {
+// One thread: block totals to exclusive offsets. Returns the round's total.
+inline uint4 scanLodBlocks(device uint4* blocks, uint groups) {
   uint4 sum = 0;
-  uint n = (state.groups + 255) / 256;
+  uint n = (groups + 255) / 256;
   for (uint i = 0; i < n; ++i) { uint4 next = blocks[i]; blocks[i] = sum; sum += next; }
   blocks[n] = sum;
+  return sum;
 }
 // Capacity is a safety bound, not the quality target. Retain whole subtrees and
 // report denied refinements, never truncate an output suffix.
@@ -113,8 +117,8 @@ kernel void budgetSplatLOD(const device uint4* groups [[buffer(0)]],
                            const device uint2* costs [[buffer(1)]],
                            device LodState& state [[buffer(2)]],
                            constant LodConfig& config [[buffer(3)]],
-                           const device uint4* blocks [[buffer(4)]]) {
-  uint4 total = blocks[(state.groups + 255) / 256];
+                           device uint4* blocks [[buffer(4)]]) {
+  uint4 total = scanLodBlocks(blocks, state.groups);
   uint available = config.capacity - state.count - state.active + total.y;
   if (total.x <= available) { state.accepted = total.x; return; }
   uint low = 0, high = state.active;
@@ -158,14 +162,22 @@ kernel void compactSplatLOD(uint t [[thread_position_in_grid]],
   if (t < state.active) offsets[t] = uint4(a, b, c, flags);
   if (lane == 0 && t < state.active) groups[t / 32] = sum;
 }
-kernel void allocateSplatLOD(const device uint4* blocks [[buffer(0)]],
-                             device LodState& state [[buffer(1)]]) {
-  uint4 prefix = blocks[(state.groups + 255) / 256];
-  state.next = prefix.x;
-  state.outputDelta = prefix.y;
-  state.packetDelta = prefix.z;
-  state.limited += prefix.w;
+kernel void commitSplatLOD(device uint4* blocks [[buffer(0)]],
+                           device LodState& state [[buffer(1)]]) {
+  uint4 total = scanLodBlocks(blocks, state.groups);
+  state.limited += total.w;
   state.evaluated += state.active;
+  state.scatterActive = state.active;
+  state.scatterCount = state.count;
+  state.scatterPackets = state.packets;
+  state.scatterX = state.dispatchX;
+  state.count += total.y;
+  state.packets += total.z;
+  state.active = total.x;
+  state.groups = (state.active + 31) / 32;
+  state.dispatchX = (state.active + 255) / 256;
+  state.emitX = state.packets;
+  state.scanX = (state.groups + 255) / 256;
 }
 kernel void scatterSplatLOD(uint t [[thread_position_in_grid]],
                             const device LodCluster* nodes [[buffer(0)]],
@@ -178,7 +190,7 @@ kernel void scatterSplatLOD(uint t [[thread_position_in_grid]],
                             device uint* indices [[buffer(7)]],
                             const device uint* leaves [[buffer(8)]],
                             const device uint4* blocks [[buffer(9)]]) {
-  if (t >= state.active) return;
+  if (t >= state.scatterActive) return;
   uint4 local = offsets[t], group = groups[t / 32] + blocks[(t / 32) / 256];
   if (local.w & kLodDrop) return;
   LodCluster node = nodes[frontier[t]];
@@ -186,22 +198,13 @@ kernel void scatterSplatLOD(uint t [[thread_position_in_grid]],
   if (split)
     for (uint k = 0; k < node.childCount; ++k) next[group.x + local.x + k] = node.childStart + k;
   uint count = split ? node.leafCount : 1;
-  uint destination = state.count + group.y + local.y;
+  uint destination = state.scatterCount + group.y + local.y;
   if (count > 32)
-    packets[state.packets + group.z + local.z] =
+    packets[state.scatterPackets + group.z + local.z] =
         uint4(node.leafStart, count, destination, 1);
   else if (!split) indices[destination] = node.node;
   else
     for (uint k = 0; k < count; ++k) indices[destination + k] = leaves[node.leafStart + k];
-}
-kernel void advanceSplatLOD(device LodState& state [[buffer(0)]]) {
-  state.count += state.outputDelta;
-  state.packets += state.packetDelta;
-  state.active = state.next;
-  state.groups = (state.active + 31) / 32;
-  state.dispatchX = (state.active + 255) / 256;
-  state.emitX = state.packets;
-  state.scanX = (state.groups + 255) / 256;
 }
 // One cooperative group per packet. This is an index copy, not per-leaf SSE.
 kernel void emitSplatLOD(uint group [[threadgroup_position_in_grid]],

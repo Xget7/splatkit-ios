@@ -186,6 +186,50 @@ TEST_F(MetalSurfaceTest, TheDepthBufferFollowsTheSizeOfTheColourTheFrameDraws) {
   EXPECT_EQ(surface.target().depth().width, 100u);
 }
 
+TEST_F(MetalSurfaceTest, ALinearBlendedScaledFrameKeepsItsColourThroughMetalFX) {
+  MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
+  ASSERT_TRUE(surface.setLayer(layer_));
+  ASSERT_TRUE(surface.setLinearBlending(true));
+  surface.setDrawableSize(64, 64);
+  surface.setRenderScale(0.5f);
+  EXPECT_EQ(surface.upscalerActive(), scalerSupported());
+
+  MTLTextureDescriptor* desc =
+      [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatBGRA8Unorm_sRGB
+                                                         width:64
+                                                        height:64
+                                                     mipmapped:NO];
+  desc.usage = MTLTextureUsageRenderTarget | MTLTextureUsageShaderRead;
+  desc.storageMode = MTLStorageModeShared;
+  id<MTLTexture> drawable = [gpu_->device newTextureWithDescriptor:desc];
+  // A mid grey, where an encoding applied twice or not at all is far off.
+  auto centerRed = [&] {
+    id<MTLCommandBuffer> cmd = [gpu_->queue commandBuffer];
+    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = surface.target().color();
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    pass.colorAttachments[0].clearColor = MTLClearColorMake(0.2, 0.2, 0.2, 1);
+    [[cmd renderCommandEncoderWithDescriptor:pass] endEncoding];
+    surface.encodeOutput(cmd, drawable);
+    [cmd commit];
+    [cmd waitUntilCompleted];
+    EXPECT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+    uint8_t pixel[4] = {};
+    [drawable getBytes:pixel
+           bytesPerRow:64 * 4
+            fromRegion:MTLRegionMake2D(32, 32, 1, 1)
+           mipmapLevel:0];
+    return int{pixel[2]};
+  };
+  const int scaled = centerRed();
+  surface.setSpatialUpscaling(false);
+  ASSERT_FALSE(surface.upscalerActive());
+  const int blitted = centerRed();
+  EXPECT_NEAR(blitted, 124, 2);  // linear 0.2 in sRGB
+  EXPECT_NEAR(scaled, blitted, 3);
+}
+
 TEST_F(MetalSurfaceTest, TheOutputPassWritesTheScaledTargetToTheDrawableAndSkipsADirectFrame) {
   MetalSurface surface(gpu_->device, gpu_->library, loop_, false);
   ASSERT_TRUE(surface.setLayer(layer_));

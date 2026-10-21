@@ -80,19 +80,62 @@ TEST_F(MetalSplatRendererTest, HybridTilesAreNotOfferedAndResolveToHardware) {
   EXPECT_TRUE(fallback.warnings.empty());
 }
 
-TEST_F(MetalSplatRendererTest, SubpixelThresholdIsFixed) {
+// VulkanSplatPipelineTest.CpuOrderDrawDropsSplatsUnderTheCutoff is the CPU-order half of this.
+TEST_F(MetalSplatRendererTest, SubpixelCutoffAppliesLiveOnBothOrderPaths) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   const DeviceCapabilities caps = renderer->deviceCapabilities();
-  EXPECT_FALSE(caps.policy.subpixelThreshold);
-  EXPECT_EQ(caps.policy.fallback.subpixelThreshold, kMinPixelRadius);
+  EXPECT_TRUE(caps.policy.subpixelThreshold);
+  EXPECT_EQ(caps.policy.fallback.subpixelThreshold, RenderPolicy{}.subpixelThreshold);
+  CAMetalLayer* layer = [CAMetalLayer layer];
+  layer.drawableSize = CGSizeMake(64, 64);
+  renderer->setLayer(layer);
+  renderer->setDrawableSize(64, 64);
+  // Focal 58.5 px at depth 2: source sigma 0.3 px, a 0.75 px footprint at the 2.5 sigma quad.
+  splat::SplatCloud cloud;
+  cloud.positions = {0, 0, -2};
+  cloud.colors = {1, 0, 0};
+  cloud.alphas = {1};
+  cloud.covariances = {1.05e-4f, 0, 0, 1.05e-4f, 0, 1.05e-4f};
+  ASSERT_TRUE(renderer->uploadWorld(cloud, 0));
+  const SplatRenderer::Range range{0, 1};
+  const uint32_t order = 0;
+  auto centerRed = [&](SplatRenderer::OrderSource source) {
+    SplatRenderer::Frame frame;
+    frame.orderSource = source;
+    frame.ranges = &range;
+    frame.rangeCount = 1;
+    frame.order = &order;
+    frame.orderCount = 1;
+    frame.drawCount = 1;
+    frame.proj = splat::Mat4::perspective(1, 1, 0.1f, 100);
+    dispatch_semaphore_t captured = dispatch_semaphore_create(0);
+    std::vector<uint8_t> pixels;
+    renderer->captureNextFrame([&](std::vector<uint8_t> image, uint32_t, uint32_t) {
+      pixels = std::move(image);
+      dispatch_semaphore_signal(captured);
+    });
+    EXPECT_TRUE(renderer->draw(frame));
+    EXPECT_EQ(dispatch_semaphore_wait(captured, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)),
+              0);
+    // Red at the centre over red at a corner, which only the clear colour reaches.
+    if (pixels.size() != 64u * 64u * 4u) return -1;
+    return pixels[(32 * 64 + 32) * 4 + 2] - pixels[2];
+  };
   RenderPolicy policy = caps.policy.fallback;
-  policy.subpixelThreshold = caps.policy.fallback.subpixelThreshold + 0.5f;
-  const RenderPolicyResolution resolution = resolveRenderPolicy(policy, caps.policy);
-  EXPECT_TRUE(resolution.accepted);
-  EXPECT_EQ(resolution.effective.subpixelThreshold, caps.policy.fallback.subpixelThreshold);
-  ASSERT_EQ(resolution.warnings.size(), 1u);
-  EXPECT_EQ(resolution.warnings[0].field, "subpixelThreshold");
+  for (const auto source : {SplatRenderer::OrderSource::gpu, SplatRenderer::OrderSource::cpu}) {
+    if (source == SplatRenderer::OrderSource::gpu && !caps.supportsSubgroups) continue;
+    policy.subpixelThreshold = 1.0f;
+    ASSERT_TRUE(renderer->applyRenderPolicy(policy, nullptr));
+    const int dropped = centerRed(source);
+    policy.subpixelThreshold = 0.5f;
+    ASSERT_TRUE(renderer->applyRenderPolicy(policy, nullptr));
+    const int kept = centerRed(source);
+    printf("[ cutoff ] %s order: red over the clear colour %d at 1 px, %d at 0.5 px\n",
+           source == SplatRenderer::OrderSource::gpu ? "gpu" : "cpu", dropped, kept);
+    EXPECT_EQ(dropped, 0);
+    EXPECT_GT(kept, 64);
+  }
 }
 
 TEST_F(MetalSplatRendererTest, LodLeafCutDrawsEveryLeaf) {

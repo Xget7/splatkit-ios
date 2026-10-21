@@ -41,9 +41,10 @@ class MetalFrameCompute {
   bool gpuSort() const { return gpuSort_; }
   KeyBits depthBits() const { return visibility_.depthBits(); }
 
-  // The sort key width and the LOD threshold and splat limit of `policy`. Waits for the frames
-  // in flight when something changes. False, with `reason`, when the GPU cannot order or the
-  // visibility pipelines could not be rebuilt.
+  // The sort key width, the LOD threshold and splat limit, and the sub-pixel cutoff of `policy`.
+  // The cutoff applies from the next camera written; the rest waits for the frames in flight
+  // when it changes. False, with `reason`, when the GPU cannot order or the visibility pipelines
+  // could not be rebuilt; the cutoff is then unchanged.
   bool configure(const RenderPolicy& policy, std::string* reason);
   // Room for a world of `count` splats drawn from CPU ranges, and no LOD selection. False when
   // the buffers could not be allocated, which leaves the previous world's setup in place.
@@ -120,6 +121,7 @@ class MetalFrameCompute {
   std::array<id<MTLBuffer>, kFramesInFlight> lodReadback_{};
   uint32_t lodSplatLimit_ = 0;
   LodThreshold lodThreshold_{kDefaultLodPixels};
+  float minPixelRadius_ = RenderPolicy{}.subpixelThreshold;
   uint32_t lodAdaptedReadback_ = 0;
   uint64_t frames_ = 0;  // submitted so far, which also paces the LOD log
   std::shared_ptr<GpuReport> report_;

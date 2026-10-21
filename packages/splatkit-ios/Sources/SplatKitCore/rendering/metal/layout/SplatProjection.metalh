@@ -114,9 +114,13 @@ inline bool projectSplat(constant Camera& cam, Splat s, uint index, const device
   float2 margin = (extentPixels + 0.5) * 2.0 * clip.w / cam.screenSize;
   if (any(abs(clip.xy) > clip.w + margin)) return false;
 
-  float maxVariance = max(dot(axis1, axis1), dot(axis2, axis2));
-  float maxSourceSigma = sqrt(max(maxVariance - kLowPassVariance, 0.0));
-  if (maxSourceSigma * radius < kMinPixelRadius) return false;
+  // The largest eigenvalue of the covariance itself: ellipseAxes widens a round splat's axes.
+  float halfDifference = 0.5 * (cov2D.x - cov2D.z);
+  float sourceVariance = 0.5 * (cov2D.x + cov2D.z) +
+                         sqrt(max(halfDifference * halfDifference + cov2D.y * cov2D.y, 0.0)) -
+                         kLowPassVariance;
+  // NaN fails the comparison.
+  if (!(sqrt(max(sourceVariance, 0.0)) * radius >= cam.minPixelRadius)) return false;
 
   float3 rgb = rgba.rgb;
   if (SH_DEGREE >= 1u) {

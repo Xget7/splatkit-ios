@@ -61,29 +61,32 @@ bool MetalFrameCompute::configure(const RenderPolicy& policy, std::string* reaso
   const bool visibilityChanged = bits != depthBits();
   const bool lodChanged = policy.lodErrorPixels != lodThreshold_.policyPixels() ||
                           policy.lodSplatLimit != lodSplatLimit_;
-  if (!visibilityChanged && !lodChanged) return true;
-  if (!gpuSort_) {
-    // No GPU ordering pipelines exist; nothing the policy can reach.
-    if (reason != nullptr) *reason = "Metal GPU ordering is unavailable";
-    return false;
+  if (visibilityChanged || lodChanged) {
+    if (!gpuSort_) {
+      // No GPU ordering pipelines exist; nothing the policy can reach.
+      if (reason != nullptr) *reason = "Metal GPU ordering is unavailable";
+      return false;
+    }
+    // Rebuilding pipelines or the target while frames may still encode against them is unsafe.
+    frameLoop_.waitIdle();
+    if (visibilityChanged && !visibility_.reconfigure(bits)) {
+      if (reason != nullptr) *reason = "Metal visibility pipeline rebuild failed";
+      return false;
+    }
+    // Plain configuration read by the next selection encode; it cannot fail, so it goes last.
+    lodThreshold_.reset(policy.lodErrorPixels);
+    lodSplatLimit_ = policy.lodSplatLimit;
+    // Frames are idle here, so every readback so far describes the previous policy.
+    lodAdaptedReadback_ = report_->lodReadbacks.load();
+    if (lod_) {
+      lod_->setPixelLimit(lodThreshold_.pixels());
+      lod_->setSplatLimit(lodSplatLimit_);
+    }
   }
-  // Rebuilding pipelines or the target while frames may still encode against them is unsafe.
-  frameLoop_.waitIdle();
-  if (visibilityChanged && !visibility_.reconfigure(bits)) {
-    if (reason != nullptr) *reason = "Metal visibility pipeline rebuild failed";
-    return false;
-  }
-  // Plain configuration read by the next selection encode; it cannot fail, so it goes last.
-  lodThreshold_.reset(policy.lodErrorPixels);
-  lodSplatLimit_ = policy.lodSplatLimit;
-  // Frames are idle here, so every readback so far describes the previous policy.
-  lodAdaptedReadback_ = report_->lodReadbacks.load();
-  if (lod_) {
-    lod_->setPixelLimit(lodThreshold_.pixels());
-    lod_->setSplatLimit(lodSplatLimit_);
-  }
-  LOGI("Metal policy: %u-bit sort keys, %.2fpx LOD error, %u LOD splat limit",
-       static_cast<uint32_t>(bits), lodThreshold_.policyPixels(), lodSplatLimit_);
+  if (!visibilityChanged && !lodChanged && policy.subpixelThreshold == minPixelRadius_) return true;
+  minPixelRadius_ = policy.subpixelThreshold;
+  LOGI("Metal policy: %u-bit sort keys, %.2fpx LOD error, %u LOD splat limit, %.2fpx cutoff",
+       static_cast<uint32_t>(bits), lodThreshold_.policyPixels(), lodSplatLimit_, minPixelRadius_);
   return true;
 }
 
@@ -137,6 +140,7 @@ void MetalFrameCompute::updateCamera(const SplatRenderer::Frame& frame, uint32_t
   u.tanHalfFov[0] = 1 / frame.proj.at(0, 0);
   u.tanHalfFov[1] = 1 / frame.proj.at(1, 1);
   u.outputLinear = outputLinear ? 1u : 0u;
+  u.minPixelRadius = minPixelRadius_;
   u.cameraPosition[0] = frame.cameraPosition.x;
   u.cameraPosition[1] = frame.cameraPosition.y;
   u.cameraPosition[2] = frame.cameraPosition.z;
