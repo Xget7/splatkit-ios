@@ -22,7 +22,9 @@ struct StreamOptions {
 // tiles to hold and which to draw, the loader reads them. Once per frame the render
 // thread calls `update`, uploads what arrived into the slab ranges named, and commits
 // each upload; the renderer then culls and sorts the ranges on the GPU every frame, and
-// `drawnNow` pins the tiles it drew until the frames that may still read them are done.
+// `drawnNow` pins the tiles it drew until every frame that may still read them completed.
+// Frames are the renderer's serials: it counts the frames it submitted, and every frame up
+// to its completed serial finished on the GPU.
 class TileStreamer {
  public:
   explicit TileStreamer(TiledWorld world, const StreamOptions& options = {});
@@ -39,7 +41,9 @@ class TileStreamer {
     std::size_t loading = 0;            // tiles queued or being read
   };
   // Plans for this view, keeps the loader on the plan and collects the tiles it decoded.
-  Step update(const TileView& view);
+  // Every frame up to `completedFrame` finished, so the tiles only those frames drew are
+  // free to be replaced.
+  Step update(const TileView& view, std::uint64_t completedFrame);
   // The upload of an arrived tile landed: it draws from the next update on.
   void commit(std::uint32_t tile);
   // The upload did not: the tile is dropped and may be asked for again.
@@ -50,10 +54,10 @@ class TileStreamer {
     std::uint32_t offset = 0;
     std::uint32_t count = 0;
   };
-  // The slab ranges of the tiles to draw, and the notice that a frame draws them now, so
-  // they stay resident until the frames in flight are done.
+  // The slab ranges of the tiles to draw, and the notice that the next frame draws them,
+  // after the `submittedFrames` frames that drew the set before.
   const std::vector<Range>& ranges() const { return ranges_; }
-  void drawnNow();
+  void drawnNow(std::uint64_t submittedFrames);
 
   const std::vector<std::uint32_t>& drawn() const { return drawn_; }
   TileState state(std::uint32_t tile) const { return scheduler_.state(tile); }
@@ -69,16 +73,14 @@ class TileStreamer {
   std::vector<Range> ranges_;
   std::size_t drawnSplats_ = 0;
 
-  // The tiles the order on the GPU drew, from the update `drawnNow` pinned them at until
-  // the frames that may still read them are done, so their ranges are not reused under a
-  // frame still reading them.
+  // A replaced set of drawn tiles, pinned until its last frame completed, so their ranges
+  // are not rewritten under a frame still reading them.
   struct Retired {
-    std::uint64_t atUpdate;
+    std::uint64_t lastFrame;
     std::vector<std::uint32_t> tiles;
   };
   std::vector<std::uint32_t> shown_;  // the tiles drawn now, pinned
-  std::deque<Retired> retired_;       // replaced; `atUpdate` holds the update they retire at
-  std::uint64_t updates_ = 0;
+  std::deque<Retired> retired_;       // oldest first
   std::vector<std::uint32_t> pinned() const;
 };
 

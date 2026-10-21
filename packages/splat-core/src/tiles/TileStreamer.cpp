@@ -6,9 +6,6 @@
 namespace splat {
 namespace {
 
-// Frames the GPU may still be drawing an order after a newer one was taken.
-constexpr std::uint64_t kFramesInFlight = 2;
-
 SplatDecodeOptions decodeOptions(const TiledWorld& world) {
   SplatDecodeOptions options;
   options.sourceFrame = world.sourceFrame;
@@ -30,10 +27,9 @@ std::vector<std::uint32_t> TileStreamer::pinned() const {
   return out;
 }
 
-TileStreamer::Step TileStreamer::update(const TileView& view) {
+TileStreamer::Step TileStreamer::update(const TileView& view, std::uint64_t completedFrame) {
   Step step;
-  ++updates_;
-  while (!retired_.empty() && retired_.front().atUpdate + kFramesInFlight <= updates_) {
+  while (!retired_.empty() && retired_.front().lastFrame <= completedFrame) {
     retired_.pop_front();
   }
   for (TileLoader::Loaded& loaded : loader_.take()) {
@@ -85,9 +81,9 @@ void TileStreamer::fail(std::uint32_t tile) {
   scheduler_.markAbsent(tile);
 }
 
-void TileStreamer::drawnNow() {
+void TileStreamer::drawnNow(std::uint64_t submittedFrames) {
   if (drawn_ == shown_) return;
-  retired_.push_back({updates_, std::move(shown_)});
+  retired_.push_back({submittedFrames, std::move(shown_)});
   shown_ = drawn_;
 }
 

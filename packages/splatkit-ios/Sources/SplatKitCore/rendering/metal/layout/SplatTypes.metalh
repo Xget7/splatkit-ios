@@ -2,8 +2,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-// Buffer layouts shared with the host: MetalShaderTypes.h for Camera and Projected,
-// splatkit/rendering/GpuLayout.h for Splat.
+// Buffer layouts shared with the host: MetalShaderTypes.h for Camera,
+// splatkit/rendering/GpuLayout.h for Splat and Projected.
 struct Camera {
   float4x4 view;
   float4x4 proj;

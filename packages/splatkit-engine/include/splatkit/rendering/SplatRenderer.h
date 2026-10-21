@@ -96,7 +96,8 @@ class SplatRenderer {
   // Replaces the world with an empty slab of `capacity` records for a tiled world;
   // tiles land in it through `uploadTile`.
   virtual bool createSlab(uint32_t capacity, int shDegree) = 0;
-  // Uploads a tile into records [offset, offset + count) of the slab (blocking).
+  // Uploads a tile into records [offset, offset + count) of the slab (blocking). The
+  // caller rewrites a range only after every frame that drew it completed.
   virtual bool uploadTile(uint32_t offset, const splat::SplatCloud& cloud) = 0;
   virtual std::optional<GpuWorldInfo> world() const = 0;
 
@@ -131,6 +132,10 @@ class SplatRenderer {
   // Records and presents one frame. Returns false when nothing was presented, e.g. the
   // surface was rebuilt instead; the caller keeps the order for the next frame.
   virtual bool draw(const Frame& frame) = 0;
+  // Frame serials, never decreasing: the frames submitted to the GPU so far, and the
+  // serial up to which every frame finished there. Zero completed after a GPU failure.
+  virtual uint64_t submittedFrames() const = 0;
+  virtual uint64_t completedFrames() = 0;
 
   // GPU time of the most recently completed frame, from timestamps at both ends of it.
   // Zero until the first frame completes or if unsupported.

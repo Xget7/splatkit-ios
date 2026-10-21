@@ -40,6 +40,20 @@ void MetalFrameLoop::waitIdle() {
   for (uint32_t i = 0; i < framesInFlight_; ++i) dispatch_semaphore_signal(inFlight_);
 }
 
+void MetalFrameLoop::Completions::finished(uint64_t serial) {
+  const std::lock_guard<std::mutex> lock(mutex);
+  ahead.insert(serial);
+  while (!ahead.empty() && *ahead.begin() == upTo + 1) {
+    ahead.erase(ahead.begin());
+    ++upTo;
+  }
+}
+
+uint64_t MetalFrameLoop::completedFrames() const {
+  const std::lock_guard<std::mutex> lock(completions_->mutex);
+  return completions_->upTo;
+}
+
 uint32_t MetalFrameLoop::takePresentTimes(std::vector<int64_t>* times) {
   times->clear();
   const std::lock_guard<std::mutex> lock(presents_->mutex);
@@ -70,7 +84,10 @@ void MetalFrameLoop::submit(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawab
   std::atomic<double>* gpuMillis = &lastGpuMillis_;
   std::atomic<bool>* failed = gpuFailed_.get();
   auto* worldFrame = &completedWorldFrame_;
+  const uint64_t serial = submitted_.load() + 1;
+  std::shared_ptr<Completions> completions = completions_;
   [cmd addCompletedHandler:^(id<MTLCommandBuffer> done) {
+    completions->finished(serial);
     if (done.status == MTLCommandBufferStatusError) {
       failed->store(true);
       LOGE("render command failed: %s", done.error.localizedDescription.UTF8String);
@@ -85,6 +102,7 @@ void MetalFrameLoop::submit(id<MTLCommandBuffer> cmd, id<CAMetalDrawable> drawab
     if (onCompleted) onCompleted(done);
     dispatch_semaphore_signal(inFlight);
   }];
+  submitted_.store(serial);
   [cmd commit];
 }
 

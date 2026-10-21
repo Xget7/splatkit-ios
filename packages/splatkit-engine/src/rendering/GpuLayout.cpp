@@ -12,9 +12,8 @@ namespace {
 
 // Per splat a frame may draw: its projection, the sort's key and value (double buffered) and
 // the index the selection writes.
-constexpr std::uint64_t kProjectedSplatBytes = 32;
 constexpr std::uint64_t kDrawBytesPerSplat =
-    kProjectedSplatBytes + 2 * 2 * sizeof(uint32_t) + sizeof(uint32_t);
+    sizeof(ProjectedSplat) + 2 * 2 * sizeof(uint32_t) + sizeof(uint32_t);
 // Per cluster, beside its record: the selection walk's packet (16), cost (8) and offsets (16),
 // and its place in the two frontier lists.
 constexpr std::uint64_t kWalkBytesPerCluster = 16 + 8 + 16 + 2 * sizeof(uint32_t);
@@ -67,12 +66,14 @@ void packShRange(const splat::SplatCloud& cloud, int degree, size_t offset, size
   const std::size_t sourceCoefficients = n == 0 ? 0 : cloud.sh.size() / (n * 3);
   const std::size_t halves = shCoefficients(degree) * 3;
   const std::size_t stride = shStride(degree);
+  // Each word is written once and never read: `out` may be write-combined mapped memory.
   for (std::size_t i = 0; i < count; ++i) {
-    std::fill_n(out + i * stride, stride, 0u);
     const float* src = &cloud.sh[(offset + i) * sourceCoefficients * 3];
-    for (std::size_t h = 0; h < halves; ++h) {
-      const uint32_t half = splat::toHalf(src[h]);
-      out[i * stride + h / 2] |= half << ((h & 1) * 16);
+    for (std::size_t w = 0; w < stride; ++w) {
+      const std::size_t h = w * 2;
+      const uint32_t low = h < halves ? splat::toHalf(src[h]) : 0u;
+      const uint32_t high = h + 1 < halves ? splat::toHalf(src[h + 1]) : 0u;
+      out[i * stride + w] = low | (high << 16);
     }
   }
 }

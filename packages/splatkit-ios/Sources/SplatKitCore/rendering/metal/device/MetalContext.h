@@ -25,6 +25,9 @@ class MetalContext {
   id<MTLLibrary> library() const { return library_; }
   // "Apple A15 GPU, Metal": what a HUD or a bug report wants to show.
   const std::string& description() const { return description_; }
+  // "family Apple10, Metal 4, threadgroup memory 32768 B, ...": the newest Apple GPU family and
+  // the limits a renderer change is planned against, as the device reports them.
+  const std::string& capabilities() const { return capabilities_; }
 
   // iOS ends an app whose dirty footprint, GPU buffers included, reaches its limit; what is
   // left below it is what a load may use. Empty where the process has no limit to report.
@@ -37,6 +40,7 @@ class MetalContext {
   id<MTLCommandQueue> queue_ = nil;
   id<MTLLibrary> library_ = nil;
   std::string description_;
+  std::string capabilities_;
 };
 
 }  // namespace splatkit

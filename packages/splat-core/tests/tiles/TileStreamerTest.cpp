@@ -18,10 +18,19 @@ namespace {
 
 namespace fs = std::filesystem;
 
+// A standard normal from two raw words (Box-Muller). `std::mt19937` yields the same words on
+// every standard library, so the world whose tiles the tests below count is the same too.
+float spread(std::mt19937& rng) {
+  constexpr double kWord = 4294967296.0;
+  constexpr double kTau = 6.283185307179586;
+  const double u = (rng() + 0.5) / kWord;
+  const double v = (rng() + 0.5) / kWord;
+  return static_cast<float>(std::sqrt(-2.0 * std::log(u)) * std::cos(kTau * v));
+}
+
 // Round splats in two clusters `gap` apart along x, SH degree 0.
 spz::GaussianCloud clusters(int perCluster, float r, float gap) {
   std::mt19937 rng(7);
-  std::normal_distribution<float> spread(0.0f, 1.0f);
   spz::GaussianCloud c;
   c.shDegree = 0;
   for (int cluster = 0; cluster < 2; ++cluster) {
@@ -46,16 +55,32 @@ TileView from(Vec3 origin, float limit) {
   return view;
 }
 
+// The renderer's frame serials: `draw` pins what a frame draws and submits it, `finish`
+// completes every frame submitted so far.
+struct Frames {
+  std::uint64_t submitted = 0;
+  std::uint64_t completed = 0;
+  void draw(TileStreamer& streamer) {
+    streamer.drawnNow(submitted);
+    ++submitted;
+  }
+  void finish() { completed = submitted; }
+};
+
 // Runs updates, committing every arrival, until nothing is loading and the draw set is
-// still for a few rounds. With `drawEachRound` the renderer draws after every update, so
-// `drawnNow` releases what the earlier frames pinned. Returns the rounds it took, -1 if it
-// never settled.
-int settle(TileStreamer& streamer, const TileView& view, bool drawEachRound = false) {
+// still for a few rounds. With `drawEachRound` a frame draws after every update and
+// completes at once, so what the earlier frames pinned is released. Returns the rounds it
+// took, -1 if it never settled.
+int settle(TileStreamer& streamer, const TileView& view, Frames& frames,
+           bool drawEachRound = false) {
   int quiet = 0;
   for (int round = 0; round < 2000; ++round) {
-    auto step = streamer.update(view);
+    auto step = streamer.update(view, frames.completed);
     for (const auto& a : step.arrived) streamer.commit(a.tile);
-    if (drawEachRound) streamer.drawnNow();
+    if (drawEachRound) {
+      frames.draw(streamer);
+      frames.finish();
+    }
     if (step.loading == 0 && step.arrived.empty() && !step.drawChanged) {
       if (++quiet == 5) return round;
     } else {
@@ -86,8 +111,9 @@ TEST(TileStreamer, StreamsDownToTheFinestTilesNearTheCamera) {
   StreamOptions options;
   options.residency = 1000;
   TileStreamer streamer(built.world, options);
+  Frames frames;
   const TileView near = from({0, 0, 3}, 0.0001f);
-  ASSERT_GE(settle(streamer, near), 0);
+  ASSERT_GE(settle(streamer, near, frames), 0);
 
   const Tileset& set = *built.world.tileset;
   std::size_t drawnSplats = 0;
@@ -121,42 +147,52 @@ TEST(TileStreamer, StreamsDownToTheFinestTilesNearTheCamera) {
 }
 
 // The renderer sorts and draws the ranges itself: `drawnNow` pins the drawn tiles until
-// the frames that may still draw them are done.
-TEST(TileStreamer, TilesDrawnNowStayUntilTheFramesInFlightAreDone) {
+// every frame that may still draw them completed on the GPU, however many updates pass;
+// the engine skips the draw of a still frame but updates every vsync. The world's tiles
+// hold 720 splats and the residency 360, so the far leaves fit only by evicting near ones.
+TEST(TileStreamer, TilesDrawnNowStayUntilTheFramesThatDrewThemComplete) {
   const BuiltWorld built;
   const Tileset& set = *built.world.tileset;
   StreamOptions options;
-  options.residency = 500;
+  options.residency = 360;
   TileStreamer streamer(built.world, options);
+  Frames frames;
   const TileView near = from({0, 0, 3}, 0.0001f);
-  ASSERT_GE(settle(streamer, near), 0);
+  ASSERT_GE(settle(streamer, near, frames), 0);
   const std::vector<std::uint32_t> shown = streamer.drawn();
   ASSERT_GT(shown.size(), 1u);
   ASSERT_EQ(streamer.ranges().size(), shown.size());
-  streamer.drawnNow();
+  frames.draw(streamer);  // frame 1 draws the near set and keeps running
 
-  // Walking away without drawing again: what the GPU draws stays resident.
+  const auto nearResident = [&] {
+    for (const std::uint32_t tile : shown) {
+      if (streamer.state(tile) != TileState::resident) return false;
+    }
+    return true;
+  };
   const TileView far = from({20, 0, 3}, 0.0001f);
+  ASSERT_GE(settle(streamer, far, frames), 0);
+  EXPECT_TRUE(nearResident());
+  // Frame 2 draws the far set while frame 1 still runs.
+  frames.draw(streamer);
   for (int round = 0; round < 300; ++round) {
-    auto step = streamer.update(far);
+    auto step = streamer.update(far, frames.completed);
     for (const auto& a : step.arrived) streamer.commit(a.tile);
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
-  for (const std::uint32_t tile : shown) {
-    EXPECT_EQ(streamer.state(tile), TileState::resident) << set.tiles[tile].file;
-  }
+  EXPECT_TRUE(nearResident());
   EXPECT_LE(streamer.held(), options.residency);
 
-  // Drawing the far set frees the near tiles a couple of updates later, and the far
-  // cluster refines all the way.
-  for (int pass = 0; pass < 3; ++pass) {
-    ASSERT_GE(settle(streamer, far), 0);
-    streamer.drawnNow();
-  }
+  // Once the frames complete, the far cluster refines all the way over near tiles.
+  frames.finish();
+  ASSERT_GE(settle(streamer, far, frames, true), 0);
   for (const std::uint32_t tile : streamer.drawn()) {
-    EXPECT_EQ(set.tiles[tile].level, 0) << set.tiles[tile].file;
+    if (far.frustum.intersects(set.tiles[tile].bounds.min, set.tiles[tile].bounds.max)) {
+      EXPECT_EQ(set.tiles[tile].level, 0) << set.tiles[tile].file;
+    }
   }
-  EXPECT_LE(streamer.held(), 500u);
+  EXPECT_FALSE(nearResident());
+  EXPECT_LE(streamer.held(), options.residency);
 }
 
 TEST(TileStreamer, FarAwayOnlyTheRootIsDrawn) {
@@ -164,8 +200,9 @@ TEST(TileStreamer, FarAwayOnlyTheRootIsDrawn) {
   StreamOptions options;
   options.residency = 1000;
   TileStreamer streamer(built.world, options);
-  ASSERT_GE(settle(streamer, from({0, 0, 3}, 0.0001f)), 0);
-  ASSERT_GE(settle(streamer, from({10, 0, 2000}, 0.01f)), 0);
+  Frames frames;
+  ASSERT_GE(settle(streamer, from({0, 0, 3}, 0.0001f), frames), 0);
+  ASSERT_GE(settle(streamer, from({10, 0, 2000}, 0.01f), frames), 0);
   EXPECT_EQ(streamer.drawn(), std::vector<std::uint32_t>{built.world.tileset->root});
 }
 
@@ -177,7 +214,8 @@ TEST(TileStreamer, TheDrawnSetNeverHoldsATileAndItsParent) {
   StreamOptions options;
   options.residency = 1000;
   TileStreamer streamer(built.world, options);
-  ASSERT_GE(settle(streamer, from({0, 0, 3}, 0.0001f)), 0);
+  Frames frames;
+  ASSERT_GE(settle(streamer, from({0, 0, 3}, 0.0001f), frames), 0);
 
   std::vector<std::uint32_t> parentOf(set.tiles.size(), set.root);
   for (std::uint32_t tile = 0; tile < set.tiles.size(); ++tile) {
@@ -196,21 +234,23 @@ TEST(TileStreamer, TheDrawnSetNeverHoldsATileAndItsParent) {
 }
 
 // The root is the fallback every other tile can be replaced by, so memory pressure from
-// a walk across the world never evicts it. The world holds 464 splats and the residency
-// 360, so each stop refines to its leaves only by evicting the last stop's.
+// a walk across the world never evicts it. The world's tiles hold 720 splats and the
+// residency 360, so each stop refines to its leaves only by evicting the last stop's.
 TEST(TileStreamer, TheRootStaysResidentWhileWalking) {
   const BuiltWorld built;
   const Tileset& set = *built.world.tileset;
   StreamOptions options;
   options.residency = 360;
   TileStreamer streamer(built.world, options);
+  Frames frames;
 
   for (const Vec3 origin : {Vec3{0, 0, 3}, Vec3{20, 0, 3}, Vec3{0, 0, 3}}) {
-    ASSERT_GE(settle(streamer, from(origin, 0.0001f)), 0);
+    ASSERT_GE(settle(streamer, from(origin, 0.0001f), frames), 0);
     EXPECT_GT(streamer.drawn().size(), 1u);
     EXPECT_EQ(streamer.state(set.root), TileState::resident);
     EXPECT_LE(streamer.held(), options.residency);
-    streamer.drawnNow();
+    frames.draw(streamer);
+    frames.finish();
   }
 }
 
@@ -225,8 +265,9 @@ TEST(TileStreamer, RefinesStepByStepWithinAResidencyBelowTheWorld) {
   ASSERT_LT(options.residency, set.splatCount);
 
   TileStreamer streamer(built.world, options);
+  Frames frames;
   const TileView view = from({0, 0, 3}, 0.0001f);
-  ASSERT_GE(settle(streamer, view, true), 0);
+  ASSERT_GE(settle(streamer, view, frames, true), 0);
 
   const std::vector<std::uint32_t> shown = streamer.drawn();
   ASSERT_FALSE(shown.empty());
@@ -263,15 +304,16 @@ TEST(TileStreamer, AMissingTileFileIsReportedAndItsParentStays) {
   StreamOptions options;
   options.residency = 1000;
   TileStreamer streamer(built.world, options);
+  Frames frames;
   bool failed = false;
   for (int round = 0; round < 2000 && !failed; ++round) {
-    auto step = streamer.update(near);
+    auto step = streamer.update(near, frames.completed);
     for (const auto& a : step.arrived) streamer.commit(a.tile);
     for (const std::uint32_t f : step.failed) failed = failed || f == leaf;
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
   EXPECT_TRUE(failed);
-  ASSERT_GE(settle(streamer, near), 0);
+  ASSERT_GE(settle(streamer, near, frames), 0);
   bool leafDrawn = false;
   bool parentDrawn = false;
   for (const std::uint32_t tile : streamer.drawn()) {

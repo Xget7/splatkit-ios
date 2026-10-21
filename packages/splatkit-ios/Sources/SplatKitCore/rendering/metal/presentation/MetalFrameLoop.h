@@ -8,14 +8,15 @@
 #include <functional>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <vector>
 
 namespace splatkit {
 
-// The frames the GPU has not finished: a counting semaphore of slots, the present times the
-// display reports, the last frame's GPU time, the latch a GPU error sets, and whether a frame
-// of the current world has completed. The queries are safe from any thread; the rest is the
-// render thread's.
+// The frames the GPU has not finished: a counting semaphore of slots, the frame serials, the
+// present times the display reports, the last frame's GPU time, the latch a GPU error sets,
+// and whether a frame of the current world has completed. The queries are safe from any
+// thread; the rest is the render thread's.
 class MetalFrameLoop {
  public:
   explicit MetalFrameLoop(uint32_t framesInFlight);
@@ -37,6 +38,10 @@ class MetalFrameLoop {
               std::function<void(id<MTLCommandBuffer>)> onCompleted);
   // Waits for every frame in flight: the order and world buffers may be released after.
   void waitIdle();
+
+  // Frames submitted so far, and the serial up to which every frame finished on the GPU.
+  uint64_t submittedFrames() const { return submitted_.load(); }
+  uint64_t completedFrames() const;
 
   // Fills `times` with the display times, in nanoseconds, of the frames presented since the
   // last call and returns how many frames were dropped. Zero where the platform reports none.
@@ -65,6 +70,16 @@ class MetalFrameLoop {
   const uint32_t framesInFlight_;
   dispatch_semaphore_t inFlight_;
   std::shared_ptr<PresentLog> presents_ = std::make_shared<PresentLog>();
+  // Filled by completion handlers, which run on the GPU's threads in no promised order:
+  // `upTo` is the serial every frame up to finished, `ahead` the finished frames past a gap.
+  struct Completions {
+    mutable std::mutex mutex;
+    uint64_t upTo = 0;
+    std::set<uint64_t> ahead;
+    void finished(uint64_t serial);
+  };
+  std::atomic<uint64_t> submitted_{0};
+  std::shared_ptr<Completions> completions_ = std::make_shared<Completions>();
   std::atomic<double> lastGpuMillis_{0};
   std::shared_ptr<std::atomic<bool>> gpuFailed_ = std::make_shared<std::atomic<bool>>(false);
   std::atomic<bool> completedWorldFrame_{false};

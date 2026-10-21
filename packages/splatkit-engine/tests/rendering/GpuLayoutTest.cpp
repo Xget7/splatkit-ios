@@ -53,6 +53,16 @@ TEST(GpuLayout, HarmonicsArePackedTwoHalvesPerUintPerSplat) {
   EXPECT_EQ(sh[4] >> 16, 0u);  // the odd half of the last uint is padding
 }
 
+// A streamed tile is packed over the records of the one it replaced.
+TEST(GpuLayout, HarmonicsPackedOverOldRecordsReplaceEveryWord) {
+  const auto cloud = twoSplats(1);
+  std::vector<uint32_t> reused(2 * shStride(1), 0xffffffffu);
+  packShRange(cloud, 1, 1, 1, reused.data());
+  const auto fresh = packSh(cloud, 1);
+  for (std::size_t w = 0; w < shStride(1); ++w) EXPECT_EQ(reused[w], fresh[shStride(1) + w]);
+  EXPECT_EQ(reused[shStride(1)], 0xffffffffu);  // past the range: untouched
+}
+
 // The Metal renderer's buffers per splat: a 32 byte record, and for each splat a frame may
 // draw a 32 byte projection, a double buffered sort key and value, and a selected index.
 TEST(GpuLayout, AWorldOnTheGpuIsItsRecordsAndWhatAFrameMayDraw) {

@@ -22,6 +22,20 @@ struct GpuSplat {
 };
 static_assert(sizeof(GpuSplat) == 32, "GpuSplat must match the shader struct");
 
+// A splat after the visibility pass projected it: the quad the raster stage expands
+// (32 bytes, the same on both APIs). Pairs of halves are packed low half first.
+struct alignas(8) ProjectedSplat {
+  float center[2];  // normalized device coordinates, before the display's rotation
+  uint32_t axis1;   // halves: the ellipse's major axis, sigma in pixels
+  uint32_t axis2;   // halves: the minor axis
+  uint32_t color0;  // halves: red, green
+  uint32_t color1;  // halves: blue, peak opacity (above 1 for level of detail nodes)
+  float radius;     // quad half-width in sigma
+  uint32_t index;   // the source splat
+};
+static_assert(sizeof(ProjectedSplat) == 32, "ProjectedSplat must match the shader struct");
+static_assert(offsetof(ProjectedSplat, index) == 28, "ProjectedSplat must match the shader struct");
+
 // Uints per splat of the harmonics buffer at a degree: the halves of bands 1 to
 // `degree`, channel fastest, two per uint, each splat starting on a uint.
 std::size_t shStride(int degree);

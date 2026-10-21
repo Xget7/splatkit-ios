@@ -45,6 +45,9 @@ class StubRenderer : public SplatRenderer {
     ++frames;
     return true;
   }
+  // Each frame finishes as soon as it is submitted.
+  uint64_t submittedFrames() const override { return frames; }
+  uint64_t completedFrames() override { return frames; }
   double lastGpuMillis() const override { return 0; }
   const std::string& deviceDescription() const override { return description_; }
 

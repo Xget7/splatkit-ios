@@ -5,10 +5,40 @@
 #include <os/proc.h>
 #endif
 
+#include <cstdio>
+
 #include "rendering/metal/device/MetalShaderLibrary.h"
 #include "splatkit/Log.h"
 
 namespace splatkit {
+namespace {
+
+// MTLGPUFamilyMetal4, probed by value: the SDK on CI predates the enumerator.
+constexpr NSInteger kMetal4Family = 5002;
+
+bool supportsMetal4(id<MTLDevice> device) {
+  if (@available(iOS 26.0, macOS 26.0, *))
+    return [device supportsFamily:static_cast<MTLGPUFamily>(kMetal4Family)];
+  return false;
+}
+
+std::string capabilitiesOf(id<MTLDevice> device) {
+  // Apple7 is the floor create() checks; MTLGPUFamilyApple1 + n is family n + 1.
+  int newest = 7;
+  while ([device supportsFamily:static_cast<MTLGPUFamily>(MTLGPUFamilyApple1 + newest)]) ++newest;
+  char text[256];
+  std::snprintf(text, sizeof(text),
+                "family Apple%d, %s, threadgroup memory %lu B, threads per threadgroup %lu, "
+                "max buffer %lu B, working set %llu B",
+                newest, supportsMetal4(device) ? "Metal 4" : "Metal 3",
+                static_cast<unsigned long>(device.maxThreadgroupMemoryLength),
+                static_cast<unsigned long>(device.maxThreadsPerThreadgroup.width),
+                static_cast<unsigned long>(device.maxBufferLength),
+                static_cast<unsigned long long>(device.recommendedMaxWorkingSetSize));
+  return text;
+}
+
+}  // namespace
 
 std::unique_ptr<MetalContext> MetalContext::create() {
   std::unique_ptr<MetalContext> c(new MetalContext());
@@ -31,6 +61,7 @@ std::unique_ptr<MetalContext> MetalContext::create() {
   }
   if (c->queue_ == nil) return nullptr;
   c->description_ = std::string(c->device_.name.UTF8String) + ", Metal";
+  c->capabilities_ = capabilitiesOf(c->device_);
   return c;
 }
 

@@ -4,11 +4,12 @@
 #include <cstdint>
 
 #include "splat/math/Mat4.h"
+#include "splatkit/rendering/GpuLayout.h"
 
 namespace splatkit {
 
 // Host layouts for SplatTypes.metalh. Private to the Metal renderer.
-// World records remain in the platform-independent GpuLayout.h.
+// World and projected records live in the platform-independent GpuLayout.h.
 struct alignas(16) CameraUniform {
   splat::Mat4 view;
   splat::Mat4 proj;
@@ -23,18 +24,6 @@ static_assert(sizeof(CameraUniform) == 176);
 static_assert(offsetof(CameraUniform, focal) == 128);
 static_assert(offsetof(CameraUniform, outputLinear) == 152);
 static_assert(offsetof(CameraUniform, cameraPosition) == 160);
-
-struct alignas(8) ProjectedSplat {
-  float center[2];
-  uint32_t axis1;
-  uint32_t axis2;
-  uint32_t color0;
-  uint32_t color1;
-  float radius;
-  uint32_t index;
-};
-static_assert(sizeof(ProjectedSplat) == 32);
-static_assert(offsetof(ProjectedSplat, index) == 28);
 
 // Smallest footprint, in pixels, the visibility kernel keeps, and the peak opacity below which
 // it drops a splat (its quad would end at the centre). The renderer reports both as the fixed

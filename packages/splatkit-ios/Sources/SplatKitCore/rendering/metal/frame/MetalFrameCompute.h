@@ -16,6 +16,7 @@
 #include "rendering/metal/sort/MetalRadixSort.h"
 #include "rendering/metal/world/MetalWorld.h"
 #include "splat/lod/LodTree.h"
+#include "splatkit/rendering/LodThreshold.h"
 #include "splatkit/rendering/SplatRenderer.h"
 
 namespace splatkit {
@@ -82,7 +83,7 @@ class MetalFrameCompute {
   uint32_t lastLodLimitedCount() const { return lod_ ? report_->lodLimitedCount.load() : 0; }
   uint32_t lastLodEvaluatedCount() const { return lod_ ? report_->lodEvaluatedCount.load() : 0; }
   // The threshold the next selection runs at, at least the policy's.
-  float lodPixels() const { return lodPixels_; }
+  float lodPixels() const { return lodThreshold_.pixels(); }
 
  private:
   // What the selection and sort completion handlers write, with the frame loop's failure latch
@@ -117,11 +118,8 @@ class MetalFrameCompute {
   bool gpuSort_ = false;
   std::unique_ptr<MetalLodSelection> lod_;
   std::array<id<MTLBuffer>, kFramesInFlight> lodReadback_{};
-  float lodErrorPixels_ = kDefaultLodPixels;
   uint32_t lodSplatLimit_ = 0;
-  // The threshold selection runs at: the policy's, raised while a cut would exceed the splat
-  // limit so detail thins evenly instead of stopping wherever traversal ran out of room.
-  float lodPixels_ = kDefaultLodPixels;
+  LodThreshold lodThreshold_{kDefaultLodPixels};
   uint32_t lodAdaptedReadback_ = 0;
   uint64_t frames_ = 0;  // submitted so far, which also paces the LOD log
   std::shared_ptr<GpuReport> report_;

@@ -1,6 +1,5 @@
 #include "rendering/metal/frame/MetalFrameCompute.h"
 
-#include <algorithm>
 #include <cstring>
 #include <utility>
 
@@ -60,8 +59,8 @@ bool MetalFrameCompute::create() {
 bool MetalFrameCompute::configure(const RenderPolicy& policy, std::string* reason) {
   const KeyBits bits = policy.sortDepth == SortKeyBits::low16 ? KeyBits::Low16 : KeyBits::Full32;
   const bool visibilityChanged = bits != depthBits();
-  const bool lodChanged =
-      policy.lodErrorPixels != lodErrorPixels_ || policy.lodSplatLimit != lodSplatLimit_;
+  const bool lodChanged = policy.lodErrorPixels != lodThreshold_.policyPixels() ||
+                          policy.lodSplatLimit != lodSplatLimit_;
   if (!visibilityChanged && !lodChanged) return true;
   if (!gpuSort_) {
     // No GPU ordering pipelines exist; nothing the policy can reach.
@@ -75,17 +74,16 @@ bool MetalFrameCompute::configure(const RenderPolicy& policy, std::string* reaso
     return false;
   }
   // Plain configuration read by the next selection encode; it cannot fail, so it goes last.
-  lodErrorPixels_ = policy.lodErrorPixels;
+  lodThreshold_.reset(policy.lodErrorPixels);
   lodSplatLimit_ = policy.lodSplatLimit;
-  lodPixels_ = lodErrorPixels_;
   // Frames are idle here, so every readback so far describes the previous policy.
   lodAdaptedReadback_ = report_->lodReadbacks.load();
   if (lod_) {
-    lod_->setPixelLimit(lodPixels_);
+    lod_->setPixelLimit(lodThreshold_.pixels());
     lod_->setSplatLimit(lodSplatLimit_);
   }
   LOGI("Metal policy: %u-bit sort keys, %.2fpx LOD error, %u LOD splat limit",
-       static_cast<uint32_t>(bits), lodErrorPixels_, lodSplatLimit_);
+       static_cast<uint32_t>(bits), lodThreshold_.policyPixels(), lodSplatLimit_);
   return true;
 }
 
@@ -100,7 +98,8 @@ bool MetalFrameCompute::configureFlatWorld(uint32_t count) {
 bool MetalFrameCompute::configureLodWorld(const splat::LodTree& tree, uint32_t budget) {
   if (!gpuSort_) return false;
   auto lod = std::make_unique<MetalLodSelection>();
-  if (!lod->create(device_, library_) || !lod->upload(tree, budget, lodErrorPixels_)) return false;
+  if (!lod->create(device_, library_) || !lod->upload(tree, budget, lodThreshold_.policyPixels()))
+    return false;
   lod->setSplatLimit(lodSplatLimit_);
   // Compact projections and radix scratch scale with the cut, not all resident nodes.
   MetalVisibilityPass visibility;
@@ -117,7 +116,7 @@ bool MetalFrameCompute::configureLodWorld(const splat::LodTree& tree, uint32_t b
   sort_ = std::move(sort);
   lod_ = std::move(lod);
   lodReadback_ = readback;
-  lodPixels_ = lodErrorPixels_;
+  lodThreshold_.reset(lodThreshold_.policyPixels());
   lodAdaptedReadback_ = report_->lodReadbacks.load();
   report_->lodLimitedCount.store(0);
   report_->lodEvaluatedCount.store(0);
@@ -144,21 +143,12 @@ void MetalFrameCompute::updateCamera(const SplatRenderer::Frame& frame, uint32_t
   std::memcpy(uniforms_[slot].contents, &u, sizeof(u));
 }
 
-// Selection counts arrive a frame or two late, so the threshold climbs fast while refinements
-// are denied and relaxes slowly, holding inside a 10% band below the limit.
 void MetalFrameCompute::adaptLodThreshold() {
-  constexpr float kRaise = 1.1f;
-  constexpr float kRelax = 1.03f;
-  constexpr float kMaxPixels = 64.0f;
   const uint32_t readbacks = report_->lodReadbacks.load();
   if (readbacks == lodAdaptedReadback_) return;
   lodAdaptedReadback_ = readbacks;
-  if (report_->lodLimitedCount.load() > 0) {
-    lodPixels_ = std::min(lodPixels_ * kRaise, std::max(kMaxPixels, lodErrorPixels_));
-  } else if (report_->selectedCount.load() < lod_->limit() / 10 * 9) {
-    lodPixels_ = std::max(lodPixels_ / kRelax, lodErrorPixels_);
-  }
-  lod_->setPixelLimit(lodPixels_);
+  lod_->setPixelLimit(lodThreshold_.update(report_->selectedCount.load(),
+                                           report_->lodLimitedCount.load(), lod_->limit()));
 }
 
 id<MTLCommandBuffer> MetalFrameCompute::encodeSelection(uint32_t slot) {
@@ -176,7 +166,7 @@ id<MTLCommandBuffer> MetalFrameCompute::encodeSelection(uint32_t slot) {
   [readback endEncoding];
   const std::shared_ptr<GpuReport> report = report_;
   const bool logLod = frames_ % kLodLogFrames == 0;
-  const float pixels = lodPixels_;
+  const float pixels = lodThreshold_.pixels();
   [selection addCompletedHandler:^(id<MTLCommandBuffer> done) {
     if (done.status == MTLCommandBufferStatusError) {
       report->failed->store(true);

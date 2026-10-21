@@ -296,7 +296,7 @@ void SplatEngine::streamTiles(const FrameCamera& camera, float pixelScale,
                                                   camera.axes.up, camera.axes.tanHalfX,
                                                   camera.axes.tanHalfY, planner_.marginRadians());
   view.pixelScaleLimit = pixelScale * kTilePixels;
-  const splat::TileStreamer::Step step = streamer_->update(view);
+  const splat::TileStreamer::Step step = streamer_->update(view, renderer_->completedFrames());
   for (const auto& arrival : step.arrived) {
     if (renderer_->uploadTile(arrival.offset, *arrival.cloud)) {
       streamer_->commit(arrival.tile);
@@ -410,11 +410,11 @@ void SplatEngine::render(int64_t frameTimeNanos) {
   if (camera) {
     frame.orderSource = SplatRenderer::OrderSource::gpu;
     // The renderer culls and sorts the ranges itself; the streamer keeps them resident
-    // while frames in flight may draw them.
+    // until the frames that draw them completed.
     if (streamer_) {
       ranges_.clear();
       for (const auto& r : streamer_->ranges()) ranges_.push_back({r.offset, r.count});
-      streamer_->drawnNow();
+      streamer_->drawnNow(renderer_->submittedFrames());
     } else {
       ranges_.assign(1, {0, renderer_->world()->count});
     }

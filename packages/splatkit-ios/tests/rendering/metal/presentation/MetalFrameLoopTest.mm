@@ -113,6 +113,42 @@ TEST_F(MetalFrameLoopTest, AFailureAfterAWorldFrameWithdrawsIt) {
   EXPECT_EQ(loop.lastGpuMillis(), 0.0);
 }
 
+// Frame 1 waits on an event in its own queue while frame 2 finishes on another: the
+// completed serial names only a run of frames that all finished.
+TEST_F(MetalFrameLoopTest, TheCompletedSerialWaitsForEveryEarlierFrame) {
+  MetalFrameLoop loop(kFramesInFlight);
+  EXPECT_EQ(loop.submittedFrames(), 0u);
+  EXPECT_EQ(loop.completedFrames(), 0u);
+  id<MTLSharedEvent> gate = [device_ newSharedEvent];
+  const auto clear = [&](id<MTLCommandBuffer> cmd, dispatch_semaphore_t done) {
+    id<CAMetalDrawable> drawable = [layer_ nextDrawable];
+    ASSERT_NE(drawable, nil);
+    MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
+    pass.colorAttachments[0].texture = drawable.texture;
+    pass.colorAttachments[0].loadAction = MTLLoadActionClear;
+    pass.colorAttachments[0].storeAction = MTLStoreActionStore;
+    [[cmd renderCommandEncoderWithDescriptor:pass] endEncoding];
+    loop.submit(cmd, drawable, true,
+                [=](id<MTLCommandBuffer>) { dispatch_semaphore_signal(done); });
+  };
+  dispatch_semaphore_t first = dispatch_semaphore_create(0);
+  dispatch_semaphore_t second = dispatch_semaphore_create(0);
+  ASSERT_TRUE(loop.acquire());
+  id<MTLCommandBuffer> held = [queue_ commandBuffer];
+  [held encodeWaitForEvent:gate value:1];
+  clear(held, first);
+  ASSERT_TRUE(loop.acquire());
+  clear([[device_ newCommandQueue] commandBuffer], second);
+  EXPECT_EQ(loop.submittedFrames(), 2u);
+
+  ASSERT_EQ(dispatch_semaphore_wait(second, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
+  EXPECT_EQ(loop.completedFrames(), 0u);
+  gate.signaledValue = 1;
+  ASSERT_EQ(dispatch_semaphore_wait(first, dispatch_time(DISPATCH_TIME_NOW, 5 * NSEC_PER_SEC)), 0);
+  EXPECT_TRUE(idleWithin(loop, std::chrono::seconds(5)));
+  EXPECT_EQ(loop.completedFrames(), 2u);
+}
+
 TEST_F(MetalFrameLoopTest, TakingPresentTimesClearsTheCallersVectorFirst) {
   MetalFrameLoop loop(kFramesInFlight);
   std::vector<int64_t> times = {1, 2, 3};

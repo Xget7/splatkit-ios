@@ -78,6 +78,10 @@ class MetalSplatRenderer final : public SplatRenderer {
   // Hands the next frame's pixels to `handler`, from the GPU's completion thread. One
   // capture at a time; a request while one is pending replaces it.
   void captureNextFrame(CaptureHandler handler);
+  uint64_t submittedFrames() const override { return frameLoop_.submittedFrames(); }
+  uint64_t completedFrames() override {
+    return frameLoop_.gpuFailed() ? 0 : frameLoop_.completedFrames();
+  }
   double lastGpuMillis() const override { return frameLoop_.lastGpuMillis(); }
   // The cull and the sort run as compute passes on the GPU (MetalFrameCompute); the engine
   // hands over the ranges to draw and never sorts on the CPU for this renderer.
