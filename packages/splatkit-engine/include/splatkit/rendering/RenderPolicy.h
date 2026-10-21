@@ -35,7 +35,7 @@ struct RenderPolicy {
   // Opacity below which a splat contributes nothing; [0, 1]. Fixed at 1/255 today.
   float alphaThreshold = 1.0f / 255.0f;
   // Smallest source footprint, in pixels, kept for drawing; >= 0.
-  float subpixelThreshold = 0.5f;
+  float subpixelThreshold = 1.0f;
   bool enableFrustumCulling = true;
   bool enableHiZOcclusion = false;
   bool enableEarlyTermination = true;

@@ -60,6 +60,10 @@ TEST(RenderPolicy, ARequestEqualToTheFallbackWarnsAboutNothing) {
   EXPECT_TRUE(resolved.warnings.empty());
 }
 
+TEST(RenderPolicy, TheSubpixelThresholdDefaultsToOnePixel) {
+  EXPECT_EQ(RenderPolicy{}.subpixelThreshold, 1.0f);
+}
+
 TEST(RenderPolicy, InvalidInputRejectsTheWholeRequest) {
   RenderPolicySupport support = supportWith(RenderPolicy{});
   support.sortDepth = true;
