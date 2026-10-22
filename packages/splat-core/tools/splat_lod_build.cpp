@@ -17,7 +17,6 @@ int run(int argc, char** argv) {
     return 2;
   }
   splat::LodBuildOptions build;
-  build.octreeDepth = splat::kMaxOctreeDepth;
   splat::SplatDecodeOptions decode;
   for (int i = 3; i < argc; i += 2) {
     const std::string key(argv[i]);

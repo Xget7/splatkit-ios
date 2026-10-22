@@ -14,20 +14,12 @@ struct GaussianCloud;
 
 namespace splat {
 
-// The offline octree tree: as deep as the Morton keys go, clusters of up to 32 leaves.
-inline LodBuildOptions octreeLodOptions() {
-  LodBuildOptions options;
-  options.octreeDepth = kMaxOctreeDepth;
-  options.clusterLeaves = 32;
-  return options;
-}
-
 struct TileBuildOptions {
   // How the detail tree is cut into tiles: the most splats a tile holds, at any level, and the most
   // children a tile has.
   TreeChunkOptions chunks;
   // How the detail tree the tiles are cut from is built.
-  LodBuildOptions lod = octreeLodOptions();
+  LodBuildOptions lod;
 };
 
 // Tiles are chunks of the detail tree: `buildLodTree` builds the tree of a cloud and `chunkTree`

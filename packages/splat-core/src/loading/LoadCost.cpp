@@ -43,8 +43,7 @@ constexpr std::uint64_t kTreeBytesPerNode =
 // Each interior node's child list is an allocation of its own, which malloc rounds up.
 constexpr std::uint64_t kChildListRoundingBytes = 16;
 
-// A tree built at load has about one interior node per two leaves (LodBuildOptions); a
-// 12M-splat house measured 0.32.
+// Heuristic allowance of one interior node per two leaves, not a worst-case bound.
 constexpr std::uint64_t kLeavesPerInteriorNode = 2;
 
 // Validating a tree keeps a depth byte per node.

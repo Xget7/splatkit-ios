@@ -52,7 +52,10 @@ TEST(LodTree, EmptyCloudGivesAnEmptyTree) {
 
 TEST(LodTree, TwoClustersMergeIntoTwoNodesUnderOneRoot) {
   // Two pairs of small splats 0.1 apart, the pairs 100 apart.
-  LodTree t = buildLodTree(cloudOf({{0, 0, 0}, {0.1f, 0, 0}, {100, 0, 0}, {100.1f, 0, 0}}, 0.05f));
+  splat::LodBuildOptions options;
+  options.clusterLeaves = 2;
+  LodTree t =
+      buildLodTree(cloudOf({{0, 0, 0}, {0.1f, 0, 0}, {100, 0, 0}, {100.1f, 0, 0}}, 0.05f), options);
   EXPECT_EQ(t.leafCount, 4u);
   EXPECT_EQ(t.layout[0].childCount, 2u);  // root has the two cluster nodes
   std::vector<uint32_t> leaves;
@@ -124,8 +127,7 @@ TEST(LodTree, OctreeSplitsACrowdedCellWhateverTheSceneExtent) {
   std::vector<Vec3> centres(kRoom);
   for (Vec3& p : centres) p = {u(rng), u(rng), u(rng)};
   centres.push_back({300, 0, 0});
-  splat::LodBuildOptions options;
-  options.octreeDepth = splat::kMaxOctreeDepth;
+  const splat::LodBuildOptions options;
   const LodTree t = buildLodTree(cloudOf(centres, 1e-3f), options);
 
   const auto valid = splat::validateLodTree(t);
@@ -143,19 +145,21 @@ TEST(LodTree, OctreeSplitsACrowdedCellWhateverTheSceneExtent) {
   EXPECT_EQ(leaves.size(), kRoom + 1);
 }
 
-// A wide scene made of fine splats needs many grid levels, and the builder must never
-// produce a tree its own validator rejects.
+// A wide world with fine splats remains valid within the Morton depth limit.
 TEST(LodTree, DeepHierarchyOverAWideSceneStaysValid) {
-  // Point i sits just inside the cell the origin occupies at level i, so it joins the cluster
-  // one level later than the point before it and the hierarchy gains a level per point.
+  // Exponentially spaced centres exercise nested occupied octants.
   std::vector<Vec3> centres{{0, 0, 0}};
   for (int i = 0; i < 40; ++i)
-    centres.push_back({0.9f * std::pow(1.5f, static_cast<float>(i - 20)), 0, 0});
-  const LodTree t = buildLodTree(cloudOf(centres, 1e-5f));
+    centres.push_back({0.9f * std::pow(2.0f, static_cast<float>(i - 20)), 0, 0});
+  splat::LodBuildOptions options;
+  options.clusterLeaves = 2;
+  const LodTree t = buildLodTree(cloudOf(centres, 1e-5f), options);
 
   const auto valid = splat::validateLodTree(t);
   ASSERT_TRUE(valid) << valid.error().message;
-  EXPECT_GT(valid.value(), 32u);
+  EXPECT_GT(valid.value(), 10u);
+  // A merged cell at maximum spatial depth adds one final edge to its originals.
+  EXPECT_LE(valid.value(), splat::kMaxOctreeDepth + 1);
   std::vector<uint32_t> leaves;
   collectLeaves(t, 0, leaves);
   EXPECT_EQ(leaves.size(), centres.size());

@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <numeric>
 #include <utility>
 
 #include "splat/math/SymmetricEigen.h"
@@ -43,9 +42,8 @@ struct Nodes {
 
   std::size_t count() const { return alphas.size(); }
 
-  // One node that stands in for `members`; `filter` is half the cell size, added as
-  // variance so a merged node never draws smaller than the cell that produced it.
-  uint32_t merge(const std::vector<uint32_t>& members, float filter) {
+  // One splat that stands in for `members`, matching their weighted spatial moments.
+  uint32_t merge(const std::vector<uint32_t>& members) {
     std::vector<float> weights(members.size());
     float total = 0.0f;
     for (std::size_t k = 0; k < members.size(); ++k) {
@@ -69,7 +67,6 @@ struct Nodes {
     // Summing normalized float weights can put an all-white parent just above one.
     for (float& channel : rgb) channel = std::clamp(channel, 0.0f, 1.0f);
 
-    const float filter2 = filter * filter;
     float cov[6] = {0, 0, 0, 0, 0, 0};
     for (std::size_t k = 0; k < members.size(); ++k) {
       const uint32_t i = members[k];
@@ -78,12 +75,12 @@ struct Nodes {
       const float dz = positions[i * 3 + 2] - center[2];
       const float* c = &covariances[i * 6];
       const float w = weights[k];
-      cov[0] += w * (dx * dx + c[0] + filter2);
+      cov[0] += w * (dx * dx + c[0]);
       cov[1] += w * (dx * dy + c[1]);
       cov[2] += w * (dx * dz + c[2]);
-      cov[3] += w * (dy * dy + c[3] + filter2);
+      cov[3] += w * (dy * dy + c[3]);
       cov[4] += w * (dy * dz + c[4]);
-      cov[5] += w * (dz * dz + c[5] + filter2);
+      cov[5] += w * (dz * dz + c[5]);
     }
 
     // Area-weighted falloff approximates the sum of isolated projected contributions.
@@ -158,7 +155,7 @@ std::vector<Cell> mortonOrder(const Nodes& nodes, const Bounds& bounds, std::siz
 }
 
 // Merges the Morton-sorted leaves into the octree. Moment matching includes within-child
-// covariance and between-child means; no cell-size blur is added in the offline path.
+// covariance and between-child means.
 struct OctreeBuilder {
   Nodes& nodes;
   const std::vector<Cell>& sorted;
@@ -168,7 +165,7 @@ struct OctreeBuilder {
   uint32_t mergeLeaves(std::size_t begin, std::size_t end) {
     std::vector<uint32_t> members;
     for (std::size_t j = begin; j < end; ++j) members.push_back(sorted[j].node);
-    return nodes.merge(members, 0.0f);
+    return nodes.merge(members);
   }
 
   // The nodes of the child cells of sorted[begin, end), split on the key bits at `shift`.
@@ -193,7 +190,7 @@ struct OctreeBuilder {
     // One occupied octant is the same cell one level down, not a node of its own.
     if ((sorted[begin].key >> shift) == (sorted[end - 1].key >> shift))
       return build(begin, end, level + 1);
-    return nodes.merge(buildChildren(begin, end, level, shift), 0.0f);
+    return nodes.merge(buildChildren(begin, end, level, shift));
   }
 };
 
@@ -204,113 +201,6 @@ uint32_t buildOctreeRoot(Nodes& nodes, const Bounds& bounds, std::size_t leaves,
   OctreeBuilder builder{nodes, sorted, std::max(options.clusterLeaves, 2u), depth};
   return builder.build(0, sorted.size(), 0);
 }
-
-// The cell coordinates of the active nodes at one level: the range they span.
-struct GridSpan {
-  std::array<uint64_t, 3> low{~0ull, ~0ull, ~0ull};
-  std::array<uint64_t, 3> high{0, 0, 0};
-
-  uint64_t longestSide() const {
-    uint64_t range = 0;
-    for (int c = 0; c < 3; ++c) range = std::max(range, high[c] - low[c]);
-    return range;
-  }
-};
-
-struct MergedCells {
-  std::vector<uint32_t> nodes;
-  std::size_t cellCount = 0;
-};
-
-// Levels: at level L the cell is base^L wide. A splat joins the hierarchy at the first
-// level whose cell is at least its size, so small splats merge early and big ones late.
-struct GridBuilder {
-  Nodes& nodes;
-  const float* origin;
-  float base;
-  std::vector<uint32_t> bySize;  // leaves, smallest first
-  std::size_t frontier = 0;      // leaves of bySize already active
-  std::vector<uint32_t> active;
-  std::vector<Cell> cells;
-  bool makeRoot = false;
-  int level = 0;
-
-  // The finest level is bounded below so that cell coordinates fit 21 bits each.
-  GridBuilder(Nodes& nodesIn, const Bounds& bounds, float baseIn)
-      : nodes(nodesIn), origin(bounds.min.data()), base(baseIn), bySize(nodesIn.size.size()) {
-    float minSize = nodes.size[0];
-    for (const float s : nodes.size) minSize = std::min(minSize, s);
-    const float finest =
-        std::max(std::max(minSize, 1e-6f), longestSide(bounds, 0.0f) / static_cast<float>(1 << 20));
-    level = static_cast<int>(std::ceil(std::log(finest) / std::log(base)));
-    std::iota(bySize.begin(), bySize.end(), 0u);
-    std::sort(bySize.begin(), bySize.end(),
-              [&](uint32_t a, uint32_t b) { return nodes.size[a] < nodes.size[b]; });
-  }
-
-  void activateFittingLeaves(float step) {
-    while (frontier < bySize.size() && nodes.size[bySize[frontier]] <= step)
-      active.push_back(bySize[frontier++]);
-  }
-
-  // Keys every active node by its cell (all one cell once `makeRoot` is set) and sorts by key.
-  GridSpan keyActiveNodes(float step) {
-    GridSpan span;
-    cells.clear();
-    cells.reserve(active.size());
-    for (const uint32_t node : active) {
-      uint64_t key = 0;
-      for (int c = 0; c < 3; ++c) {
-        const auto g = static_cast<uint64_t>(
-            std::max(0.0f, std::floor((nodes.positions[node * 3 + c] - origin[c]) / step)));
-        span.low[c] = std::min(span.low[c], g);
-        span.high[c] = std::max(span.high[c], g);
-        key = (key << 21) | (g & 0x1FFFFF);
-      }
-      cells.push_back({makeRoot ? 0 : key, node});
-    }
-    std::sort(cells.begin(), cells.end(),
-              [](const Cell& a, const Cell& b) { return a.key < b.key; });
-    return span;
-  }
-
-  // One node per cell: the lone member, or a merge of the cell's members.
-  MergedCells mergeCells(float step) {
-    MergedCells merged;
-    std::vector<uint32_t> members;
-    for (std::size_t start = 0; start < cells.size();) {
-      std::size_t end = start + 1;
-      while (end < cells.size() && cells[end].key == cells[start].key) ++end;
-      ++merged.cellCount;
-      if (end - start > 1) {
-        members.clear();
-        for (std::size_t k = start; k < end; ++k) members.push_back(cells[k].node);
-        merged.nodes.push_back(nodes.merge(members, 0.5f * step));
-      } else {
-        merged.nodes.push_back(cells[start].node);
-      }
-      start = end;
-    }
-    return merged;
-  }
-
-  uint32_t build() {
-    for (;;) {
-      const float step = std::pow(base, static_cast<float>(level));
-      activateFittingLeaves(step);
-      const GridSpan span = keyActiveNodes(step);
-      MergedCells merged = mergeCells(step);
-      active.swap(merged.nodes);
-      ++level;
-
-      if (frontier < bySize.size()) continue;
-      if (merged.cellCount == 1) break;
-      // Everything left shares a cell: one more merge is the root.
-      if (span.longestSide() <= 1) makeRoot = true;
-    }
-    return active[0];
-  }
-};
 
 // Lays the tree out root first, level by level, children of a node contiguous. The
 // selection walks it from the root and never touches a node before its parent. Returns
@@ -361,14 +251,7 @@ LodTree buildLodTree(SplatCloud cloud, const LodBuildOptions& options) {
   tree.leafCount = leaves;
   if (leaves == 0) return tree;
 
-  // The octree is meant to be built offline; the size-adaptive grid is the load-time path.
-  uint32_t root = 0;
-  if (options.octreeDepth > 0) {
-    root = buildOctreeRoot(nodes, cloud.bounds, leaves, options);
-  } else {
-    GridBuilder grid(nodes, cloud.bounds, options.base);
-    root = grid.build();
-  }
+  const uint32_t root = buildOctreeRoot(nodes, cloud.bounds, leaves, options);
 
   const std::vector<uint32_t> order = layOutBreadthFirst(nodes, root, tree);
   copyInLayoutOrder(nodes, order, tree);

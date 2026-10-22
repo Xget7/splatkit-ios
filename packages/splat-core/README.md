@@ -28,7 +28,8 @@ Set `SPLAT_FIXTURES_DIR` to a folder with World Labs example files to run the in
 
 ## Converting a PLY
 
-The engine reads SPZ.
+The engine reads `.spz`, `.lodsplat` and tilesets.
+SPZ trees are built locally on the loader CPU; `.lodsplat` files carry a prepared tree ([load pipeline](../../docs/ARCHITECTURE.md#load-shared-cpu)).
 [`scripts/prepare-world.sh`](../../scripts/prepare-world.sh) builds these tools and runs `splat-convert`, `splat_lod_build` and `splat_collider` in order; the [React Native guide](https://github.com/Xget7/splatkit/tree/main/packages/react-native-splatkit#preparing-a-world) explains its flags.
 Call the tools directly for the options below.
 A scene from SuperSplat, Polycam or the Mip-NeRF 360 set comes as a Gaussian splat PLY; `tools/ply2spz` (built with `SPLAT_CORE_BUILD_TOOLS`) packs it:
