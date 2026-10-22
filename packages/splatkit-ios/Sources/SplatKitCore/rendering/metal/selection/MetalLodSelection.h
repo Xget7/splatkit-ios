@@ -3,6 +3,8 @@
 #import <Metal/Metal.h>
 #include <algorithm>
 #include <array>
+#include <optional>
+#include <vector>
 #include "splat/lod/LodTree.h"
 
 namespace splatkit {
@@ -15,10 +17,29 @@ class MetalLodSelection {
   // Safety bound on the selected cut; buffers scale with the budget actually requested.
   static constexpr uint32_t kMaxBudget = 4'000'000;
 
+  // The compute pipelines, which depend on neither tree nor budget. Compile them once and hand
+  // them to every selection, so loading another world compiles nothing.
+  struct Pipelines {
+    // Nullopt when one fails to build or lacks the SIMD width the kernels assume.
+    static std::optional<Pipelines> compile(id<MTLDevice> device, id<MTLLibrary> library);
+
+    id<MTLComputePipelineState> initialize = nil, evaluate = nil, budget = nil;
+    id<MTLComputePipelineState> compact = nil, commit = nil, scatter = nil;
+    id<MTLComputePipelineState> emit = nil, scanGroups = nil;
+  };
+
+  // Compiles its own pipelines, for a selection that shares them with no other.
   bool create(id<MTLDevice> device, id<MTLLibrary> library);
+  void create(id<MTLDevice> device, const Pipelines& pipelines);
   bool upload(const splat::LodTree& tree, uint32_t budget, float pixelLimit = 1.0f,
               float colorWeight = 4.0f, bool frustumCull = true);
   void encode(id<MTLCommandBuffer> command, id<MTLBuffer> uniforms);
+  // Every compute pipeline this selection encodes, so tests can tell whether a world load rebuilt
+  // them.
+  std::vector<id<MTLComputePipelineState>> pipelines() const {
+    return {pipelines_.initialize, pipelines_.evaluate, pipelines_.budget, pipelines_.compact,
+            pipelines_.commit,     pipelines_.scatter,  pipelines_.emit,   pipelines_.scanGroups};
+  }
   id<MTLBuffer> indices() const { return indices_; }
   // State words 4/5 contain denied refinements/evaluated interior nodes.
   id<MTLBuffer> count() const { return state_; }
@@ -42,9 +63,7 @@ class MetalLodSelection {
   } config_{};
   uint32_t capacity_ = 0;
   id<MTLDevice> device_ = nil;
-  id<MTLComputePipelineState> initialize_ = nil, evaluate_ = nil, budget_ = nil;
-  id<MTLComputePipelineState> compact_ = nil, commit_ = nil, scatter_ = nil;
-  id<MTLComputePipelineState> emit_ = nil, scanGroups_ = nil;
+  Pipelines pipelines_;
   id<MTLBuffer> nodes_ = nil, leaves_ = nil, indices_ = nil, packets_ = nil;
   id<MTLBuffer> costs_ = nil, costGroups_ = nil, offsets_ = nil, groups_ = nil, state_ = nil;
   id<MTLBuffer> blocks_ = nil;

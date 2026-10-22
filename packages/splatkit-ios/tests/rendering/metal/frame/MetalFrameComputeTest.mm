@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "rendering/metal/frame/MetalFrameCompute.h"
@@ -10,6 +12,10 @@ namespace splatkit {
 namespace {
 
 constexpr Extent kExtent{64, 64};
+// Leaves sit at distinct depths, so the sorted order has no ties for the atomic compaction to
+// permute differently from run to run.
+constexpr float kLeafDepth = -8;
+constexpr float kLeafDepthStep = 0.001f;
 
 class MetalFrameComputeTest : public testing::Test {
  protected:
@@ -55,24 +61,57 @@ class MetalFrameComputeTest : public testing::Test {
     return cloud;
   }
 
-  static splat::LodTree sixtyFourLeaves() {
+  // A root over side x side leaves on a plane, spaced so every grid fills the same root bounds.
+  static splat::LodTree leafGrid(uint32_t side) {
+    const uint32_t leaves = side * side;
+    const float spacing = 0.8f / static_cast<float>(side);
+    const float middle = static_cast<float>(side - 1) / 2;
     splat::LodTree tree;
-    tree.leafCount = 64;
+    tree.leafCount = leaves;
     tree.nodes.positions = {0, 0, -8};
     tree.nodes.colors = {1, 1, 1};
     tree.nodes.alphas = {1};
     tree.nodes.covariances = {0.04f, 0, 0, 0.04f, 0, 0.04f};
-    tree.layout.push_back({{0, 0, -8}, 0.4f, 1, 64});
-    for (uint32_t i = 0; i < 64; ++i) {
-      const float x = (static_cast<float>(i % 8) - 3.5f) * 0.1f;
-      const float y = (static_cast<float>(i / 8) - 3.5f) * 0.1f;
-      tree.nodes.positions.insert(tree.nodes.positions.end(), {x, y, -8});
+    tree.layout.push_back({{0, 0, -8}, 0.4f, 1, leaves});
+    for (uint32_t i = 0; i < leaves; ++i) {
+      const float x = (static_cast<float>(i % side) - middle) * spacing;
+      const float y = (static_cast<float>(i / side) - middle) * spacing;
+      const float z = kLeafDepth - kLeafDepthStep * static_cast<float>(i);
+      tree.nodes.positions.insert(tree.nodes.positions.end(), {x, y, z});
       tree.nodes.colors.insert(tree.nodes.colors.end(), {1, 1, 1});
       tree.nodes.alphas.push_back(1);
       tree.nodes.covariances.insert(tree.nodes.covariances.end(), {0.04f, 0, 0, 0.04f, 0, 0.04f});
-      tree.layout.push_back({{x, y, -8}, 0, 0, 0});
+      tree.layout.push_back({{x, y, z}, 0, 0, 0});
     }
     return tree;
+  }
+
+  static splat::LodTree sixtyFourLeaves() { return leafGrid(8); }
+
+  // What one frame over `world` selected and drew, in draw order.
+  struct Cut {
+    uint32_t selected = 0;
+    std::vector<uint32_t> drawn;
+    bool operator==(const Cut& other) const {
+      return selected == other.selected && drawn == other.drawn;
+    }
+  };
+
+  Cut cutOf(MetalFrameCompute& compute, const MetalWorld& world) {
+    compute.updateCamera(frame_, 0, kExtent, false);
+    id<MTLCommandBuffer> selection = compute.encodeSelection(0);
+    id<MTLCommandBuffer> sort = compute.encodeVisibilityAndSort(frame_, 0, world);
+    EXPECT_NE(selection, nil);
+    EXPECT_NE(sort, nil);
+    if (selection == nil || sort == nil) return {};
+    run(selection, sort);
+    Cut cut;
+    cut.selected = compute.lastSelectedCount();
+    const auto* order = static_cast<const uint32_t*>(compute.order().contents);
+    const auto* projected = static_cast<const ProjectedSplat*>(compute.projected().contents);
+    for (uint32_t i = 0; i < compute.lastDrawCount(); ++i)
+      cut.drawn.push_back(projected[order[i]].index);
+    return cut;
   }
 
   test::Gpu* gpu_ = nullptr;
@@ -220,6 +259,59 @@ TEST_F(MetalFrameComputeTest, ALodWorldSelectsACutAndTheThresholdFollowsThePolic
   EXPECT_GT(compute_->lodPixels(), 0.1f);
   ASSERT_TRUE(compute_->configure(policy(0.1f), &reason));
   EXPECT_FLOAT_EQ(compute_->lodPixels(), 0.1f);
+}
+
+// Pipelines depend on no world, so a second hierarchy world must reuse the first one's. The
+// second world is smaller than the first in one direction and larger in the other, so the
+// reserved buffers are both reused and grown.
+TEST_F(MetalFrameComputeTest, AHierarchyWorldReusesThePipelinesAndOrdersLikeAFreshCompute) {
+  std::string reason;
+  ASSERT_TRUE(compute_->configure(policy(0.1f), &reason)) << reason;
+  for (const auto [firstSide, secondSide] : {std::pair{8u, 4u}, std::pair{4u, 8u}}) {
+    SCOPED_TRACE(testing::Message() << firstSide << " then " << secondSide << " leaves per side");
+    const auto first = leafGrid(firstSide);
+    const auto second = leafGrid(secondSide);
+    auto firstWorld = MetalWorld::upload(gpu_->device, first.nodes, 0);
+    auto secondWorld = MetalWorld::upload(gpu_->device, second.nodes, 0);
+    ASSERT_NE(firstWorld, nullptr);
+    ASSERT_NE(secondWorld, nullptr);
+
+    ASSERT_TRUE(compute_->configureLodWorld(first, firstSide * firstSide));
+    const auto pipelines = compute_->pipelines();
+    ASSERT_FALSE(pipelines.empty());
+    for (id<MTLComputePipelineState> pipeline : pipelines) ASSERT_NE(pipeline, nil);
+    EXPECT_EQ(cutOf(*compute_, *firstWorld).selected, firstSide * firstSide);
+
+    ASSERT_TRUE(compute_->configureLodWorld(second, secondSide * secondSide));
+    const auto reused = compute_->pipelines();
+    ASSERT_EQ(reused.size(), pipelines.size());
+    for (size_t i = 0; i < pipelines.size(); ++i) EXPECT_EQ(reused[i], pipelines[i]) << i;
+    const Cut cut = cutOf(*compute_, *secondWorld);
+    EXPECT_EQ(cut.selected, secondSide * secondSide);
+
+    MetalFrameCompute fresh(gpu_->device, gpu_->queue, gpu_->library, loop_);
+    ASSERT_TRUE(fresh.create());
+    ASSERT_TRUE(fresh.configure(policy(0.1f), &reason)) << reason;
+    ASSERT_TRUE(fresh.configureLodWorld(second, secondSide * secondSide));
+    EXPECT_EQ(cut, cutOf(fresh, *secondWorld));
+  }
+}
+
+TEST_F(MetalFrameComputeTest, AFailedHierarchyLoadKeepsThePreviousWorldDrawing) {
+  const auto tree = leafGrid(4);
+  auto world = MetalWorld::upload(gpu_->device, tree.nodes, 0);
+  ASSERT_NE(world, nullptr);
+  std::string reason;
+  ASSERT_TRUE(compute_->configure(policy(0.1f), &reason)) << reason;
+  ASSERT_TRUE(compute_->configureLodWorld(tree, 16));
+  const Cut before = cutOf(*compute_, *world);
+  const auto pipelines = compute_->pipelines();
+  EXPECT_EQ(before.selected, 16u);
+
+  EXPECT_FALSE(compute_->configureLodWorld(leafGrid(8), 0));
+  EXPECT_TRUE(compute_->hasLod());
+  EXPECT_EQ(compute_->pipelines(), pipelines);
+  EXPECT_EQ(cutOf(*compute_, *world), before);
 }
 
 TEST_F(MetalFrameComputeTest, ReplacingTheLodWorldByAFlatOneDropsTheSelection) {

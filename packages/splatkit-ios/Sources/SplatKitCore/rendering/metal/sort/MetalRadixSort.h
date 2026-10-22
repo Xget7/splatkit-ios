@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "rendering/metal/layout/MetalSortKeys.h"
 
@@ -21,6 +22,10 @@ class MetalRadixSort {
   bool reserve(uint32_t capacity);
   uint32_t capacity() const { return capacity_; }
   void encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> count, KeyBits bits = KeyBits::Full32);
+  // Every compute pipeline this sort encodes, so tests can tell whether a world load rebuilt them.
+  std::vector<id<MTLComputePipelineState>> pipelines() const {
+    return {prepare_, histogram_, scan_, scatter_, scatterLast_};
+  }
   id<MTLBuffer> keys() const { return keys_[0]; }
   id<MTLBuffer> values() const { return values_[0]; }
 

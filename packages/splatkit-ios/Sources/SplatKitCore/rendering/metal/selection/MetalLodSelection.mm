@@ -24,24 +24,39 @@ constexpr NSUInteger kScatterArgumentsOffset = 76;
 
 }  // namespace
 
+std::optional<MetalLodSelection::Pipelines> MetalLodSelection::Pipelines::compile(
+    id<MTLDevice> device, id<MTLLibrary> library) {
+  Pipelines p;
+  p.initialize = metal::pipeline(device, library, "initializeSplatLOD");
+  p.evaluate = metal::pipeline(device, library, "evaluateSplatLOD");
+  p.budget = metal::pipeline(device, library, "budgetSplatLOD");
+  p.compact = metal::pipeline(device, library, "compactSplatLOD");
+  p.commit = metal::pipeline(device, library, "commitSplatLOD");
+  p.scatter = metal::pipeline(device, library, "scatterSplatLOD");
+  p.emit = metal::pipeline(device, library, "emitSplatLOD");
+  p.scanGroups = metal::pipeline(device, library, "scanSplatLODGroups");
+  if (!p.initialize || !p.evaluate || !p.budget || !p.compact || !p.commit || !p.scatter ||
+      !p.emit || !p.scanGroups)
+    return std::nullopt;
+  for (auto pipeline : {p.evaluate, p.compact, p.scatter, p.emit, p.scanGroups})
+    if (pipeline.threadExecutionWidth != kSimdWidth ||
+        pipeline.maxTotalThreadsPerThreadgroup < kGroupThreads)
+      return std::nullopt;
+  return p;
+}
+
 bool MetalLodSelection::create(id<MTLDevice> device, id<MTLLibrary> library) {
-  device_ = device;
-  initialize_ = metal::pipeline(device, library, "initializeSplatLOD");
-  evaluate_ = metal::pipeline(device, library, "evaluateSplatLOD");
-  budget_ = metal::pipeline(device, library, "budgetSplatLOD");
-  compact_ = metal::pipeline(device, library, "compactSplatLOD");
-  commit_ = metal::pipeline(device, library, "commitSplatLOD");
-  scatter_ = metal::pipeline(device, library, "scatterSplatLOD");
-  emit_ = metal::pipeline(device, library, "emitSplatLOD");
-  scanGroups_ = metal::pipeline(device, library, "scanSplatLODGroups");
-  if (!initialize_ || !evaluate_ || !budget_ || !compact_ || !commit_ || !scatter_ || !emit_ ||
-      !scanGroups_)
-    return false;
-  for (auto p : {evaluate_, compact_, scatter_, emit_, scanGroups_})
-    if (p.threadExecutionWidth != kSimdWidth || p.maxTotalThreadsPerThreadgroup < kGroupThreads)
-      return false;
+  const auto compiled = Pipelines::compile(device, library);
+  if (!compiled) return false;
+  create(device, *compiled);
   return true;
 }
+
+void MetalLodSelection::create(id<MTLDevice> device, const Pipelines& pipelines) {
+  device_ = device;
+  pipelines_ = pipelines;
+}
+
 bool MetalLodSelection::upload(const splat::LodTree& tree, uint32_t capacity, float pixelLimit,
                                float colorWeight, bool frustumCull) {
   auto valid = splat::validateLodTree(tree);
@@ -111,18 +126,18 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e popDebugGroup];
   };
   auto scan = [&](id<MTLBuffer> groups) {
-    phase(scanGroups_, @"LOD parallel scan of SIMD totals");
+    phase(pipelines_.scanGroups, @"LOD parallel scan of SIMD totals");
     [e setBuffer:groups offset:0 atIndex:0];
     [e setBuffer:blocks_ offset:0 atIndex:1];
     [e setBuffer:state_ offset:0 atIndex:2];
     indirect(kScanArgumentsOffset);
   };
-  phase(initialize_, @"Initialize interior LOD frontier");
+  phase(pipelines_.initialize, @"Initialize interior LOD frontier");
   [e setBuffer:frontier_[0] offset:0 atIndex:0];
   [e setBuffer:state_ offset:0 atIndex:1];
   one();
   for (uint32_t level = 0; level < depth_; ++level) {
-    phase(evaluate_, @"LOD node bounds and screen error");
+    phase(pipelines_.evaluate, @"LOD node bounds and screen error");
     [e setBuffer:uniforms offset:0 atIndex:0];
     [e setBuffer:nodes_ offset:0 atIndex:1];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:2];
@@ -132,14 +147,14 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e setBuffer:costGroups_ offset:0 atIndex:6];
     indirect(kDispatchArgumentsOffset);
     scan(costGroups_);
-    phase(budget_, @"LOD block scan and deterministic capacity guard");
+    phase(pipelines_.budget, @"LOD block scan and deterministic capacity guard");
     [e setBuffer:costGroups_ offset:0 atIndex:0];
     [e setBuffer:costs_ offset:0 atIndex:1];
     [e setBuffer:state_ offset:0 atIndex:2];
     [e setBytes:&config_ length:sizeof(config_) atIndex:3];
     [e setBuffer:blocks_ offset:0 atIndex:4];
     one();
-    phase(compact_, @"LOD SIMD prefix compaction");
+    phase(pipelines_.compact, @"LOD SIMD prefix compaction");
     [e setBuffer:nodes_ offset:0 atIndex:0];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:1];
     [e setBuffer:costs_ offset:0 atIndex:2];
@@ -150,11 +165,11 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e setBuffer:blocks_ offset:0 atIndex:7];
     indirect(kDispatchArgumentsOffset);
     scan(groups_);
-    phase(commit_, @"LOD block scan, packet offsets and next round");
+    phase(pipelines_.commit, @"LOD block scan, packet offsets and next round");
     [e setBuffer:blocks_ offset:0 atIndex:0];
     [e setBuffer:state_ offset:0 atIndex:1];
     one();
-    phase(scatter_, @"LOD child frontier and leaf packets");
+    phase(pipelines_.scatter, @"LOD child frontier and leaf packets");
     [e setBuffer:nodes_ offset:0 atIndex:0];
     [e setBuffer:frontier_[level & 1u] offset:0 atIndex:1];
     [e setBuffer:offsets_ offset:0 atIndex:2];
@@ -167,7 +182,7 @@ void MetalLodSelection::encode(id<MTLCommandBuffer> command, id<MTLBuffer> unifo
     [e setBuffer:blocks_ offset:0 atIndex:9];
     indirect(kScatterArgumentsOffset);
   }
-  phase(emit_, @"Emit LOD leaf indices cooperatively");
+  phase(pipelines_.emit, @"Emit LOD leaf indices cooperatively");
   [e setBuffer:packets_ offset:0 atIndex:0];
   [e setBuffer:leaves_ offset:0 atIndex:1];
   [e setBuffer:state_ offset:0 atIndex:2];

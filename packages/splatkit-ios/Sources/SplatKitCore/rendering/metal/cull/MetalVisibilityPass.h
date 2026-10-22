@@ -4,6 +4,7 @@
 
 #include <array>
 #include <cstdint>
+#include <vector>
 
 #include "rendering/metal/layout/MetalDrawArguments.h"
 #include "rendering/metal/layout/MetalFrameSlots.h"
@@ -52,6 +53,9 @@ class MetalVisibilityPass {
   // Turns the slot's survivor count into the indirect draw arguments. Encode it after the
   // sort of the same command buffer.
   void encodeIndirect(id<MTLCommandBuffer> cmd, uint32_t slot);
+
+  // Every compute pipeline this pass encodes, so tests can tell whether a world load rebuilt them.
+  std::vector<id<MTLComputePipelineState>> pipelines() const;
 
   id<MTLBuffer> projected() const { return projected_; }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return drawArguments_[slot]; }

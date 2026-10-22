@@ -39,21 +39,29 @@ MetalFrameCompute::MetalFrameCompute(id<MTLDevice> device, id<MTLCommandQueue> q
       frameLoop_(frameLoop),
       report_(std::make_shared<GpuReport>(frameLoop.failureLatch())) {}
 
-bool MetalFrameCompute::createOrdering(MetalVisibilityPass& visibility, MetalRadixSort& sort,
-                                       KeyBits bits) const {
-  return visibility.create(device_, library_, bits) && sort.create(device_, library_);
-}
-
 bool MetalFrameCompute::create() {
   for (auto& uniform : uniforms_) {
     uniform = metal::buffer(device_, sizeof(CameraUniform));
     if (uniform == nil) return false;
   }
-  gpuSort_ = createOrdering(visibility_, sort_, KeyBits::Full32);
+  gpuSort_ =
+      visibility_.create(device_, library_, KeyBits::Full32) && sort_.create(device_, library_);
+  lodPipelines_ = MetalLodSelection::Pipelines::compile(device_, library_);
   LOGI("Metal depth keys: %u bits, %u radix passes (uint32 scratch)",
        static_cast<uint32_t>(depthBits()), static_cast<uint32_t>(depthBits()) / 8);
   if (!gpuSort_) LOGW("GPU sort unavailable, sorting on the CPU");
   return true;
+}
+
+std::vector<id<MTLComputePipelineState>> MetalFrameCompute::pipelines() const {
+  auto all = visibility_.pipelines();
+  const auto sort = sort_.pipelines();
+  all.insert(all.end(), sort.begin(), sort.end());
+  if (lod_) {
+    const auto selection = lod_->pipelines();
+    all.insert(all.end(), selection.begin(), selection.end());
+  }
+  return all;
 }
 
 bool MetalFrameCompute::configure(const RenderPolicy& policy, std::string* reason) {
@@ -99,24 +107,22 @@ bool MetalFrameCompute::configureFlatWorld(uint32_t count) {
 }
 
 bool MetalFrameCompute::configureLodWorld(const splat::LodTree& tree, uint32_t budget) {
-  if (!gpuSort_) return false;
+  if (!gpuSort_ || !lodPipelines_) return false;
+  // Everything that can fail and is not reusable comes first, so a failure changes nothing.
   auto lod = std::make_unique<MetalLodSelection>();
-  if (!lod->create(device_, library_) || !lod->upload(tree, budget, lodThreshold_.policyPixels()))
-    return false;
+  lod->create(device_, *lodPipelines_);
+  if (!lod->upload(tree, budget, lodThreshold_.policyPixels())) return false;
   lod->setSplatLimit(lodSplatLimit_);
-  // Compact projections and radix scratch scale with the cut, not all resident nodes.
-  MetalVisibilityPass visibility;
-  MetalRadixSort sort;
-  if (!createOrdering(visibility, sort, depthBits()) ||
-      !reserveOrdering(visibility, sort, static_cast<uint32_t>(tree.nodeCount()), lod->budget()))
-    return false;
   std::array<id<MTLBuffer>, kFramesInFlight> readback{};
   for (auto& buffer : readback) {
     buffer = metal::buffer(device_, sizeof(LodCounters));
     if (!buffer) return false;
   }
-  visibility_ = std::move(visibility);
-  sort_ = std::move(sort);
+  // Compact projections and radix scratch scale with the cut, not all resident nodes. The
+  // reservation keeps its own buffers on failure and the pipelines are kept, so the previous
+  // world still draws when it fails.
+  if (!reserveOrdering(visibility_, sort_, static_cast<uint32_t>(tree.nodeCount()), lod->budget()))
+    return false;
   lod_ = std::move(lod);
   lodReadback_ = readback;
   lodThreshold_.reset(lodThreshold_.policyPixels());

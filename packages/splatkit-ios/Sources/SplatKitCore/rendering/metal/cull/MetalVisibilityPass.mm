@@ -63,6 +63,13 @@ bool MetalVisibilityPass::createPipelines() {
   return ok && prepareDraw_ != nil;
 }
 
+std::vector<id<MTLComputePipelineState>> MetalVisibilityPass::pipelines() const {
+  std::vector<id<MTLComputePipelineState>> all(visibility_.begin(), visibility_.end());
+  all.insert(all.end(), indexedVisibility_.begin(), indexedVisibility_.end());
+  all.push_back(prepareDraw_);
+  return all;
+}
+
 uint32_t MetalVisibilityPass::slotsFor(uint32_t capacity, uint32_t activeCapacity) {
   if (activeCapacity > 0) capacity = std::min(capacity, activeCapacity);
   return std::max(capacity, 1u);

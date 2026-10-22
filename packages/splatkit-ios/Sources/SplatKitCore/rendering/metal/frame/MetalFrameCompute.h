@@ -6,8 +6,10 @@
 #include <atomic>
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "rendering/metal/cull/MetalVisibilityPass.h"
 #include "rendering/metal/layout/MetalFrameSlots.h"
@@ -51,7 +53,8 @@ class MetalFrameCompute {
   // Frames must be idle.
   bool configureFlatWorld(uint32_t count);
   // A selection over `tree`'s nodes, with room for the cut and a readback per slot. Nothing
-  // changes on failure. Frames must be idle.
+  // changes on failure. Allocates buffers only: every pipeline was built by create() or
+  // configure(). Frames must be idle.
   bool configureLodWorld(const splat::LodTree& tree, uint32_t budget);
   bool hasLod() const { return lod_ != nullptr; }
 
@@ -76,6 +79,10 @@ class MetalFrameCompute {
   id<MTLBuffer> projected() const { return visibility_.projected(); }
   id<MTLBuffer> order() const { return sort_.values(); }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return visibility_.drawArguments(slot); }
+
+  // Every compute pipeline of the ordering and the current selection, so tests can tell whether a
+  // world load rebuilt them.
+  std::vector<id<MTLComputePipelineState>> pipelines() const;
 
   double lastSortMillis() const { return report_->sortMillis.load(); }
   uint32_t lastDrawCount() const { return report_->drawCount.load(); }
@@ -106,7 +113,6 @@ class MetalFrameCompute {
 
   static constexpr float kDefaultLodPixels = 1.0f;
 
-  bool createOrdering(MetalVisibilityPass& visibility, MetalRadixSort& sort, KeyBits bits) const;
   void adaptLodThreshold();
 
   id<MTLDevice> device_ = nil;
@@ -117,6 +123,8 @@ class MetalFrameCompute {
   MetalVisibilityPass visibility_;
   MetalRadixSort sort_;
   bool gpuSort_ = false;
+  // Compiled once in create(), nullopt when they could not be; every LOD world shares them.
+  std::optional<MetalLodSelection::Pipelines> lodPipelines_;
   std::unique_ptr<MetalLodSelection> lod_;
   std::array<id<MTLBuffer>, kFramesInFlight> lodReadback_{};
   uint32_t lodSplatLimit_ = 0;
