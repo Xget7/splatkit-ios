@@ -307,9 +307,6 @@ public final class SplatMetalView: UIView {
         stats.splatCount = Int(s.splatCount)
         stats.loadedShDegree = Int(s.loadedShDegree)
         stats.drawnSplatCount = Int(s.drawnSplatCount)
-        stats.computeTileCount = Int(s.computeTileCount)
-        stats.nonemptyComputeTileCount = Int(s.nonemptyComputeTileCount)
-        stats.hardwareTileCount = Int(s.hardwareTileCount)
         stats.walking = s.walking.boolValue
         stats.motion = s.motion.boolValue
         return stats

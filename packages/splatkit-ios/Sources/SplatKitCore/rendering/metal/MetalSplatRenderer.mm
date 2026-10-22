@@ -13,7 +13,6 @@ namespace {
 // The residency range reported to the adapters.
 constexpr uint32_t kMinResidencyCapacity = 100'000;
 constexpr uint32_t kMaxResidencyCapacity = 32'000'000;
-constexpr uint32_t kFallbackTileSize = 16;
 constexpr float kFallbackLodErrorPixels = 1.0f;
 // Apple family 7, the minimum this renderer accepts, supports 16384x16384 textures.
 constexpr uint32_t kAppleFamily7MaxTextureDimension = 16384;
@@ -86,14 +85,11 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   caps.limits.maxLodCapacitySplats = MetalLodSelection::kMaxBudget;
   caps.limits.minResidencyCapacitySplats = kMinResidencyCapacity;
   caps.limits.maxResidencyCapacitySplats = kMaxResidencyCapacity;
-  caps.supportsComputeTiles = false;
   caps.supportsHiZOcclusion = false;
   caps.supportsSubgroups = compute_->gpuSort();
   // Metal exposes no texture-dimension query.
   caps.maxTextureDimension = context_->device() != nil ? kAppleFamily7MaxTextureDimension : 0u;
   RenderPolicySupport& policy = caps.policy;
-  policy.fallback.raster = RasterStrategy::hardware;
-  policy.fallback.tileSize = kFallbackTileSize;
   policy.fallback.lodErrorPixels = kFallbackLodErrorPixels;
   policy.fallback.alphaThreshold = kQuadMinAlpha;
   policy.fallback.subpixelThreshold = RenderPolicy{}.subpixelThreshold;

@@ -67,12 +67,9 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `readStats()`, `gpuDescription` | Frame, GPU and sort times, splats drawn, device name |
 | `delegate` | World, collider and camera pose outcomes, on the main thread |
 
-## Raster strategy
+## Touch
 
-Hardware rasterization is the only strategy Metal builds.
-A policy that asks for `computeTile` or `hybrid` resolves to hardware with a warning, and `deviceCapabilities.supportsComputeTiles` is false.
-
-Touch: a one-finger drag looks around.
+A one-finger drag looks around.
 The view ships no walking control; the host draws its own, wherever it likes, and drives it with `setWalkVelocity` or `walk`.
 `lookSensitivity` tunes the drag, and `touchLookEnabled` turns it off.
 

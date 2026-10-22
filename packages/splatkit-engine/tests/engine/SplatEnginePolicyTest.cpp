@@ -56,20 +56,20 @@ TEST(SplatEnginePolicy, UnsupportedChoiceFallsBackBeforeTheRendererSeesIt) {
   auto renderer = std::make_unique<PolicyRecordingRenderer>();
   PolicyRecordingRenderer* observed = renderer.get();
   DeviceCapabilities capabilities;
-  capabilities.policy.raster = false;
-  capabilities.policy.fallback.raster = RasterStrategy::hardware;
+  capabilities.policy.enableHiZOcclusion = false;
+  capabilities.policy.fallback.enableHiZOcclusion = false;
   observed->capabilities = capabilities;
 
   SplatEngine engine(std::move(renderer));
   RenderPolicy requested = engine.renderPolicy();
-  requested.raster = RasterStrategy::hybrid;
+  requested.enableHiZOcclusion = true;
 
   const RenderPolicyResolution resolved = engine.setRenderPolicy(requested);
   ASSERT_TRUE(resolved.accepted) << resolved.error;
-  EXPECT_EQ(resolved.effective.raster, RasterStrategy::hardware);
+  EXPECT_FALSE(resolved.effective.enableHiZOcclusion);
   EXPECT_FALSE(resolved.warnings.empty());
-  EXPECT_EQ(observed->applied.raster, RasterStrategy::hardware);
-  EXPECT_EQ(engine.renderPolicy().raster, RasterStrategy::hardware);
+  EXPECT_FALSE(observed->applied.enableHiZOcclusion);
+  EXPECT_FALSE(engine.renderPolicy().enableHiZOcclusion);
 }
 
 TEST(SplatEnginePolicy, InvalidRequestKeepsThePreviouslyAppliedPolicy) {
@@ -86,7 +86,7 @@ TEST(SplatEnginePolicy, InvalidRequestKeepsThePreviouslyAppliedPolicy) {
   ASSERT_EQ(observed->appliedCount, 1u);
 
   RenderPolicy bad = good;
-  bad.tileSize = 12;
+  bad.alphaThreshold = 2.0f;
   const RenderPolicyResolution rejected = engine.setRenderPolicy(bad);
   EXPECT_FALSE(rejected.accepted);
   EXPECT_FALSE(rejected.preparationFailed);
@@ -94,7 +94,7 @@ TEST(SplatEnginePolicy, InvalidRequestKeepsThePreviouslyAppliedPolicy) {
   EXPECT_EQ(engine.renderPolicy().sortDepth, SortKeyBits::low16);
   // The reported policy is the one still in effect, not the backend fallback.
   EXPECT_EQ(rejected.effective.sortDepth, SortKeyBits::low16);
-  EXPECT_EQ(rejected.effective.tileSize, good.tileSize);
+  EXPECT_FLOAT_EQ(rejected.effective.alphaThreshold, good.alphaThreshold);
 }
 
 TEST(SplatEnginePolicy, RendererRefusalKeepsThePreviousPolicy) {

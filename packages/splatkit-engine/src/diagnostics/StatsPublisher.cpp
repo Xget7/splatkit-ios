@@ -91,9 +91,6 @@ void StatsPublisher::publish(const Sample& s) {
   splats_.store(s.sourceSplats, kRelaxed);
   loadedShDegree_.store(s.shDegree, kRelaxed);
   drawnSplats_.store(s.drawn, kRelaxed);
-  computeTiles_.store(s.computeTiles, kRelaxed);
-  nonemptyComputeTiles_.store(s.nonemptyComputeTiles, kRelaxed);
-  hardwareTiles_.store(s.hardwareTiles, kRelaxed);
   walking_.store(s.walking, kRelaxed);
   motion_.store(s.motion, kRelaxed);
 }
@@ -119,9 +116,6 @@ Stats StatsPublisher::stats() const {
   s.splatCount = splats_.load(kRelaxed);
   s.loadedShDegree = loadedShDegree_.load(kRelaxed);
   s.drawnSplatCount = drawnSplats_.load(kRelaxed);
-  s.computeTileCount = computeTiles_.load(kRelaxed);
-  s.nonemptyComputeTileCount = nonemptyComputeTiles_.load(kRelaxed);
-  s.hardwareTileCount = hardwareTiles_.load(kRelaxed);
   s.walking = walking_.load(kRelaxed);
   s.motion = motion_.load(kRelaxed);
   return s;

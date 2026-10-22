@@ -2,32 +2,12 @@
 
 #include <algorithm>
 #include <cmath>
-#include <iterator>
 
 namespace splatkit {
 namespace {
 
 bool finitePositive(float value) {
   return std::isfinite(value) && value > 0.0f;
-}
-
-bool acceptedRaster(uint32_t mask, RasterStrategy strategy) {
-  return mask == 0 || (mask & (1u << static_cast<uint32_t>(strategy))) != 0;
-}
-
-// Bit i of a tile size mask selects kTileSizes[i].
-constexpr uint32_t kTileSizes[] = {8, 16, 32};
-
-int tileSizeIndex(uint32_t size) {
-  for (int i = 0; i < static_cast<int>(std::size(kTileSizes)); ++i) {
-    if (kTileSizes[i] == size) return i;
-  }
-  return -1;
-}
-
-bool acceptedTileSize(uint32_t mask, uint32_t size) {
-  const int index = tileSizeIndex(size);
-  return index >= 0 && (mask == 0 || (mask & (1u << index)) != 0);
 }
 
 std::string number(float value) {
@@ -42,18 +22,6 @@ std::string number(float value) {
 
 }  // namespace
 
-const char* toString(RasterStrategy strategy) {
-  switch (strategy) {
-    case RasterStrategy::hardware:
-      return "hardware";
-    case RasterStrategy::computeTile:
-      return "computeTile";
-    case RasterStrategy::hybrid:
-      return "hybrid";
-  }
-  return "unknown";
-}
-
 const char* toString(SortKeyBits bits) {
   return bits == SortKeyBits::low16 ? "16" : "32";
 }
@@ -63,12 +31,6 @@ bool validRenderPolicy(const RenderPolicy& policy, std::string* error) {
     if (error != nullptr) *error = message;
     return false;
   };
-  if (static_cast<uint32_t>(policy.raster) > static_cast<uint32_t>(RasterStrategy::hybrid)) {
-    return reject("raster must be hardware, computeTile or hybrid");
-  }
-  if (tileSizeIndex(policy.tileSize) < 0) {
-    return reject("tileSize must be 8, 16 or 32");
-  }
   if (!finitePositive(policy.lodErrorPixels)) {
     return reject("lodErrorPixels must be finite and positive");
   }
@@ -98,22 +60,6 @@ RenderPolicyResolution resolveRenderPolicy(const RenderPolicy& requested,
   const auto warn = [&result](const char* field, std::string message) {
     result.warnings.push_back({field, std::move(message)});
   };
-
-  if (support.raster && acceptedRaster(support.rasterMask, requested.raster)) {
-    result.effective.raster = requested.raster;
-  } else if (requested.raster != result.effective.raster) {
-    warn("raster", std::string("raster ") + toString(requested.raster) +
-                       " is not implemented on this backend; using " +
-                       toString(result.effective.raster));
-  }
-
-  if (support.tileSize && acceptedTileSize(support.tileSizeMask, requested.tileSize)) {
-    result.effective.tileSize = requested.tileSize;
-  } else if (requested.tileSize != result.effective.tileSize) {
-    warn("tileSize", "tileSize " + std::to_string(requested.tileSize) +
-                         " is not available on this backend; using " +
-                         std::to_string(result.effective.tileSize));
-  }
 
   if (support.lodErrorPixels) {
     const float clamped =

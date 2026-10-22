@@ -25,15 +25,6 @@ struct GpuWorldInfo {
   int shDegree = 0;
 };
 
-// Screen-tile ownership of the last completed frame for a backend that rasterises some
-// tiles in compute. No backend does today, so every field is zero. Compute includes
-// background tiles; nonemptyCompute excludes them.
-struct ScreenTileStats {
-  uint32_t compute = 0;
-  uint32_t nonemptyCompute = 0;
-  uint32_t hardware = 0;
-};
-
 // What the engine needs from a platform's graphics API: a surface it can draw the
 // world on, a world it can upload whole or by tiles into a slab, and a frame drawn from
 // an order the sorter wrote. Vulkan on Android, Metal on iOS. Render thread only.
@@ -147,7 +138,6 @@ class SplatRenderer {
   virtual uint32_t lastDrawCount() const { return 0; }
   virtual uint32_t lastSelectedCount() const { return 0; }
   virtual double lastSelectMillis() const { return 0; }
-  virtual ScreenTileStats lastScreenTileStats() const { return {}; }
   // True when the renderer learns when frames reach the display. It then moves into `times`
   // the display times, in nanoseconds, of frames shown since the last call, oldest first,
   // and returns how many submitted frames were never shown.

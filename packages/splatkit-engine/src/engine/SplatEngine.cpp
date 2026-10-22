@@ -349,10 +349,6 @@ StatsPublisher::Sample SplatEngine::sample() const {
   s.selected =
       renderer_->lastSelectedCount() > 0 ? renderer_->lastSelectedCount() : lastSort_.selected;
   s.drawn = drawCount_;
-  const auto tiles = renderer_->lastScreenTileStats();
-  s.computeTiles = tiles.compute;
-  s.nonemptyComputeTiles = tiles.nonemptyCompute;
-  s.hardwareTiles = tiles.hardware;
   const std::optional<GpuWorldInfo> world = renderer_->world();
   s.sourceSplats = world ? sourceCount_ : 0;
   s.gpuSplats = world ? (streamer_ ? streamer_->held() : world->count) : 0;

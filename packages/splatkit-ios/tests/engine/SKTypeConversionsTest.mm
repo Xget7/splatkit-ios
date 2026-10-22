@@ -7,8 +7,6 @@ namespace {
 
 RenderPolicy customPolicy() {
   RenderPolicy policy;
-  policy.raster = RasterStrategy::hybrid;
-  policy.tileSize = 32;
   policy.lodErrorPixels = 2.5f;
   policy.lodSplatLimit = 123456;
   policy.alphaThreshold = 0.125f;
@@ -21,8 +19,6 @@ RenderPolicy customPolicy() {
 }
 
 void expectSamePolicy(const RenderPolicy& actual, const RenderPolicy& expected) {
-  EXPECT_EQ(actual.raster, expected.raster);
-  EXPECT_EQ(actual.tileSize, expected.tileSize);
   EXPECT_EQ(actual.lodErrorPixels, expected.lodErrorPixels);
   EXPECT_EQ(actual.lodSplatLimit, expected.lodSplatLimit);
   EXPECT_EQ(actual.alphaThreshold, expected.alphaThreshold);
@@ -36,7 +32,6 @@ void expectSamePolicy(const RenderPolicy& actual, const RenderPolicy& expected) 
 TEST(SKTypeConversionsTest, APolicyRoundTripsThroughTheCStruct) {
   const RenderPolicy policy = customPolicy();
   const SKRenderPolicy mirrored = fromCppPolicy(policy);
-  EXPECT_EQ(mirrored.raster, 2u);
   EXPECT_EQ(mirrored.sortDepth, 16u);
   EXPECT_EQ(mirrored.enableHiZOcclusion, YES);
   EXPECT_EQ(mirrored.enableFrustumCulling, NO);
@@ -65,8 +60,6 @@ TEST(SKTypeConversionsTest, ABadSortDepthIsRejectedAndLeavesTheOutputUntouched) 
 
 TEST(SKTypeConversionsTest, PolicySupportKeepsEveryFlagAndRange) {
   RenderPolicySupport support;
-  support.raster = true;
-  support.tileSize = true;
   support.lodErrorPixels = true;
   support.lodSplatLimit = true;
   support.alphaThreshold = false;
@@ -75,16 +68,12 @@ TEST(SKTypeConversionsTest, PolicySupportKeepsEveryFlagAndRange) {
   support.enableHiZOcclusion = false;
   support.enableEarlyTermination = true;
   support.sortDepth = true;
-  support.rasterMask = 5;
-  support.tileSizeMask = 6;
   support.minLodErrorPixels = 0.25f;
   support.maxLodErrorPixels = 12.0f;
   support.minSubpixelThreshold = 0.5f;
   support.maxSubpixelThreshold = 4.0f;
 
   const SKRenderPolicySupport out = fromCppSupport(support);
-  EXPECT_EQ(out.raster, YES);
-  EXPECT_EQ(out.tileSize, YES);
   EXPECT_EQ(out.lodErrorPixels, YES);
   EXPECT_EQ(out.lodSplatLimit, YES);
   EXPECT_EQ(out.alphaThreshold, NO);
@@ -93,8 +82,6 @@ TEST(SKTypeConversionsTest, PolicySupportKeepsEveryFlagAndRange) {
   EXPECT_EQ(out.enableHiZOcclusion, NO);
   EXPECT_EQ(out.enableEarlyTermination, YES);
   EXPECT_EQ(out.sortDepth, YES);
-  EXPECT_EQ(out.rasterMask, 5u);
-  EXPECT_EQ(out.tileSizeMask, 6u);
   EXPECT_EQ(out.minLodErrorPixels, 0.25f);
   EXPECT_EQ(out.maxLodErrorPixels, 12.0f);
   EXPECT_EQ(out.minSubpixelThreshold, 0.5f);
@@ -115,9 +102,6 @@ TEST(SKTypeConversionsTest, StatsKeepEveryField) {
   stats.walking = true;
   stats.motion = true;
   stats.drawnSplatCount = 777'777;
-  stats.computeTileCount = 11;
-  stats.nonemptyComputeTileCount = 7;
-  stats.hardwareTileCount = 5;
   stats.loadedShDegree = 2;
 
   const SKSplatStats out = fromCppStats(stats);
@@ -129,9 +113,6 @@ TEST(SKTypeConversionsTest, StatsKeepEveryField) {
   EXPECT_EQ(out.walking, YES);
   EXPECT_EQ(out.motion, YES);
   EXPECT_EQ(out.drawnSplatCount, 777'777u);
-  EXPECT_EQ(out.computeTileCount, 11u);
-  EXPECT_EQ(out.nonemptyComputeTileCount, 7u);
-  EXPECT_EQ(out.hardwareTileCount, 5u);
   EXPECT_EQ(out.presentTiming, YES);
   EXPECT_EQ(out.frameMillisP95, 21.0f);
   EXPECT_EQ(out.lowFps, 41.0f);
@@ -144,7 +125,6 @@ TEST(SKTypeConversionsTest, CapabilitiesCarryLimitsFeaturesSupportAndTheFallback
   caps.limits.maxLodCapacitySplats = 4'000'000;
   caps.limits.minResidencyCapacitySplats = 100'000;
   caps.limits.maxResidencyCapacitySplats = 32'000'000;
-  caps.supportsComputeTiles = true;
   caps.supportsHiZOcclusion = false;
   caps.supportsSubgroups = true;
   caps.maxTextureDimension = 16384;
@@ -156,7 +136,6 @@ TEST(SKTypeConversionsTest, CapabilitiesCarryLimitsFeaturesSupportAndTheFallback
   EXPECT_EQ(out.maxLodCapacitySplats, 4'000'000u);
   EXPECT_EQ(out.minResidencyCapacitySplats, 100'000u);
   EXPECT_EQ(out.maxResidencyCapacitySplats, 32'000'000u);
-  EXPECT_EQ(out.supportsComputeTiles, YES);
   EXPECT_EQ(out.supportsHiZOcclusion, NO);
   EXPECT_EQ(out.supportsSubgroups, YES);
   EXPECT_EQ(out.maxTextureDimension, 16384u);

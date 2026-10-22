@@ -79,9 +79,6 @@ typedef struct {
   BOOL walking;
   BOOL motion;
   uint32_t drawnSplatCount;
-  uint32_t computeTileCount;
-  uint32_t nonemptyComputeTileCount;
-  uint32_t hardwareTileCount;
   /// fps counts frames the display showed; without it, frames submitted.
   BOOL presentTiming;
   /// 95th percentile display interval over the last 5 seconds; zero without presentTiming.
@@ -94,12 +91,8 @@ typedef struct {
   uint32_t loadedShDegree;
 } SKSplatStats;
 
-/// The renderer-applicable policy. Mirror of the host contract: raster 0 hardware,
-/// 1 computeTile, 2 hybrid; tileSize 8/16/32; sortDepth 16/32.
-/// Metal builds hardware only; computeTile and hybrid requests resolve to it with a warning.
+/// The renderer-applicable policy. Mirror of the host contract: sortDepth 16/32.
 typedef struct {
-  uint32_t raster;
-  uint32_t tileSize;
   float lodErrorPixels;
   float alphaThreshold;
   float subpixelThreshold;
@@ -114,8 +107,6 @@ typedef struct {
 
 /// Which policy fields this backend can apply. A false field resolves to `fallback`.
 typedef struct {
-  BOOL raster;
-  BOOL tileSize;
   BOOL lodErrorPixels;
   BOOL alphaThreshold;
   BOOL subpixelThreshold;
@@ -123,9 +114,6 @@ typedef struct {
   BOOL enableHiZOcclusion;
   BOOL enableEarlyTermination;
   BOOL sortDepth;
-  /// Accepted raster strategies: bit 0 hardware, bit 1 computeTile, bit 2 hybrid; 0 means all.
-  uint32_t rasterMask;
-  uint32_t tileSizeMask;
   float minLodErrorPixels;
   float maxLodErrorPixels;
   float minSubpixelThreshold;
@@ -138,7 +126,6 @@ typedef struct {
   uint32_t maxLodCapacitySplats;
   uint32_t minResidencyCapacitySplats;
   uint32_t maxResidencyCapacitySplats;
-  BOOL supportsComputeTiles;
   BOOL supportsHiZOcclusion;
   BOOL supportsSubgroups;
   uint32_t maxTextureDimension;

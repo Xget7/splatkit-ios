@@ -4,8 +4,6 @@ namespace splatkit {
 
 SKRenderPolicy fromCppPolicy(const RenderPolicy& p) {
   SKRenderPolicy out{};
-  out.raster = static_cast<uint32_t>(p.raster);
-  out.tileSize = p.tileSize;
   out.lodErrorPixels = p.lodErrorPixels;
   out.alphaThreshold = p.alphaThreshold;
   out.subpixelThreshold = p.subpixelThreshold;
@@ -20,8 +18,6 @@ SKRenderPolicy fromCppPolicy(const RenderPolicy& p) {
 bool toCppPolicy(SKRenderPolicy p, RenderPolicy* out) {
   const auto sortDepth = static_cast<SortKeyBits>(p.sortDepth);
   if (sortDepth != SortKeyBits::low16 && sortDepth != SortKeyBits::full32) return false;
-  out->raster = static_cast<RasterStrategy>(p.raster);
-  out->tileSize = p.tileSize;
   out->lodErrorPixels = p.lodErrorPixels;
   out->alphaThreshold = p.alphaThreshold;
   out->subpixelThreshold = p.subpixelThreshold;
@@ -35,8 +31,6 @@ bool toCppPolicy(SKRenderPolicy p, RenderPolicy* out) {
 
 SKRenderPolicySupport fromCppSupport(const RenderPolicySupport& s) {
   SKRenderPolicySupport out{};
-  out.raster = s.raster;
-  out.tileSize = s.tileSize;
   out.lodErrorPixels = s.lodErrorPixels;
   out.alphaThreshold = s.alphaThreshold;
   out.subpixelThreshold = s.subpixelThreshold;
@@ -44,8 +38,6 @@ SKRenderPolicySupport fromCppSupport(const RenderPolicySupport& s) {
   out.enableHiZOcclusion = s.enableHiZOcclusion;
   out.enableEarlyTermination = s.enableEarlyTermination;
   out.sortDepth = s.sortDepth;
-  out.rasterMask = s.rasterMask;
-  out.tileSizeMask = s.tileSizeMask;
   out.minLodErrorPixels = s.minLodErrorPixels;
   out.maxLodErrorPixels = s.maxLodErrorPixels;
   out.minSubpixelThreshold = s.minSubpixelThreshold;
@@ -62,22 +54,9 @@ LensSettings lensSettings(const SKLensSettings& s) {
 }
 
 SKSplatStats fromCppStats(const Stats& s) {
-  return {s.fps,
-          s.frameMillis,
-          s.gpuMillis,
-          s.sortMillis,
-          s.splatCount,
-          s.walking,
-          s.motion,
-          s.drawnSplatCount,
-          s.computeTileCount,
-          s.nonemptyComputeTileCount,
-          s.hardwareTileCount,
-          s.presentTiming,
-          s.frameMillisP95,
-          s.lowFps,
-          s.droppedFrames,
-          s.loadedShDegree};
+  return {s.fps,     s.frameMillis,   s.gpuMillis,       s.sortMillis,    s.splatCount,
+          s.walking, s.motion,        s.drawnSplatCount, s.presentTiming, s.frameMillisP95,
+          s.lowFps,  s.droppedFrames, s.loadedShDegree};
 }
 
 SKDeviceCapabilities fromCppCapabilities(const DeviceCapabilities& caps) {
@@ -85,7 +64,6 @@ SKDeviceCapabilities fromCppCapabilities(const DeviceCapabilities& caps) {
   out.maxLodCapacitySplats = caps.limits.maxLodCapacitySplats;
   out.minResidencyCapacitySplats = caps.limits.minResidencyCapacitySplats;
   out.maxResidencyCapacitySplats = caps.limits.maxResidencyCapacitySplats;
-  out.supportsComputeTiles = caps.supportsComputeTiles;
   out.supportsHiZOcclusion = caps.supportsHiZOcclusion;
   out.supportsSubgroups = caps.supportsSubgroups;
   out.maxTextureDimension = caps.maxTextureDimension;

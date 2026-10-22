@@ -60,22 +60,10 @@ TEST_F(MetalSplatRendererTest, WorldReadinessRequiresGpuCompletionAndResetsOnRep
   EXPECT_FALSE(renderer->hasCompletedWorldFrame());
 }
 
-TEST_F(MetalSplatRendererTest, HybridTilesAreNotOfferedAndResolveToHardware) {
+TEST_F(MetalSplatRendererTest, TheFallbackPolicyResolvesWithoutWarnings) {
   auto renderer = MetalSplatRenderer::create();
   ASSERT_NE(renderer, nullptr);
   const DeviceCapabilities caps = renderer->deviceCapabilities();
-  EXPECT_FALSE(caps.supportsComputeTiles);
-  EXPECT_FALSE(caps.policy.raster);
-  EXPECT_EQ(caps.policy.fallback.raster, RasterStrategy::hardware);
-  for (RasterStrategy requested : {RasterStrategy::computeTile, RasterStrategy::hybrid}) {
-    RenderPolicy policy = caps.policy.fallback;
-    policy.raster = requested;
-    const RenderPolicyResolution resolution = resolveRenderPolicy(policy, caps.policy);
-    EXPECT_TRUE(resolution.accepted);
-    EXPECT_EQ(resolution.effective.raster, RasterStrategy::hardware);
-    ASSERT_EQ(resolution.warnings.size(), 1u);
-    EXPECT_EQ(resolution.warnings[0].field, "raster");
-  }
   const RenderPolicyResolution fallback = resolveRenderPolicy(caps.policy.fallback, caps.policy);
   EXPECT_TRUE(fallback.warnings.empty());
 }

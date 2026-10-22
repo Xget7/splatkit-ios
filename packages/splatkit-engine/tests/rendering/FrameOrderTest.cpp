@@ -30,13 +30,11 @@ class RecordingRenderer final : public StubRenderer {
     ++frames;
     return true;
   }
-  ScreenTileStats lastScreenTileStats() const override { return tiles; }
   bool surfaceRebuildPending() const override { return rebuildPending; }
   Extent extent{1000, 1000};
   OrderSource source = OrderSource::cpu;
   std::vector<Range> ranges;
   uint32_t frames = 0;
-  ScreenTileStats tiles;
   bool gpuLod = false;
   bool rebuildPending = false;
   uint32_t uploadedBudget = 0;
@@ -93,29 +91,6 @@ TEST(FrameOrder, GpuRendererReceivesTheWorldRangeOnEveryRequestedFrame) {
     EXPECT_EQ(observed->ranges[0].count, 1u);
   }
   EXPECT_EQ(observed->frames, 2u);
-}
-
-TEST(FrameOrder, CompletedScreenTileCountsReachPublishedStatsAndClearWhenUnavailable) {
-  auto renderer = std::make_unique<RecordingRenderer>(true);
-  auto* observed = renderer.get();
-  SplatEngine engine(std::move(renderer));
-  const auto bytes = worldBytes();
-  engine.loadWorld(bytes.data(), bytes.size());
-  observed->tiles = {39, 2, 25};
-  engine.render(1);
-  engine.requestRedraw();
-  engine.render(500000001);
-  auto stats = engine.stats();
-  EXPECT_EQ(stats.computeTileCount, 39u);
-  EXPECT_EQ(stats.nonemptyComputeTileCount, 2u);
-  EXPECT_EQ(stats.hardwareTileCount, 25u);
-  observed->tiles = {};
-  engine.requestRedraw();
-  engine.render(1000000001);
-  stats = engine.stats();
-  EXPECT_EQ(stats.computeTileCount, 0u);
-  EXPECT_EQ(stats.nonemptyComputeTileCount, 0u);
-  EXPECT_EQ(stats.hardwareTileCount, 0u);
 }
 
 TEST(FrameOrder, LoadedWorldShDegreeReachesPublishedStatsAndIsZeroWithoutAWorld) {

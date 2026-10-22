@@ -10,12 +10,7 @@ namespace splatkit {
 // mirror the JS contract (packages/react-native-splatkit/src/performance.ts) so the JS
 // authority and the native re-validation agree; keep them in step. A change here is a
 // wire/contract change for every adapter.
-enum class RasterStrategy : uint32_t {
-  hardware = 0,
-  computeTile = 1,
-  hybrid = 2,
-};
-
+//
 // Sort depth-key width. 16 quantizes camera depth linearly; 32 keeps the float bits.
 enum class SortKeyBits : uint32_t {
   low16 = 16,
@@ -23,9 +18,6 @@ enum class SortKeyBits : uint32_t {
 };
 
 struct RenderPolicy {
-  RasterStrategy raster = RasterStrategy::hardware;
-  // Tile edge in pixels, one of 8, 16 or 32.
-  uint32_t tileSize = 16;
   // Screen-space error a hierarchy node may cover before it is refined; > 0.
   float lodErrorPixels = 1.0f;
   // Most hierarchy splats one frame may select, 0 for the capacity the world loaded with.
@@ -46,8 +38,6 @@ struct RenderPolicy {
 // implemented: a request resolves to `fallback` and a warning, never a silent no-op.
 // `fallback` is also the starting point for every resolution.
 struct RenderPolicySupport {
-  bool raster = false;
-  bool tileSize = false;
   bool lodErrorPixels = false;
   bool lodSplatLimit = false;
   bool alphaThreshold = false;
@@ -56,12 +46,6 @@ struct RenderPolicySupport {
   bool enableHiZOcclusion = false;
   bool enableEarlyTermination = false;
   bool sortDepth = false;
-  // Accepted raster strategies as a bitmask over the enum values: bit 0 = hardware,
-  // bit 1 = computeTile, bit 2 = hybrid. Zero means all three.
-  uint32_t rasterMask = 0;
-  // Accepted tile sizes as a bitmask over {8,16,32}: bit 0 = 8, bit 1 = 16, bit 2 = 32.
-  // Zero means all three.
-  uint32_t tileSizeMask = 0;
   float minLodErrorPixels = 1e-6f;
   float maxLodErrorPixels = 3.402823466e38f;  // FLT_MAX
   float minSubpixelThreshold = 0.0f;
@@ -79,8 +63,6 @@ struct SplatLimits {
 
 struct DeviceCapabilities {
   SplatLimits limits;
-  // Experimental hybrid screen tiles can be requested. False when the backend has no tile path.
-  bool supportsComputeTiles = false;
   // Conservative occlusion is not implemented anywhere yet.
   bool supportsHiZOcclusion = false;
   bool supportsSubgroups = false;
@@ -116,7 +98,6 @@ RenderPolicyResolution resolveRenderPolicy(const RenderPolicy& requested,
                                            const RenderPolicySupport& support);
 
 // Stable spellings for logs, diagnostics and the wire. Never localized.
-const char* toString(RasterStrategy strategy);
 const char* toString(SortKeyBits bits);
 
 }  // namespace splatkit
