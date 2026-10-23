@@ -153,7 +153,7 @@
   "packages/splatkit-engine/include/splatkit/diagnostics/StatsPublisher.h": "4455b407bf4f3b35875672861e8484137908990cce6c0ada477730b5f2a2cfa9",
   "packages/splatkit-engine/include/splatkit/engine/SplatEngine.h": "8518f7cfee39cf6031abaf7ebe0f90fcd09e68d5d392f218b736e8091c7b04c6",
   "packages/splatkit-engine/include/splatkit/loading/LoadReportLog.h": "841986279f18593b9e1a4704e9938dfa0a2ea975b798efc2a37ca5aefba1ccfa",
-  "packages/splatkit-engine/include/splatkit/rendering/GpuLayout.h": "6252f40c18576c4bfd826a1d815b7ffa1d3a6d53f338fd166f194c0842484a4e",
+  "packages/splatkit-engine/include/splatkit/rendering/GpuLayout.h": "0322a4a83ff85ae52d3d0815d9c2b47c90135b2b272d70e79c8896e80df4a524",
   "packages/splatkit-engine/include/splatkit/rendering/LodThreshold.h": "12b1f5191cec94cc045c5fdc2854cc49da0c3a85f037f9abe0efbad5fc203eb5",
   "packages/splatkit-engine/include/splatkit/rendering/RenderPolicy.h": "6fd53233c349385799a1672c6aa8401a45327b9bc73a05265f7c5fee4a462ca7",
   "packages/splatkit-engine/include/splatkit/rendering/SplatRenderer.h": "180a0b8d6594d4819bbe8b5ea6a04c1b903c2e70fc37dcf9c1f6263e2d92dc52",
