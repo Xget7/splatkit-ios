@@ -1,0 +1,878 @@
+{
+  "events": [
+    {
+      "id": "A",
+      "name": "Draw count rises",
+      "time_trace_s": 21.480345,
+      "evidence": "18955 to 36109 drawn splats in periodic app samples",
+      "source": "console.log periodic stats",
+      "kind": "observed sample"
+    },
+    {
+      "id": "B",
+      "name": "Battery peak",
+      "time_trace_s": 23.53044225,
+      "evidence": "49.88 battery percentage points/hour over the exported sample interval",
+      "source": "SystemPowerLevel",
+      "kind": "observed estimated-rate sample"
+    },
+    {
+      "id": "C",
+      "name": "Orbit ends",
+      "time_trace_s": 25.514499,
+      "evidence": "30-second benchmark summary logged",
+      "source": "console.log benchmark summary",
+      "kind": "logged lifecycle event"
+    },
+    {
+      "id": "D",
+      "name": "No new frames",
+      "time_trace_s": 27.480965,
+      "evidence": "0.0 fps in first periodic app sample after benchmark completion",
+      "source": "console.log periodic stats",
+      "kind": "observed sample"
+    }
+  ],
+  "event_alignment_limit": "Wall-clock log times converted to trace-relative seconds; periodic samples and GPU power attribution can lag. Markers show recorded observations, not exact onset or proven causality.",
+  "recorded_conditions": {
+    "Charging Status": [
+      0.0
+    ],
+    "Thermal State": [
+      0.0
+    ],
+    "Display Brightness Percentage": [
+      55.0
+    ]
+  },
+  "device": "physical iPhone 17 Pro",
+  "ios": "27.0.1",
+  "world": "kitchen_500k.spz",
+  "installed_build_commit": "unverified",
+  "trace_origin": "2026-10-23T18:43:59.779000-03:00",
+  "benchmark_start_trace_s": -4.484138,
+  "benchmark_end_trace_s": 25.514499,
+  "trace_duration_s": 31.601609,
+  "windows": {
+    "moving_observed": {
+      "interval_trace_s": [
+        2,
+        25.514499
+      ],
+      "system_battery_pp_per_hour": {
+        "mean": 26.20696770823613,
+        "covered_seconds": 23.514498041000003
+      },
+      "gpu_impact_score": {
+        "mean": 22.508788865703938,
+        "covered_seconds": 23.514497998
+      },
+      "cpu_impact_score": {
+        "mean": 0.1,
+        "covered_seconds": 23.514498041000003
+      },
+      "display_impact_score": {
+        "mean": 3.0000000000000004,
+        "covered_seconds": 23.514498041000003
+      }
+    },
+    "late_moving": {
+      "interval_trace_s": [
+        23,
+        25.514499
+      ],
+      "system_battery_pp_per_hour": {
+        "mean": 44.96640256787217,
+        "covered_seconds": 2.514498875000001
+      },
+      "gpu_impact_score": {
+        "mean": 39.06856455168172,
+        "covered_seconds": 2.5144988739999974
+      },
+      "cpu_impact_score": {
+        "mean": 0.10000000000000002,
+        "covered_seconds": 2.514498875000001
+      },
+      "display_impact_score": {
+        "mean": 3.0,
+        "covered_seconds": 2.514498875000001
+      }
+    },
+    "still_after_2s_settling": {
+      "interval_trace_s": [
+        27.514499,
+        31.524460541
+      ],
+      "system_battery_pp_per_hour": {
+        "mean": 4.722350945860061,
+        "covered_seconds": 4.009961374999996
+      },
+      "gpu_impact_score": {
+        "mean": 0.0,
+        "covered_seconds": 2.5099614569999957
+      },
+      "cpu_impact_score": {
+        "mean": 0.0,
+        "covered_seconds": 4.009961374999996
+      },
+      "display_impact_score": {
+        "mean": 1.0,
+        "covered_seconds": 4.009961374999996
+      }
+    },
+    "previous_chart": {
+      "interval_trace_s": [
+        2,
+        24
+      ],
+      "system_battery_pp_per_hour": {
+        "mean": 24.659364218957016,
+        "covered_seconds": 21.999999083000002
+      },
+      "gpu_impact_score": {
+        "mean": 21.91113759629201,
+        "covered_seconds": 21.999999082000002
+      },
+      "cpu_impact_score": {
+        "mean": 0.10000000000000002,
+        "covered_seconds": 21.999999083000002
+      },
+      "display_impact_score": {
+        "mean": 3.0,
+        "covered_seconds": 21.999999083000002
+      }
+    }
+  },
+  "system_peak": {
+    "rate_battery_pp_per_hour": 49.88262069,
+    "interval_trace_s": [
+      23.53044225,
+      24.530785833
+    ],
+    "moving_seconds_at_or_above_40_pp_per_hour": 2.025820750000001
+  },
+  "app_periodic_samples": [
+    {
+      "time_s": -2.515436,
+      "fps": 120.0,
+      "gpu_ms": 5.8,
+      "sort_ms": 0.8,
+      "drawn": 93024,
+      "yaw": 0.41
+    },
+    {
+      "time_s": -0.514981,
+      "fps": 120.0,
+      "gpu_ms": 6.0,
+      "sort_ms": 0.6,
+      "drawn": 41943,
+      "yaw": 0.83
+    },
+    {
+      "time_s": 1.477053,
+      "fps": 118.0,
+      "gpu_ms": 4.2,
+      "sort_ms": 0.8,
+      "drawn": 11698,
+      "yaw": 1.25
+    },
+    {
+      "time_s": 3.477414,
+      "fps": 118.0,
+      "gpu_ms": 5.1,
+      "sort_ms": 1.3,
+      "drawn": 11232,
+      "yaw": 1.67
+    },
+    {
+      "time_s": 5.477752,
+      "fps": 120.0,
+      "gpu_ms": 5.3,
+      "sort_ms": 0.9,
+      "drawn": 11194,
+      "yaw": 2.09
+    },
+    {
+      "time_s": 7.478072,
+      "fps": 120.0,
+      "gpu_ms": 4.8,
+      "sort_ms": 0.9,
+      "drawn": 14000,
+      "yaw": 2.51
+    },
+    {
+      "time_s": 9.478359,
+      "fps": 120.0,
+      "gpu_ms": 5.2,
+      "sort_ms": 0.9,
+      "drawn": 8245,
+      "yaw": 2.93
+    },
+    {
+      "time_s": 11.478685,
+      "fps": 120.0,
+      "gpu_ms": 5.2,
+      "sort_ms": 1.1,
+      "drawn": 9188,
+      "yaw": 3.34
+    },
+    {
+      "time_s": 13.479019,
+      "fps": 120.0,
+      "gpu_ms": 5.4,
+      "sort_ms": 1.0,
+      "drawn": 13666,
+      "yaw": 3.76
+    },
+    {
+      "time_s": 15.479399,
+      "fps": 120.0,
+      "gpu_ms": 5.2,
+      "sort_ms": 1.0,
+      "drawn": 14700,
+      "yaw": 4.18
+    },
+    {
+      "time_s": 17.479689,
+      "fps": 120.0,
+      "gpu_ms": 5.2,
+      "sort_ms": 1.1,
+      "drawn": 13332,
+      "yaw": 4.6
+    },
+    {
+      "time_s": 19.480061,
+      "fps": 120.0,
+      "gpu_ms": 5.1,
+      "sort_ms": 0.9,
+      "drawn": 18955,
+      "yaw": 5.02
+    },
+    {
+      "time_s": 21.480345,
+      "fps": 120.0,
+      "gpu_ms": 5.6,
+      "sort_ms": 0.8,
+      "drawn": 36109,
+      "yaw": 5.44
+    },
+    {
+      "time_s": 23.48069,
+      "fps": 120.0,
+      "gpu_ms": 5.1,
+      "sort_ms": 0.8,
+      "drawn": 74902,
+      "yaw": 5.86
+    },
+    {
+      "time_s": 25.481073,
+      "fps": 120.0,
+      "gpu_ms": 4.7,
+      "sort_ms": 0.8,
+      "drawn": 71995,
+      "yaw": 6.28
+    },
+    {
+      "time_s": 27.480965,
+      "fps": 0.0,
+      "gpu_ms": 4.6,
+      "sort_ms": 1.0,
+      "drawn": 72878,
+      "yaw": 6.28
+    }
+  ],
+  "raw_system_samples": [
+    {
+      "time_s": 0.476485791,
+      "System Power Usage (sampled power)": 0.0,
+      "Display APL": 0.0,
+      "Frame Rate": 0.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 1.496193416,
+      "System Power Usage (sampled power)": 0.0,
+      "Display APL": 0.0,
+      "Frame Rate": 0.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 1.496193458,
+      "System Power Usage (sampled power)": 40.1335,
+      "Display APL": 14.35,
+      "Frame Rate": 119.0083,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 1.538609666,
+      "System Power Usage (sampled power)": 40.1335,
+      "Display APL": 14.35,
+      "Frame Rate": 119.0083,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 1.538609708,
+      "System Power Usage (sampled power)": 24.5495,
+      "Display APL": 13.9412,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 2.52842875,
+      "System Power Usage (sampled power)": 24.5495,
+      "Display APL": 13.9412,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 2.528428791,
+      "System Power Usage (sampled power)": 24.0141,
+      "Display APL": 18.1849,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 3.523488708,
+      "System Power Usage (sampled power)": 24.0141,
+      "Display APL": 18.1849,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 3.52348875,
+      "System Power Usage (sampled power)": 24.0919,
+      "Display APL": 58.5583,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 4.522342291,
+      "System Power Usage (sampled power)": 24.0919,
+      "Display APL": 58.5583,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 4.522342333,
+      "System Power Usage (sampled power)": 28.3943,
+      "Display APL": 110.0656,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 5.525990166,
+      "System Power Usage (sampled power)": 28.3943,
+      "Display APL": 110.0656,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 5.525990208,
+      "System Power Usage (sampled power)": 24.5685,
+      "Display APL": 164.7458,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 7.492273041,
+      "System Power Usage (sampled power)": 24.5685,
+      "Display APL": 164.7458,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 7.492273083,
+      "System Power Usage (sampled power)": 25.5101,
+      "Display APL": 131.4793,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 7.535468583,
+      "System Power Usage (sampled power)": 25.5101,
+      "Display APL": 131.4793,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 7.535468625,
+      "System Power Usage (sampled power)": 26.5776,
+      "Display APL": 75.7983,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 8.524747958,
+      "System Power Usage (sampled power)": 26.5776,
+      "Display APL": 75.7983,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 8.524748,
+      "System Power Usage (sampled power)": 23.5167,
+      "Display APL": 29.0083,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 9.524138208,
+      "System Power Usage (sampled power)": 23.5167,
+      "Display APL": 29.0083,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 9.52413825,
+      "System Power Usage (sampled power)": 23.5242,
+      "Display APL": 19.7917,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 10.52426875,
+      "System Power Usage (sampled power)": 23.5242,
+      "Display APL": 19.7917,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 10.524268791,
+      "System Power Usage (sampled power)": 22.3116,
+      "Display APL": 19.175,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 11.526171125,
+      "System Power Usage (sampled power)": 22.3116,
+      "Display APL": 19.175,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 11.526171166,
+      "System Power Usage (sampled power)": 21.0009,
+      "Display APL": 25.0583,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 13.492576375,
+      "System Power Usage (sampled power)": 21.0009,
+      "Display APL": 25.0583,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 13.492576416,
+      "System Power Usage (sampled power)": 19.7125,
+      "Display APL": 34.1983,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 13.534029375,
+      "System Power Usage (sampled power)": 19.7125,
+      "Display APL": 34.1983,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 13.534029416,
+      "System Power Usage (sampled power)": 21.0222,
+      "Display APL": 45.3193,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 14.5253335,
+      "System Power Usage (sampled power)": 21.0222,
+      "Display APL": 45.3193,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 14.525333541,
+      "System Power Usage (sampled power)": 21.8193,
+      "Display APL": 60.075,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 15.524633416,
+      "System Power Usage (sampled power)": 21.8193,
+      "Display APL": 60.075,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 15.524633458,
+      "System Power Usage (sampled power)": 22.0905,
+      "Display APL": 66.5667,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 16.525529958,
+      "System Power Usage (sampled power)": 22.0905,
+      "Display APL": 66.5667,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 16.52553,
+      "System Power Usage (sampled power)": 22.278,
+      "Display APL": 70.2833,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 18.487724666,
+      "System Power Usage (sampled power)": 22.278,
+      "Display APL": 70.2833,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 18.487724708,
+      "System Power Usage (sampled power)": 21.8853,
+      "Display APL": 70.95,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 18.529604333,
+      "System Power Usage (sampled power)": 21.8853,
+      "Display APL": 70.95,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 18.529604375,
+      "System Power Usage (sampled power)": 22.2925,
+      "Display APL": 67.975,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 19.525457208,
+      "System Power Usage (sampled power)": 22.2925,
+      "Display APL": 67.975,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 19.52545725,
+      "System Power Usage (sampled power)": 24.6446,
+      "Display APL": 59.4,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 20.527148041,
+      "System Power Usage (sampled power)": 24.6446,
+      "Display APL": 59.4,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 20.527148083,
+      "System Power Usage (sampled power)": 27.6211,
+      "Display APL": 49.5333,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 21.524889208,
+      "System Power Usage (sampled power)": 27.6211,
+      "Display APL": 49.5333,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 21.52488925,
+      "System Power Usage (sampled power)": 28.9579,
+      "Display APL": 43.8833,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 23.488678125,
+      "System Power Usage (sampled power)": 28.9579,
+      "Display APL": 43.8833,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 23.488678166,
+      "System Power Usage (sampled power)": 42.055,
+      "Display APL": 46.375,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 23.530442208,
+      "System Power Usage (sampled power)": 42.055,
+      "Display APL": 46.375,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 23.53044225,
+      "System Power Usage (sampled power)": 49.8826,
+      "Display APL": 48.7083,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 24.530785833,
+      "System Power Usage (sampled power)": 49.8826,
+      "Display APL": 48.7083,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 24.530785875,
+      "System Power Usage (sampled power)": 48.0432,
+      "Display APL": 47.125,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 25.527502041,
+      "System Power Usage (sampled power)": 48.0432,
+      "Display APL": 47.125,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 25.527502083,
+      "System Power Usage (sampled power)": 29.1414,
+      "Display APL": 43.9091,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 26.524275708,
+      "System Power Usage (sampled power)": 29.1414,
+      "Display APL": 43.9091,
+      "Frame Rate": 120.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 26.52427575,
+      "System Power Usage (sampled power)": 4.256,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 28.4923775,
+      "System Power Usage (sampled power)": 4.256,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 28.492377541,
+      "System Power Usage (sampled power)": 5.0961,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 28.5340395,
+      "System Power Usage (sampled power)": 5.0961,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 28.534039541,
+      "System Power Usage (sampled power)": 7.2394,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 29.525435166,
+      "System Power Usage (sampled power)": 7.2394,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 29.525435208,
+      "System Power Usage (sampled power)": 4.4819,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 30.527284458,
+      "System Power Usage (sampled power)": 4.4819,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 30.5272845,
+      "System Power Usage (sampled power)": 2.9032,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    },
+    {
+      "time_s": 31.524460541,
+      "System Power Usage (sampled power)": 2.9032,
+      "Display APL": 44.0,
+      "Frame Rate": 10.0,
+      "Display Brightness Percentage": 55.0,
+      "Charging Status": 0.0,
+      "Thermal State": 0.0
+    }
+  ],
+  "limits": [
+    "one usable capture; no strategy A/B",
+    "system rate includes OS and profiler, not app-only measured battery loss",
+    "impact scores are not watts or battery shares",
+    "periodic app timings can lag or repeat; timing across sources is approximate",
+    "still tail is a few seconds, not a settled idle baseline",
+    "no GPU frequency, bandwidth, overdraw or pixel-footprint counters",
+    "first ~4.5 s of orbit precede trace; first 2 trace seconds excluded from moving mean",
+    "temperature sensor unavailable (-1 C); thermal state Nominal is categorical",
+    "installed app commit unverified; startup logs disagree on sort depth (32 versus 16 bits)"
+  ],
+  "aggregation": "Duration-weighted means of exported sample intervals clipped to each named window; missing values excluded, never treated as zero.",
+  "source_manifest": "output/ios-perf/power-probe-2026-10-23-minimal/power-export/manifest.json",
+  "source_log": "output/ios-perf/power-probe-2026-10-23-minimal/console.log",
+  "interpretation": "GPU impact rises near higher drawn counts and falls as movement stops; causality and exact source of the peak remain unconfirmed.",
+  "archived_source_log": "docs/benchmarks/2026-10-23-ios-power-probe.log"
+}

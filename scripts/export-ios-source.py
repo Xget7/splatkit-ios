@@ -72,10 +72,13 @@ def main():
         files += ("README.md", "CONTRIBUTING.md", "AGENTS.md", "CHANGELOG.md", ".clang-tidy",
                   "apps/android-dev", "scripts/lint-cpp.sh", "scripts/fetch-validation-layers.sh",
                   "scripts/check_android_alignment.py", "scripts/benchmark_report.py",
+                  "scripts/gpu_benchmark.py", "scripts/benchmarks", "scripts/requirements-benchmark.txt",
+                  "scripts/ios_perf.py", "scripts/ios_power.py", "scripts/android_perf.py",
+                  "scripts/perfetto_analysis.py", "scripts/requirements-perf.txt",
                   "scripts/compare_captures.py", "scripts/requirements-validation.txt", "scripts/tests",
                   ".github/workflows/android.yml", ".github/workflows/lint.yml",
                   ".github/actions/android-sdk",
-                  "docs/AGENT_HARNESS.md", "docs/VALIDATION.md", "docs/agents")
+                  "docs/AGENT_HARNESS.md", "docs/VALIDATION.md", "docs/GPU_PROFILING.md", "docs/agents")
     names = subprocess.check_output(
         ["git", "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", *packages, *files],
         cwd=ROOT).decode().split("\0")

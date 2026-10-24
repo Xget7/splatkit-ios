@@ -6,6 +6,20 @@ See [validation](VALIDATION.md) for reproduction and acceptance checks.
 
 ## iPhone 17 Pro: Metal
 
+Historical tooling smoke only, not representative performance acceptance: Power Profiler capture probe, October 23: physical iPhone 17 Pro, iOS 27.0.1, kitchen 500k, installed Release reused without verifying its commit.
+One 30-second orbit averaged 119.2 FPS; a clipped 22-second moving-camera interval reported system consumption of 24.66 percentage points of battery per hour, brightness 55%, thermal state Nominal.
+This is the system's estimated rate during one short probe, not app-only drain, measured charge loss or sustained autonomy; no strategy A/B was run.
+The stock Instruments 27.1 template crashed twice; Blank plus the Power Profiler instrument captured and exported samples successfully.
+[Evidence and local trace paths](benchmarks/2026-10-23-ios-power-probe.json), [app log](benchmarks/2026-10-23-ios-power-probe.log), [workflow](VALIDATION.md#ios-power-comparisons).
+
+The [full-capture analysis](benchmarks/2026-10-23-ios-battery-analysis.json) extends the moving window through the end of the orbit: 26.21 battery percentage points/hour over 23.5 observed seconds, versus 24.66 in the earlier clipped 22-second window.
+The system rate peaked at 49.88 for one ~1-second sample and stayed above 40 for ~2 seconds; a ~4-second still tail after 2 seconds of settling averaged 4.72, not a sustained idle baseline.
+GPU impact rose near higher drawn counts (19k to 75k periodic samples), while FPS stayed near 120 and render-buffer GPU timings stayed around 5 ms.
+The raw system events report brightness 55%, charging status 0 and thermal state 0; display content luminance varies with the view.
+This supports GPU work as a hypothesis, not a causal attribution: impact scores are not watts, app timings can lag, bandwidth and clocks were not captured, and the installed build and effective sort policy need verification before A/B claims.
+
+![Full battery analysis with aligned system rate, GPU impact, drawn splats and GPU render time; camera-stop marker separates movement from the short still tail.](benchmarks/2026-10-23-ios-battery-analysis.png)
+
 Physical iPhone 17 Pro, A19 Pro; ISS experiments ran September 11-16, 2026.
 Settings differ between runs; exact configurations and limitations are in the linked JSON.
 ISS image quality remains unapproved.

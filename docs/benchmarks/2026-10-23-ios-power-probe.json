@@ -1,0 +1,83 @@
+{
+  "device": "physical iPhone 17 Pro",
+  "ios": "27.0.1",
+  "instruments": "27.1 (27A9275)",
+  "world": "kitchen_500k.spz",
+  "resident_splats": 500000,
+  "reused_installed_build": true,
+  "installed_build_commit": "not verified",
+  "trace": "output/ios-perf/power-probe-2026-10-23-minimal/power.trace",
+  "trace_origin": "2026-10-23T18:43:59.779000-03:00",
+  "benchmark_end_relative_s": 25.514499,
+  "analysis_interval_s": [
+    2.0,
+    24.0
+  ],
+  "scope": "single probe; clipped interval of moving camera; system rate includes OS and profiler; no A/B or sustained battery validation",
+  "charging_state": "no charging intervals exported; not independently verified",
+  "metrics": {
+    "ProcessSubsystemPowerImpact.gpu-impact": {
+      "seconds": 21.999999082000002,
+      "rows": 23,
+      "min": 13.0,
+      "max": 51.0,
+      "unit": "subsystem-power-impact",
+      "weighted_mean": 21.91113759629202
+    },
+    "ProcessSubsystemPowerImpact.cpu-impact": {
+      "seconds": 21.999999083000002,
+      "rows": 23,
+      "min": 0.1,
+      "max": 0.1,
+      "unit": "subsystem-power-impact",
+      "weighted_mean": 0.09999999999999998
+    },
+    "ProcessSubsystemPowerImpact.display-impact": {
+      "seconds": 21.999999083000002,
+      "rows": 23,
+      "min": 3.0,
+      "max": 3.0,
+      "unit": "subsystem-power-impact",
+      "weighted_mean": 2.999999999999999
+    },
+    "SystemPowerLevel.power-usage": {
+      "seconds": 21.999999083000002,
+      "rows": 23,
+      "min": 19.712492791,
+      "max": 49.88262069,
+      "unit": "percent-per-hour",
+      "weighted_mean": 24.659364218957027
+    },
+    "SystemPowerLevel.display-brightness": {
+      "seconds": 21.999999083000002,
+      "rows": 23,
+      "min": 55.0,
+      "max": 55.0,
+      "unit": "display-brightness",
+      "weighted_mean": 55.000000000000014
+    }
+  },
+  "thermal_states": [
+    "Nominal"
+  ],
+  "fps_mean_full_30_second_orbit": 119.2,
+  "phone_rendering_time_this_session_s": 90,
+  "capture_attempts": [
+    {
+      "template": "Power Profiler",
+      "recorder_exit_code": -5,
+      "usable_power_samples": false
+    },
+    {
+      "template": "Power Profiler",
+      "recorder_exit_code": -5,
+      "usable_power_samples": false
+    },
+    {
+      "template": "Blank + Power Profiler instrument",
+      "recorder_exit_code": 0,
+      "usable_power_samples": true
+    }
+  ],
+  "crash_location": "NetworkConnectionStatsModeling.receive(row:writer:context:) on com.apple.dt.frame.activity"
+}
