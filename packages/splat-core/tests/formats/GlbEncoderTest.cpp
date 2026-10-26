@@ -14,7 +14,7 @@ TriangleMesh twoTriangles() {
 }
 
 TEST(GlbEncoder, RoundTripsThroughTheDecoderInEitherFrame) {
-  for (const CoordinateFrame frame : {CoordinateFrame::rdf, CoordinateFrame::rub}) {
+  for (const CoordinateFrame frame : {CoordinateFrame::kRdf, CoordinateFrame::kRub}) {
     const auto glb = encodeGlb(twoTriangles(), {frame});
     EXPECT_EQ(glb.size() % 4, 0u);
     GlbDecodeOptions decode;
@@ -26,13 +26,18 @@ TEST(GlbEncoder, RoundTripsThroughTheDecoderInEitherFrame) {
   }
 }
 
-TEST(GlbEncoder, WritesWorldLabsFrameByDefault) {
+TEST(GlbEncoder, WritesTheGltfFrameByDefault) {
   const auto glb = encodeGlb(twoTriangles());
-  GlbDecodeOptions asIs;
-  asIs.sourceFrame = CoordinateFrame::rub;
-  auto raw = decodeGlb(glb.data(), glb.size(), asIs);
+  auto decoded = decodeGlb(glb.data(), glb.size());
+  ASSERT_TRUE(decoded.ok()) << decoded.error().message;
+  EXPECT_EQ(decoded.value().positions, twoTriangles().positions);
+}
+
+TEST(GlbEncoder, WritesTheTargetFramesAxes) {
+  const auto glb = encodeGlb(twoTriangles(), {CoordinateFrame::kRdf});
+  auto raw = decodeGlb(glb.data(), glb.size());
   ASSERT_TRUE(raw.ok()) << raw.error().message;
-  // Y and Z are negated on disk.
+  // rdf points Y down and Z forward, so both are negated on disk.
   EXPECT_FLOAT_EQ(raw.value().positions[7], -2);
   EXPECT_FLOAT_EQ(raw.value().positions[8], 3);
 }

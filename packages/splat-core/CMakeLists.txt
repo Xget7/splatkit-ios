@@ -26,6 +26,8 @@ find_package(Threads REQUIRED)
 add_library(splat_core STATIC
   src/formats/SplatDecoder.cpp
   src/formats/SpzDecoder.cpp
+  src/formats/FrameTransform.cpp
+  src/formats/SpzFrame.cpp
   src/formats/GlbDecoder.cpp
   src/formats/GlbEncoder.cpp
   src/navigation/Collider.cpp

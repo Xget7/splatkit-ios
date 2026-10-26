@@ -9,6 +9,7 @@
 #include <optional>
 #include <string>
 
+#include "splat/core/CoordinateFrame.h"
 #include "splat/core/Result.h"
 #include "splat/formats/SplatCloud.h"
 #include "splat/loading/LoadCost.h"
@@ -81,6 +82,11 @@ class SplatWorldLoader {
   // The most splats a tiled world loaded from now on holds on the GPU at once. Any thread.
   void setResidency(std::uint32_t splats);
 
+  // The frame worlds, tiles and colliders loaded from now on were written in, overriding what
+  // each file declares; nothing leaves every file to its tag or its format's default (`rub` for
+  // SPZ and glTF). A `.lodsplat` is already in the internal frame and ignores it. Any thread.
+  void setSourceFrame(std::optional<CoordinateFrame> frame);
+
   // Fails as `insufficientMemory` a load that would leave the process less than a headroom.
   // Before the first load.
   void setMemoryGuard(MemoryGuard guard);
@@ -109,6 +115,9 @@ class SplatWorldLoader {
   std::atomic<int> budget_{0};
   std::atomic<int> maxShDegree_{3};
   std::atomic<std::uint32_t> residency_{StreamOptions{}.residency};
+  mutable std::mutex sourceFrameMutex_;
+  std::optional<CoordinateFrame> sourceFrame_;
+  std::optional<CoordinateFrame> sourceFrame() const;
   MemoryGuard guard_;
   std::mutex mutex_;
   std::unique_ptr<World> pendingWorld_;

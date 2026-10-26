@@ -4,6 +4,7 @@
 #include <exception>
 #include <string>
 
+#include "splat/core/CoordinateFrame.h"
 #include "splat/formats/SplatDecoder.h"
 #include "splat/io/MappedFile.h"
 #include "splat/lod/LodFile.h"
@@ -12,7 +13,8 @@ namespace {
 int run(int argc, char** argv) {
   if (argc < 3 || (argc - 3) % 2 != 0) {
     std::fprintf(stderr,
-                 "usage: splat_lod_build input.spz output.lodsplat [--depth 1..%u] [--sh 0..3]\n",
+                 "usage: splat_lod_build input.spz output.lodsplat [--depth 1..%u] [--sh 0..3]\n"
+                 "         [--source-frame F]\n",
                  splat::kMaxOctreeDepth);
     return 2;
   }
@@ -21,6 +23,11 @@ int run(int argc, char** argv) {
   for (int i = 3; i < argc; i += 2) {
     const std::string key(argv[i]);
     const std::string text(argv[i + 1]);
+    if (key == "--source-frame") {
+      decode.sourceFrame = splat::CoordinateFrame::parse(text);
+      if (!decode.sourceFrame) return 2;
+      continue;
+    }
     int value = 0;
     const auto parsed = std::from_chars(text.data(), text.data() + text.size(), value);
     if (parsed.ec != std::errc{} || parsed.ptr != text.data() + text.size()) return 2;

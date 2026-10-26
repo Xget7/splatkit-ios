@@ -7,6 +7,8 @@ endif()
 # nianticlabs/spz: reference SPZ reader and writer (MIT). Pinned to a commit, not a branch.
 set(SPZ_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
 set(SPZ_BUILD_PYTHON_BINDINGS OFF CACHE BOOL "" FORCE)
+# Reads and writes the SPZ_ADOBE_coordinate_system tag, the frame a file declares.
+set(SPZ_BUILD_EXTENSIONS ON CACHE BOOL "" FORCE)
 FetchContent_Declare(
   spz
   GIT_REPOSITORY https://github.com/nianticlabs/spz.git

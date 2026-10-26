@@ -218,6 +218,15 @@ public final class SplatMetalView: UIView {
         }
     }
 
+    /// The frame worlds, tiles and colliders loaded after it is set were written in, overriding
+    /// what each file declares; for files that store a frame without declaring it, such as
+    /// `.rdf` for World Labs Marble exports. Nil, the default, leaves each file to the frame it
+    /// declares, else `rub` for SPZ and glTF. A `.lodsplat` is already in the engine's frame and
+    /// ignores it.
+    public var sourceFrame: CoordinateFrame? {
+        didSet { renderThread.setSourceFrame(sourceFrame) }
+    }
+
     /// Walks continuously at the given speed in meters per second until called again with
     /// zeros: what a joystick or a keyboard drives. Forward is where the camera looks,
     /// flattened onto the floor while walking; right strafes.

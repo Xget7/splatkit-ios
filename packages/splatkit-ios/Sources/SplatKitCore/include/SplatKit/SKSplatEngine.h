@@ -177,6 +177,14 @@ typedef NS_ENUM(NSInteger, SKSplatEvent) {
 - (void)loadWorldFile:(NSString*)path;
 - (void)loadTiledWorldFile:(NSString*)path;
 - (void)loadColliderFile:(NSString*)path;
+/// The frame worlds, tiles and colliders loaded from now on were written in, as three letters
+/// naming where +X, +Y and +Z point (`rub` glTF, `rdf` OpenCV and World Labs Marble). Nil
+/// leaves each file to the frame it declares or its format's default; a `.lodsplat` ignores
+/// it. NO when the letters name no frame, and then the previous setting stays. Any thread.
+- (BOOL)setSourceFrame:(nullable NSString*)letters;
+/// The lower case letters of the frame `letters` names in either case; nil unless they name
+/// three distinct axes from r, l, u, d, b and f. Any thread.
++ (nullable NSString*)canonicalSourceFrame:(NSString*)letters;
 
 @property(nonatomic) SKCameraPose cameraPose;
 @property(nonatomic, readonly) SKSplatStats stats;

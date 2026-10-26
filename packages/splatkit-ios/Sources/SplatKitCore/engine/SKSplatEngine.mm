@@ -1,12 +1,15 @@
 #import "SplatKit/SKSplatEngine.h"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "diagnostics/SKPngWriter.h"
 #include "engine/SKTypeConversions.h"
 #include "rendering/metal/MetalSplatRenderer.h"
+#include "splat/core/CoordinateFrame.h"
 #include "splatkit/Log.h"
 #include "splatkit/engine/SplatEngine.h"
 
@@ -18,6 +21,12 @@ void nslogSink(splatkit::LogLevel level, const char* message) {
                     : level == splatkit::LogLevel::warn ? "W"
                                                         : "I";
   NSLog(@"SplatKit %s: %s", tag, message);
+}
+
+// The whole string, so a NUL inside it cannot cut it to a valid prefix.
+std::optional<splat::CoordinateFrame> parseFrame(NSString* letters) {
+  return splat::CoordinateFrame::parse(std::string_view(
+      letters.UTF8String, [letters lengthOfBytesUsingEncoding:NSUTF8StringEncoding]));
 }
 
 }  // namespace
@@ -84,6 +93,22 @@ void nslogSink(splatkit::LogLevel level, const char* message) {
 
 - (void)loadColliderFile:(NSString*)path {
   _engine->loadColliderFile(path.UTF8String);
+}
+
+- (BOOL)setSourceFrame:(nullable NSString*)letters {
+  if (letters == nil) {
+    _engine->setSourceFrame(std::nullopt);
+    return YES;
+  }
+  const auto frame = parseFrame(letters);
+  if (!frame) return NO;
+  _engine->setSourceFrame(frame);
+  return YES;
+}
+
++ (nullable NSString*)canonicalSourceFrame:(NSString*)letters {
+  const auto frame = parseFrame(letters);
+  return frame ? @(frame->name().c_str()) : nil;
 }
 
 - (SKCameraPose)cameraPose {

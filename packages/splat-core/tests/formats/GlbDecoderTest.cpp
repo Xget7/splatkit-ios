@@ -148,7 +148,7 @@ TEST(GlbDecoder, RejectsNonGlb) {
 
 TEST(GlbDecoder, AppliesNodeTransformAndFrameConversion) {
   auto glb = oneTriangleGlb();
-  auto r = decodeGlb(glb.data(), glb.size());
+  auto r = decodeGlb(glb.data(), glb.size(), {CoordinateFrame::kRdf});
   ASSERT_TRUE(r.ok()) << r.error().message;
   const TriangleMesh& m = r.value();
   ASSERT_EQ(m.triangleCount(), 1u);
@@ -169,7 +169,7 @@ TEST(GlbDecoder, AppliesANodeRotationQuaternion) {
   json.replace(at, std::string("\"translation\":[0,0,1]").size(),
                "\"rotation\":[0,0,0.7071068,0.7071068]");
   auto glb = packGlb(json, triangleBin());
-  auto r = decodeGlb(glb.data(), glb.size());
+  auto r = decodeGlb(glb.data(), glb.size(), {CoordinateFrame::kRdf});
   ASSERT_TRUE(r.ok()) << r.error().message;
   EXPECT_NEAR(r.value().positions[0], -2.0f, 1e-5f);
   EXPECT_NEAR(r.value().positions[1], 0.0f, 1e-5f);
@@ -182,7 +182,7 @@ TEST(GlbDecoder, AppliesANodeRotationQuaternion) {
 
 TEST(GlbDecoder, ReadsUint32IndicesAndMeshesWithoutScene) {
   auto glb = oneTriangleGlb(false, false);
-  auto r = decodeGlb(glb.data(), glb.size(), {CoordinateFrame::rub});
+  auto r = decodeGlb(glb.data(), glb.size(), {CoordinateFrame::kRub});
   ASSERT_TRUE(r.ok()) << r.error().message;
   EXPECT_FLOAT_EQ(r.value().positions[1], 2);  // no conversion, no node
   EXPECT_EQ(r.value().indices[1], 1u);
@@ -205,7 +205,8 @@ TEST(GlbDecoder, DecodesWorldLabsCollider) {
   if (!file.is_open()) GTEST_SKIP() << "house_collider.glb not present";
   std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
                                   std::istreambuf_iterator<char>());
-  auto r = decodeGlb(bytes.data(), bytes.size());
+  // World Labs writes its colliders in rdf without saying so.
+  auto r = decodeGlb(bytes.data(), bytes.size(), {CoordinateFrame::kRdf});
   ASSERT_TRUE(r.ok()) << r.error().message;
   EXPECT_GT(r.value().triangleCount(), 100000u);
   // Floor below the origin once Y points up.

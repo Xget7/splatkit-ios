@@ -8,11 +8,13 @@
 #   scripts/prepare-world.sh scene.ply out/ --collider   + out/scene.collider.glb, to walk
 #   scripts/prepare-world.sh scene.ply out/ --lod        + out/scene.lodsplat, for huge scenes
 #   scripts/prepare-world.sh scene.ply out/ --tiles      + out/scene.tiles/, past phone memory
-#   scripts/prepare-world.sh scene.spz out/ --source-frame rub   normalizes Y-up SPZ for the SDK
+#   scripts/prepare-world.sh scene.spz out/ --source-frame rdf   an SPZ written in rdf untagged
 #
 # --sh N       keeps spherical harmonics up to degree N (0 to 3); the file's degree by default
 # --spz-version N  writes SPZ version 2, 3 or 4 (PLY defaults to 2; unchanged SPZ is copied)
-# --source-frame F  interprets input as rdf (default) or rub; SPZ output is always RDF
+# --source-frame F  the frame the input was written in, three letters such as rdf or rfu; by
+#              default the frame the file declares, else rdf for PLY and rub for SPZ. The
+#              output is SPZ's default rub, so the engine loads it with no frame set
 # --collider   builds a walk collider; it assumes a space to walk through, not a lone object
 # --lod        builds the level-of-detail tree offline instead of on the phone at load time
 # --tiles      cuts the scene into tiles with coarser levels above them, streamed while walking
@@ -38,7 +40,7 @@ input=""
 out=""
 sh=""
 spz_version=""
-source_frame="rdf"
+source_frame=""
 collider=false
 lod=false
 tiles=false
@@ -80,7 +82,7 @@ done
 [ -n "$input" ] && [ -n "$out" ] || usage
 case "$sh" in "" | [0-3]) ;; *) fail "--sh takes 0, 1, 2 or 3, not $sh" ;; esac
 case "$spz_version" in "" | [2-4]) ;; *) fail "--spz-version takes 2, 3 or 4, not $spz_version" ;; esac
-case "$source_frame" in rdf | rub) ;; *) fail "--source-frame takes rdf or rub, not $source_frame" ;; esac
+case "$source_frame" in "" | [rludbfRLUDBF][rludbfRLUDBF][rludbfRLUDBF]) ;; *) fail "--source-frame takes three letters such as rdf, not $source_frame" ;; esac
 [ -f "$input" ] || fail "no such file: $input"
 
 name="$(basename "$input")"
@@ -114,9 +116,9 @@ mkdir -p "$out"
 out="$(cd "$out" && pwd)"
 spz="$out/$name.spz"
 
-if [ "$extension" = ply ] || [ -n "$sh" ] || [ -n "$spz_version" ] || [ "$source_frame" != rdf ]; then
+if [ "$extension" = ply ] || [ -n "$sh" ] || [ -n "$spz_version" ] || [ -n "$source_frame" ]; then
   echo "Converting $input to SPZ"
-  "$tools/splat-convert" "$input" "$spz" --source-frame "$source_frame" --target-frame rdf \
+  "$tools/splat-convert" "$input" "$spz" ${source_frame:+--source-frame "$source_frame"} \
     ${sh:+--sh "$sh"} ${spz_version:+--spz-version "$spz_version"}
 elif [ "$(cd "$(dirname "$input")" && pwd)/$(basename "$input")" != "$spz" ]; then
   cp "$input" "$spz"

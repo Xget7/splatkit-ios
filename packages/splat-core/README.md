@@ -43,24 +43,29 @@ build/tools/ply2spz bicycle.ply bicycle.spz --sh 1 --keep 2
 Neither tool prunes unless asked; the default output is the whole scene.
 `tools/splat-tile` takes the same `--sh` and `--prune-alpha` before partitioning a scene into streamed tiles of at most `--tile` splats (65536 by default), each with at most `--fan-out` children (4 by default).
 `tools/splat_lod_build` writes an offline `.lodsplat` hierarchy; the [iOS README](../splatkit-ios/README.md) shows its options.
-`ply2spz` and `splat-convert` accept `--spz-version 2|3|4`, `--source-frame rdf|rub` and `--target-frame rdf|rub`.
-Defaults remain v2 and RDF on both sides; choosing a version never changes orientation.
-RDF means right/down/forward, the public SDK's untagged SPZ convention; RUB means right/up/back, used by glTF, PlayCanvas and Splat Field Guide.
-`splat-convert` also reads SPZ; conversions transform positions, rotations and SH together and reject unsupported vendor extensions.
-Normalize external RUB SPZ before passing it to a native view or RN `WorldRequest`:
+A coordinate frame is three letters from `r l u d b f` saying where a file's +X, +Y and +Z point: `rub` is glTF, OpenGL and three.js, `rdf` OpenCV and COLMAP, `rfu` Blender; [CoordinateFrame.h](include/splat/core/CoordinateFrame.h) takes all 48.
+Decoders move every input into the engine's `rub` once, with [FrameTransform.h](include/splat/formats/FrameTransform.h), so positions, shapes and SH up to degree 3 stay exact and nothing after decode knows about frames.
+An SPZ is read in the frame its `SPZ_ADOBE_coordinate_system` tag declares, else in the spec default `rub`; a PLY in `rdf`; a GLB in glTF's frame.
+`SpzDecodeOptions::sourceFrame`, `SplatWorldLoader::setSourceFrame` and each SDK's source frame override that for a file that stores another frame without saying so, such as `rdf` for World Labs Marble exports and SplatTransform 3.10.0 SPZ.
+
+`ply2spz` and `splat-convert` accept `--spz-version 2|3|4`, `--source-frame F` and `--target-frame F`.
+The source defaults to the frame the file declares, else its format's; the target defaults to `rub`, written untagged, which every SPZ reader takes as it is.
+Another target is tagged and needs `--spz-version 4`, since spz reads the tag back only from v4 containers.
+Conversions transform positions, rotations and SH together.
+`splat-tile`, `splat_lod_build` and `splat_collider` take `--source-frame F` too; `splat_collider` then writes the GLB in that frame, so a host loading both with that frame gets them aligned.
+`scripts/prepare-world.sh` passes `--source-frame` to the converter and writes `rub`, so its output loads with no frame set:
 
 ```sh
-scripts/prepare-world.sh external.spz out/ --source-frame rub --spz-version 4
+scripts/prepare-world.sh marble.spz out/ --source-frame rdf --collider
 ```
 
-[SplatTransform](https://developer.playcanvas.com/user-manual/splat-transform/cli-reference/) 3.10.0 exports PLY/RDF coordinates unchanged into SPZ, so its output already matches the SDK's default.
-Its `.splat` to SPZ bridge is covered by the interop check; identify the actual source frame instead of inferring it from a tool name or container version.
-
-For [PlayCanvas's v4-only SPZ parser](https://developer.playcanvas.com/user-manual/gaussian-splatting/formats/spz/), export RUB explicitly:
+[PlayCanvas's v4-only SPZ parser](https://developer.playcanvas.com/user-manual/gaussian-splatting/formats/spz/) reads the default output when it is v4:
 
 ```sh
-build/tools/splat-convert scene.ply playcanvas.spz --spz-version 4 --target-frame rub
+build/tools/splat-convert scene.ply playcanvas.spz --spz-version 4
 ```
+
+spz's own frame conversion is wrong for its eight frames whose Y is front or back (pinned commit affd0ec), so SplatKit reads the stored values and converts them itself.
 
 SPZ is lossy: positions have 1/4096-unit steps, log scales 1/16 steps, opacity 1/255 steps and SH uses 5 bits for degree 1 and 4 bits above it.
 SPZ v2 uses 8-bit quaternion components; v3/v4 use smallest-three quaternion encoding.
@@ -78,7 +83,7 @@ Walk mode needs a collider.
 For a world shipped without one, `buildCollider` (`splat/navigation/ColliderBuilder.h`) makes it from the splats: a C++ port of the voxel collision passes of [PlayCanvas splat-transform](https://github.com/playcanvas/splat-transform).
 Splat opacity is summed into 5 cm voxels, the space outside an enclosed scene is filled, and a 1.6 m walker box is flood-filled from the origin; what it cannot reach becomes solid, so floaters and the far side of walls are gone.
 A surface net meshes the result, with vertices moved to where the splats are.
-`tools/splat_collider` writes it as a `.glb` in the World Labs frame:
+`tools/splat_collider` writes it as a `.glb` in glTF's frame:
 
 ```
 build/tools/splat_collider kitchen.spz kitchen_collider.glb

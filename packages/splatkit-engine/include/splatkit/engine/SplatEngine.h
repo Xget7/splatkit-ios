@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "splat/core/CoordinateFrame.h"
 #include "splat/core/Result.h"
 #include "splat/loading/SplatWorldLoader.h"
 #include "splat/math/Mat4.h"
@@ -142,6 +143,13 @@ class SplatEngine {
   // Highest spherical harmonics degree decoded and uploaded with the next world, 0 to 3.
   // Degree 3 adds 92 bytes per splat on the GPU; 0 keeps the base colour only. Any thread.
   void setMaxShDegree(int degree);
+
+  // The frame the next world, its tiles and its collider were written in, for files that store
+  // a frame other than the one they declare or their format's default; nothing goes back to
+  // those. A .lodsplat is already in the engine's frame and ignores it. Any thread.
+  void setSourceFrame(std::optional<splat::CoordinateFrame> frame) {
+    loader_.setSourceFrame(frame);
+  }
 
   // Spherical harmonics degree drawn, 0 to 3, capped by what the loaded world carries.
   // Takes effect on the next frame: a quality change never needs a reload. Render thread.

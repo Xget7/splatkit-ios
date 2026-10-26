@@ -1,5 +1,6 @@
 add_executable(splatkit_ios_tests
   diagnostics/SKPngWriterTest.mm
+  engine/SKSplatEngineTest.mm
   engine/SKTypeConversionsTest.mm
   rendering/metal/MetalSplatRendererTest.mm
   rendering/metal/cull/MetalVisibilityPassTest.mm
@@ -15,9 +16,14 @@ add_executable(splatkit_ios_tests
   rendering/metal/sort/MetalRadixSortTest.mm
   rendering/metal/world/MetalWorldTest.mm
 )
+# spz reaches the link line through the static splat_core; only its headers are added here.
 target_include_directories(splatkit_ios_tests PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_SOURCE_DIR}/../Sources/SplatKitCore ${CMAKE_CURRENT_BINARY_DIR}/../embedded
+  $<TARGET_PROPERTY:spz,INTERFACE_INCLUDE_DIRECTORIES>
 )
+# spz's structs change with its extensions, so its headers need its definitions as well.
+target_compile_definitions(splatkit_ios_tests PRIVATE
+  $<TARGET_PROPERTY:spz,INTERFACE_COMPILE_DEFINITIONS>)
 target_link_libraries(splatkit_ios_tests PRIVATE splatkit_ios GTest::gtest_main)
 target_compile_options(splatkit_ios_tests PRIVATE -Wall -Wextra -Werror -fobjc-arc)
 add_dependencies(splatkit_ios_tests splatkit_ios_shaders)

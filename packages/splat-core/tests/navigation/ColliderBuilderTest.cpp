@@ -308,7 +308,7 @@ TEST(ColliderBuilder, TheWorldLabsKitchenIsWalkableFromItsOrigin) {
   ASSERT_TRUE(file.is_open());
   const std::vector<uint8_t> bytes((std::istreambuf_iterator<char>(file)),
                                    std::istreambuf_iterator<char>());
-  auto cloud = decodeSpz(bytes.data(), bytes.size());
+  auto cloud = decodeSpz(bytes.data(), bytes.size(), {CoordinateFrame::kRdf});  // World Labs
   ASSERT_TRUE(cloud.ok()) << cloud.error().message;
   auto built = buildCollider(cloud.value());
   ASSERT_TRUE(built.ok()) << built.error().message;

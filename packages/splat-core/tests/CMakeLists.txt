@@ -3,6 +3,7 @@ add_executable(splat_core_tests
   formats/SpzDecoderTest.cpp
   formats/GlbDecoderTest.cpp
   formats/GlbEncoderTest.cpp
+  formats/FrameTransformTest.cpp
   navigation/ColliderTest.cpp
   navigation/ColliderBuilderTest.cpp
   math/Mat4Test.cpp
@@ -32,6 +33,9 @@ add_executable(splat_core_tests
 target_link_libraries(splat_core_tests PRIVATE splat_core ZLIB::ZLIB GTest::gtest_main)
 target_include_directories(splat_core_tests PRIVATE
   $<TARGET_PROPERTY:spz,INTERFACE_INCLUDE_DIRECTORIES>)
+# spz's structs change with its extensions, so its headers need its definitions as well.
+target_compile_definitions(splat_core_tests PRIVATE
+  $<TARGET_PROPERTY:spz,INTERFACE_COMPILE_DEFINITIONS>)
 target_include_directories(splat_core_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../tools)
 target_compile_definitions(splat_core_tests PRIVATE
@@ -55,6 +59,8 @@ add_executable(splat_core_memory_tests
 target_link_libraries(splat_core_memory_tests PRIVATE splat_core GTest::gtest_main)
 target_include_directories(splat_core_memory_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   $<TARGET_PROPERTY:spz,INTERFACE_INCLUDE_DIRECTORIES>)
+target_compile_definitions(splat_core_memory_tests PRIVATE
+  $<TARGET_PROPERTY:spz,INTERFACE_COMPILE_DEFINITIONS>)
 
 include(GoogleTest)
 gtest_discover_tests(splat_core_tests)

@@ -5,6 +5,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 
 ## Unreleased
 
+### Added
+
+- `SplatMetalView.sourceFrame` and `CoordinateFrame`, any of the 48 axis-aligned frames named by three letters such as `.rub`, `.rdf` or `CoordinateFrame("rfu")`, for the world, tiles and collider loaded after it is set; `SKSplatEngine` gains `setSourceFrame:` and `canonicalSourceFrame:`.
+
+### Changed
+
+- Breaking: an SPZ loads in the frame its coordinate system tag declares, else in the SPZ default `rub`, and a collider GLB in glTF's `rub`; an untagged World Labs Marble export and its collider need `sourceFrame = .rdf`.
+
 ## [0.1.0-beta.1] - 2026-09-30
 
 ### Added

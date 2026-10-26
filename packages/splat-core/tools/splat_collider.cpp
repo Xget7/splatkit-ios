@@ -13,6 +13,7 @@
 #include <string>
 #include <vector>
 
+#include "splat/core/CoordinateFrame.h"
 #include "splat/formats/GlbDecoder.h"
 #include "splat/formats/GlbEncoder.h"
 #include "splat/formats/SplatDecoder.h"
@@ -307,7 +308,8 @@ int usage() {
                "usage: splat_collider input.spz output.glb [--voxel 0.05] [--max-voxels N]\n"
                "         [--solid-opacity 0.1] [--bounds-quantile 0.0001] [--seed 0,0,0]\n"
                "         [--exterior-fill 1.6] [--floor-fill -1] [--capsule-height 1.6]\n"
-               "         [--capsule-radius 0.2] [--compare reference.glb [--map heights.csv]]\n");
+               "         [--capsule-radius 0.2] [--compare reference.glb [--map heights.csv]]\n"
+               "         [--source-frame F]\n");
   return 2;
 }
 
@@ -317,6 +319,9 @@ struct ColliderArgs {
   splat::ColliderBuildOptions build;
   const char* reference = nullptr;
   const char* mapPath = nullptr;
+  // Read the splats in this frame and write the collider in it as well, so an app that loads
+  // both with the same frame gets them aligned; nothing keeps each format's default.
+  std::optional<splat::CoordinateFrame> sourceFrame;
 };
 
 // Applies a flag that sets a build option from a number; false when the flag is unknown or
@@ -368,6 +373,10 @@ bool applyFlag(const std::string& key, const char* text, ColliderArgs& args) {
     return true;
   }
   if (key == "--seed") return parseVec3(text, &args.build.seed);
+  if (key == "--source-frame") {
+    args.sourceFrame = splat::CoordinateFrame::parse(text);
+    return args.sourceFrame.has_value();
+  }
   float value = 0;
   return parse(text, &value) && applyBuildFlag(key, value, args.build);
 }
@@ -384,10 +393,13 @@ std::optional<ColliderArgs> parseArgs(int argc, char** argv) {
   return args;
 }
 
-splat::Result<splat::SplatCloud> decodeSplats(const char* path) {
+splat::Result<splat::SplatCloud> decodeSplats(const char* path,
+                                              std::optional<splat::CoordinateFrame> frame) {
   auto mapped = splat::MappedFile::open(path);
   if (!mapped) return mapped.error();
-  return splat::decodeSplatFile(mapped.value().data(), mapped.value().size());
+  splat::SplatDecodeOptions options;
+  options.sourceFrame = frame;
+  return splat::decodeSplatFile(mapped.value().data(), mapped.value().size(), options);
 }
 
 void printBuildReport(const splat::SplatCloud& cloud, const splat::ColliderBuildReport& report,
@@ -402,8 +414,11 @@ void printBuildReport(const splat::SplatCloud& cloud, const splat::ColliderBuild
               mesh.vertexCount(), decodeSeconds, buildSeconds);
 }
 
-bool writeGlb(const char* path, const splat::TriangleMesh& mesh) {
-  const auto glb = splat::encodeGlb(mesh);
+bool writeGlb(const char* path, const splat::TriangleMesh& mesh,
+              std::optional<splat::CoordinateFrame> frame) {
+  splat::GlbEncodeOptions options;
+  options.targetFrame = frame.value_or(options.targetFrame);
+  const auto glb = splat::encodeGlb(mesh, options);
   std::ofstream out(path, std::ios::binary);
   out.write(reinterpret_cast<const char*>(glb.data()), static_cast<std::streamsize>(glb.size()));
   if (!out) {
@@ -423,7 +438,7 @@ int run(int argc, char** argv) {
   const auto seconds = [&] {
     return std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
   };
-  auto cloud = decodeSplats(args->input);
+  auto cloud = decodeSplats(args->input, args->sourceFrame);
   if (!cloud) {
     std::fprintf(stderr, "%s\n", cloud.error().message.c_str());
     return 1;
@@ -436,7 +451,7 @@ int run(int argc, char** argv) {
     return 1;
   }
   printBuildReport(cloud.value(), report, mesh.value(), decoded, seconds() - decoded);
-  if (!writeGlb(args->output, mesh.value())) return 1;
+  if (!writeGlb(args->output, mesh.value(), args->sourceFrame)) return 1;
 
   if (args->reference == nullptr) return 0;
   const auto written = readGlb(args->output);

@@ -95,20 +95,21 @@ const checkPose = (path, rub) => {
 const v4 = join(output, 'splatkit-rub-v4.spz');
 run(converter, [ply, v4, '--spz-version', '4', '--target-frame', 'rub']);
 checkPose(v4, true);
-const v2 = join(output, 'splatkit-rdf-v2.spz');
+const v2 = join(output, 'splatkit-rub-v2.spz');
 run(converter, [ply, v2]);
 assert.throws(() => parse(v2), /only version 4 is supported/);
 
 const transformCli = fileURLToPath(new URL('node_modules/@playcanvas/splat-transform/bin/cli.mjs', import.meta.url));
 const transformed = join(output, 'splat-transform-rdf-v4.spz');
 run(process.execPath, [transformCli, '-w', ply, transformed]);
-// SplatTransform 3.10.0 writes PLY/RDF coordinates with from: UNSPECIFIED. Assert the
-// observed convention rather than inferring a frame from the v4 container or its vendor.
+// SplatTransform 3.10.0 writes PLY/RDF coordinates with from: UNSPECIFIED and no frame tag, so
+// readers that follow SPZ's rub default need the frame passed. Assert the observed convention
+// rather than inferring a frame from the v4 container or its vendor.
 checkPose(transformed, false);
 run(coreTests, ['--gtest_filter=SplatConvert.ImportsExternalOrReferenceSpz'],
     {...process.env, SPLAT_INTEROP_FIXTURE_PATH: transformed, SPLAT_INTEROP_SOURCE_FRAME: 'rdf'});
 const transformedRub = join(output, 'splat-transform-normalized-rub-v4.spz');
-run(converter, [transformed, transformedRub, '--spz-version', '4', '--target-frame', 'rub']);
+run(converter, [transformed, transformedRub, '--spz-version', '4', '--source-frame', 'rdf']);
 checkPose(transformedRub, true);
 run(coreTests, ['--gtest_filter=SplatConvert.ImportsExternalOrReferenceSpz'],
     {...process.env, SPLAT_INTEROP_FIXTURE_PATH: transformedRub, SPLAT_INTEROP_SOURCE_FRAME: 'rub'});

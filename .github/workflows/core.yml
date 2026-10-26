@@ -72,13 +72,13 @@ jobs:
           test "$(head -c 4 "$RUNNER_TEMP/room-v4/room.spz")" = NGSP
           test -s "$RUNNER_TEMP/room-v4/room.lodsplat"
           test "$(head -c 4 "$RUNNER_TEMP/room-v4/room.collider.glb")" = glTF
-      - name: Normalize a RUB SPZ before building LOD and collision
+      - name: Prepare an SPZ that declares another frame
         run: |
-          build/world-tools/tools/splat-convert "$RUNNER_TEMP/room-v4/room.spz" "$RUNNER_TEMP/room-rub.spz" --spz-version 4 --target-frame rub
-          scripts/prepare-world.sh "$RUNNER_TEMP/room-rub.spz" "$RUNNER_TEMP/room-normalized" --source-frame rub --spz-version 4 --collider --lod --sh 0
-          test -s "$RUNNER_TEMP/room-normalized/room-rub.lodsplat"
-          cmp "$RUNNER_TEMP/room-v4/room.lodsplat" "$RUNNER_TEMP/room-normalized/room-rub.lodsplat"
-          cmp "$RUNNER_TEMP/room-v4/room.collider.glb" "$RUNNER_TEMP/room-normalized/room-rub.collider.glb"
+          build/world-tools/tools/splat-convert "$RUNNER_TEMP/room-v4/room.spz" "$RUNNER_TEMP/room-rdf.spz" --spz-version 4 --target-frame rdf
+          scripts/prepare-world.sh "$RUNNER_TEMP/room-rdf.spz" "$RUNNER_TEMP/room-declared" --spz-version 4 --collider --lod --sh 0
+          test -s "$RUNNER_TEMP/room-declared/room-rdf.lodsplat"
+          cmp "$RUNNER_TEMP/room-v4/room.lodsplat" "$RUNNER_TEMP/room-declared/room-rdf.lodsplat"
+          cmp "$RUNNER_TEMP/room-v4/room.collider.glb" "$RUNNER_TEMP/room-declared/room-rdf.collider.glb"
 
   spz-interop:
     needs: changes

@@ -12,6 +12,8 @@
 #include <zlib.h>
 
 #include "load-spz.h"
+#include "splat/formats/FrameTransform.h"
+#include "splat/formats/SpzFrame.h"
 #include "splat/math/Covariance.h"
 
 // spz exposes only loadSpz, which inflates without a ceiling; these two are what it
@@ -21,11 +23,10 @@ PackedGaussians deserializePackedGaussians(std::istream& in);
 GaussianCloud unpackGaussians(const PackedGaussians& packed, const UnpackOptions& o);
 }  // namespace spz
 
-// spz's unpack applies convertCoordinates(RUB, options.to) unconditionally in this build.
-// With extensions enabled it would instead read a per-file tag and convert for real, and
-// the explicit conversion below would then flip twice. Revisit this file before enabling.
-#ifdef SPZ_BUILD_EXTENSIONS
-#error "SpzDecoder assumes spz without extensions; see the frame conversion below"
+// The frame tag is read here and the conversion done by FrameTransform, so spz must unpack the
+// stored values untouched, which it does only when it knows the tag too.
+#ifndef SPZ_BUILD_EXTENSIONS
+#error "SpzDecoder needs spz built with extensions to read a file's frame tag"
 #endif
 
 namespace splat {
@@ -156,17 +157,25 @@ class MemoryBuffer : public std::streambuf {
     char* begin = const_cast<char*>(reinterpret_cast<const char*>(data));
     setg(begin, begin, begin + size);
   }
-};
 
-spz::CoordinateSystem toSpz(CoordinateFrame frame) {
-  switch (frame) {
-    case CoordinateFrame::rdf:
-      return spz::CoordinateSystem::RDF;
-    case CoordinateFrame::rub:
-      return spz::CoordinateSystem::RUB;
+ protected:
+  // spz seeks to the end to bound each extension's length by the bytes left.
+  pos_type seekoff(off_type offset, std::ios_base::seekdir dir,
+                   std::ios_base::openmode which) override {
+    const pos_type failed{off_type{-1}};
+    if ((which & std::ios_base::in) == 0) return failed;
+    const off_type base = dir == std::ios_base::beg   ? 0
+                          : dir == std::ios_base::cur ? gptr() - eback()
+                                                      : egptr() - eback();
+    const off_type target = base + offset;
+    if (target < 0 || target > egptr() - eback()) return failed;
+    setg(eback(), eback() + target, egptr());
+    return pos_type{target};
   }
-  return spz::CoordinateSystem::UNSPECIFIED;
-}
+  pos_type seekpos(pos_type position, std::ios_base::openmode which) override {
+    return seekoff(static_cast<off_type>(position), std::ios_base::beg, which);
+  }
+};
 
 }  // namespace
 
@@ -219,8 +228,8 @@ Result<SpzHeader> readSpzHeader(const std::uint8_t* data, std::size_t size) {
   return header;
 }
 
-Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
-                             const SpzDecodeOptions& options) {
+Result<spz::GaussianCloud> readStoredSpz(const std::uint8_t* data, std::size_t size,
+                                         const SpzDecodeOptions& options) {
   if (!looksLikeGzip(data, size) && !looksLikeNgsp(data, size)) {
     return Error{ErrorCode::unsupportedFormat, "not an SPZ container (expected gzip or NGSP)"};
   }
@@ -230,8 +239,9 @@ Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
     return Error{ErrorCode::corrupt, "SPZ payload exceeds the decoded size ceiling"};
   }
 
+  // UNSPECIFIED keeps the values as the file stores them, whatever frame it declares.
   spz::UnpackOptions unpack;
-  unpack.to = toSpz(kInternalFrame);
+  unpack.to = spz::CoordinateSystem::UNSPECIFIED;
   spz::GaussianCloud cloud;
   if (looksLikeGzip(data, size)) {
     const auto header = readSpzHeader(data, size);
@@ -260,10 +270,15 @@ Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
   if (cloud.numPoints <= 0) {
     return Error{ErrorCode::corrupt, "SPZ container could not be decoded"};
   }
-  // spz does not read a frame tag in this build: unpack ran convertCoordinates(RUB, RUB),
-  // an identity. World Labs files carry no tag, so this is the one real conversion.
-  cloud.convertCoordinates(toSpz(options.sourceFrame), toSpz(kInternalFrame));
+  return cloud;
+}
 
+Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
+                             const SpzDecodeOptions& options) {
+  auto stored = readStoredSpz(data, size, options);
+  if (!stored) return stored.error();
+  spz::GaussianCloud& cloud = stored.value();
+  const CoordinateFrame storedFrame = taggedFrame(cloud).value_or(CoordinateFrame::kRub);
   const auto n = static_cast<std::size_t>(cloud.numPoints);
   const bool sizesMatch = cloud.positions.size() == n * 3 && cloud.scales.size() == n * 3 &&
                           cloud.rotations.size() == n * 4 && cloud.alphas.size() == n &&
@@ -306,6 +321,7 @@ Result<SplatCloud> decodeSpz(const std::uint8_t* data, std::size_t size,
   if (!finite)
     return Error{ErrorCode::corrupt, "SPZ contains non-finite positions, scales or rotations"};
 
+  convertFrame(out, options.sourceFrame.value_or(storedFrame), kInternalFrame);
   return out;
 }
 

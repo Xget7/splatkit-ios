@@ -38,6 +38,16 @@ void SplatWorldLoader::setMaxShDegree(int degree) {
   maxShDegree_.store(std::clamp(degree, 0, 3));
 }
 
+void SplatWorldLoader::setSourceFrame(std::optional<CoordinateFrame> frame) {
+  const std::lock_guard<std::mutex> lock(sourceFrameMutex_);
+  sourceFrame_ = frame;
+}
+
+std::optional<CoordinateFrame> SplatWorldLoader::sourceFrame() const {
+  const std::lock_guard<std::mutex> lock(sourceFrameMutex_);
+  return sourceFrame_;
+}
+
 void SplatWorldLoader::setResidency(std::uint32_t splats) {
   residency_.store(splats);
 }
@@ -92,6 +102,7 @@ Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadWorld(const std::uin
   }
   SplatDecodeOptions options;
   options.maxShDegree = maxShDegree_.load();
+  options.sourceFrame = sourceFrame();
   const auto memory =
       admit(splatFileLoadCost(data, size, options.maxShDegree, budget()), kSplatFileAdvice);
   if (!memory) return memory.error();
@@ -135,7 +146,7 @@ Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadWorldFile(const std:
 Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadTiledWorldFile(
     const std::string& path) {
   const auto start = Clock::now();
-  auto opened = openTiledWorld(path);
+  auto opened = openTiledWorld(path, sourceFrame());
   if (!opened) return opened.error();
   const std::uint32_t residency = residency_.load();
   const int shDegree = std::min(opened.value().tileset->shDegree, maxShDegree_.load());
@@ -164,7 +175,9 @@ Result<SplatWorldLoader::WorldReport> SplatWorldLoader::loadTiledWorldFile(
 Result<SplatWorldLoader::ColliderReport> SplatWorldLoader::loadCollider(const std::uint8_t* data,
                                                                         std::size_t size) {
   const auto start = Clock::now();
-  auto decoded = decodeGlb(data, size);
+  GlbDecodeOptions options;
+  options.sourceFrame = sourceFrame().value_or(options.sourceFrame);
+  auto decoded = decodeGlb(data, size, options);
   if (!decoded) return decoded.error();
   auto collider = std::make_unique<Collider>(decoded.value());
   ColliderReport report;

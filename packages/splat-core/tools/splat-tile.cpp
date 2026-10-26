@@ -2,6 +2,7 @@
 // the form the engine streams.
 //
 //   splat-tile in.ply|in.spz out_dir [--tile N] [--fan-out N] [--sh N] [--prune-alpha T]
+//              [--source-frame F]
 //
 // --tile N  the most splats per tile, 65536 by default. Each tile is a chunk of the scene's
 //           detail tree.
@@ -11,7 +12,10 @@
 // --prune-alpha T  drops splats whose stored opacity is below T (0 to 1) before tiling.
 //           1/255 drops only what draws nothing; higher trades faint layers for speed.
 //
-// Writes out_dir/tileset.json and one spz per tile. Coordinates are written as they are.
+// --source-frame F  the frame the scene was written in, three letters such as rdf; the frame the
+//           file declares by default, else rdf for PLY and rub for SPZ.
+//
+// Writes out_dir/tileset.json and one spz per tile, in SPZ's default frame `rub`.
 #include <cerrno>
 #include <chrono>
 #include <cstdint>
@@ -27,6 +31,7 @@
 
 #include "CloudEdit.h"
 #include "load-spz.h"
+#include "splat/core/CoordinateFrame.h"
 #include "splat/tiles/TileBuilder.h"
 
 namespace {
@@ -37,7 +42,7 @@ constexpr uint32_t kLeastFanOut = 2;
 int usage() {
   std::fprintf(stderr,
                "usage: splat-tile in.ply|in.spz out_dir [--tile N] [--fan-out N] [--sh N] "
-               "[--prune-alpha T]\n");
+               "[--prune-alpha T] [--source-frame F]\n");
   return 2;
 }
 
@@ -67,6 +72,7 @@ struct TileOptions {
   splat::TileBuildOptions build;
   int sh = -1;
   float pruneAlpha = -1.0f;
+  std::optional<splat::CoordinateFrame> sourceFrame;  // nothing: what the file declares
 };
 
 // Applies `flag value` to `options`; false for an unknown flag or a value it rejects.
@@ -85,6 +91,10 @@ bool applyFlag(const char* flag, const char* value, TileOptions& options) {
     options.pruneAlpha = std::strtof(value, nullptr);
     return true;
   }
+  if (std::strcmp(flag, "--source-frame") == 0) {
+    options.sourceFrame = splat::CoordinateFrame::parse(value);
+    return options.sourceFrame.has_value();
+  }
   return false;
 }
 
@@ -102,8 +112,7 @@ std::optional<TileOptions> parseOptions(int argc, char** argv) {
 
 // Reads the scene, empty after saying on stderr why it cannot be tiled.
 std::optional<spz::GaussianCloud> loadCloud(const std::string& in) {
-  spz::GaussianCloud cloud =
-      endsWith(in, ".spz") ? spz::loadSpz(in, {}) : spz::loadSplatFromPly(in, {});
+  spz::GaussianCloud cloud = splat::tools::loadScene(in, !endsWith(in, ".spz"));
   if (cloud.numPoints <= 0) {
     std::fprintf(stderr, "could not read %s as a Gaussian splat scene\n", in.c_str());
     return std::nullopt;
@@ -159,6 +168,11 @@ int run(int argc, char** argv) {
     std::printf("pruned %d splats below opacity %.4f\n", dropped, options->pruneAlpha);
   }
   if (options->sh >= 0) splat::tools::truncateSh(*cloud, options->sh);
+  if (!splat::tools::moveToFrame(*cloud, !endsWith(options->in, ".spz"), options->sourceFrame,
+                                 splat::CoordinateFrame::kRub)) {
+    std::fprintf(stderr, "cannot convert harmonics above degree 3; pass --sh 3\n");
+    return 1;
+  }
   std::filesystem::create_directories(options->out);
 
   auto built = splat::buildTiles(*cloud, options->out, options->build);

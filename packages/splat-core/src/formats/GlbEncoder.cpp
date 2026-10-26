@@ -6,6 +6,8 @@
 
 #include <nlohmann/json.hpp>
 
+#include "splat/formats/FrameTransform.h"
+
 namespace splat {
 namespace {
 
@@ -33,19 +35,19 @@ void putBytes(std::vector<std::uint8_t>& out, const void* data, std::size_t size
 }  // namespace
 
 std::vector<std::uint8_t> encodeGlb(const TriangleMesh& mesh, const GlbEncodeOptions& options) {
-  // RUB -> RDF negates Y and Z: a rotation, so triangle winding is unchanged.
-  const float sign[3] = {1, options.targetFrame == CoordinateFrame::rdf ? -1.0f : 1.0f,
-                         options.targetFrame == CoordinateFrame::rdf ? -1.0f : 1.0f};
-  std::vector<float> positions(mesh.positions.size());
+  // The collider ignores winding, so a target frame that mirrors keeps the index order.
+  const FrameTransform transform(kInternalFrame, options.targetFrame);
+  std::vector<float> positions(mesh.positions);
   float lo[3];
   float hi[3];
   std::fill(lo, lo + 3, std::numeric_limits<float>::max());
   std::fill(hi, hi + 3, std::numeric_limits<float>::lowest());
-  for (std::size_t i = 0; i < positions.size(); ++i) {
-    const std::size_t axis = i % 3;
-    positions[i] = mesh.positions[i] * sign[axis];
-    lo[axis] = std::min(lo[axis], positions[i]);
-    hi[axis] = std::max(hi[axis], positions[i]);
+  for (std::size_t i = 0; i < positions.size(); i += 3) {
+    transform.applyToPoint(&positions[i]);
+    for (std::size_t axis = 0; axis < 3; ++axis) {
+      lo[axis] = std::min(lo[axis], positions[i + axis]);
+      hi[axis] = std::max(hi[axis], positions[i + axis]);
+    }
   }
   const std::size_t vertices = mesh.vertexCount();
   if (vertices == 0) {

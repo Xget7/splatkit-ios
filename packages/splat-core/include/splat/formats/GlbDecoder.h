@@ -10,9 +10,10 @@
 namespace splat {
 
 struct GlbDecodeOptions {
-  // World Labs colliders share the frame of the splats and carry no tag, so the caller
-  // declares it, exactly as for `.spz`. glTF itself is specified as RUB.
-  CoordinateFrame sourceFrame = kWorldLabsFrame;
+  // Frame the vertices were written in. glTF specifies +Y up and right handed, the internal
+  // axes, so the default keeps them as stored; a collider made beside splats in another frame
+  // takes that frame.
+  CoordinateFrame sourceFrame = kInternalFrame;
 };
 
 // Decodes the triangle geometry of a binary glTF (.glb): every mesh primitive with a

@@ -8,6 +8,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include "splat/formats/FrameTransform.h"
 #include "splat/math/Mat4.h"
 
 namespace splat {
@@ -178,16 +179,6 @@ Result<Ok> parseGlbDocument(const GlbChunks& chunks, Json& doc) {
   return Ok{};
 }
 
-// Frame conversion: RDF -> RUB negates Y and Z, applied on top of every node transform.
-Mat4 sourceFrameTransform(CoordinateFrame sourceFrame) {
-  Mat4 frame = Mat4::identity();
-  if (sourceFrame == CoordinateFrame::rdf) {
-    frame.at(1, 1) = -1;
-    frame.at(2, 2) = -1;
-  }
-  return frame;
-}
-
 uint32_t readIndex(const Accessor& indices, std::size_t i) {
   const std::uint8_t* p = indices.data + i * indices.stride;
   if (indices.componentType == kComponentUnsignedInt) {
@@ -307,7 +298,8 @@ Result<TriangleMesh> decodeGlbOrThrow(const std::uint8_t* data, std::size_t size
   if (!parsed) return parsed.error();
 
   MeshAssembler assembler{doc, chunks.value(), {}};
-  const auto appended = assembler.appendScene(sourceFrameTransform(options.sourceFrame));
+  const auto appended =
+      assembler.appendScene(FrameTransform(options.sourceFrame, kInternalFrame).matrix());
   if (!appended) return appended.error();
 
   if (assembler.corrupt) return Error{ErrorCode::corrupt, "GLB geometry references are invalid"};

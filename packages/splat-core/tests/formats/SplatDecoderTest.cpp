@@ -43,10 +43,12 @@ TEST(SplatDecoder, UnknownBytesAreUnsupportedNotCorrupt) {
 
 TEST(SplatDecoder, DispatchesSpzAndAppliesTheOptions) {
   auto bytes = encodeSpz(2);
-  auto result = decodeSplatFile(bytes.data(), bytes.size());
+  SplatDecodeOptions rdf;
+  rdf.sourceFrame = CoordinateFrame::kRdf;
+  auto result = decodeSplatFile(bytes.data(), bytes.size(), rdf);
   ASSERT_TRUE(result.ok()) << result.error().message;
   ASSERT_EQ(result.value().count(), 1u);
-  // RDF (the default source frame) to RUB negates z.
+  // RDF to RUB negates z.
   EXPECT_NEAR(result.value().positions[2], -1.0f, 1e-3f);
 
   SplatDecodeOptions tiny;

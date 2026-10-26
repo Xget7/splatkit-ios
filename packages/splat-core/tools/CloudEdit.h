@@ -1,15 +1,43 @@
-// Edits the tools apply to a scene before packing it: dropping splats, truncating harmonics.
+// What the tools do to a scene before packing it: reading it, dropping splats, truncating
+// harmonics and moving it between frames.
 // Header only, shared by ply2spz and splat-tile and covered by tests/tools/CloudEditTest.cpp.
 #pragma once
 
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
+#include <optional>
+#include <string>
+#include <utility>
 #include <vector>
 
 #include "load-spz.h"
+#include "splat/core/CoordinateFrame.h"
+#include "splat/formats/SpzFrame.h"
+#include "splat/io/MappedFile.h"
 
 namespace splat::tools {
+
+// The scene in a .ply or .spz file as written, an SPZ's frame tag included; no points when it
+// cannot be read.
+inline spz::GaussianCloud loadScene(const std::string& path, bool ply) {
+  if (ply) return spz::loadSplatFromPly(path, {});
+  auto mapped = MappedFile::open(path);
+  if (!mapped) return {};
+  SpzDecodeOptions limits;
+  limits.maxDecodedBytes = std::numeric_limits<std::size_t>::max();  // a local file, trusted
+  auto cloud = readStoredSpz(mapped.value().data(), mapped.value().size(), limits);
+  return cloud ? std::move(cloud.value()) : spz::GaussianCloud{};
+}
+
+// Moves a scene to `target` from `source`, else from the frame it declares, else from its
+// format's default: rdf for PLY, rub for SPZ. False when convertFrame refuses `target`.
+inline bool moveToFrame(spz::GaussianCloud& cloud, bool ply, std::optional<CoordinateFrame> source,
+                        CoordinateFrame target) {
+  const auto formatDefault = ply ? CoordinateFrame::kRdf : CoordinateFrame::kRub;
+  return convertFrame(cloud, source.value_or(taggedFrame(cloud).value_or(formatDefault)), target);
+}
 
 // Keeps the splats `keep(i)` accepts, in place and in order.
 template <typename Keep>

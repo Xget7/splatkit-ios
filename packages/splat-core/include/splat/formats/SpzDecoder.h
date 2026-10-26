@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include "splat/core/CoordinateFrame.h"
 #include "splat/core/Result.h"
@@ -10,8 +11,10 @@
 namespace splat {
 
 struct SpzDecodeOptions {
-  // Frame the file was written in. World Labs does not tag it, so the caller declares it.
-  CoordinateFrame sourceFrame = kWorldLabsFrame;
+  // Frame the splats were written in. Nothing reads the file's SPZ_ADOBE_coordinate_system tag,
+  // or the format's default `rub` without one; set it for a file that stores another frame
+  // and does not say so.
+  std::optional<CoordinateFrame> sourceFrame;
   // Highest spherical-harmonics degree to materialize in the decoded cloud. The SPZ file is
   // kept intact; this only drops higher bands from the runtime representation. Mobile callers
   // can use 0 or 1 to avoid allocating the degree-2/3 coefficients.

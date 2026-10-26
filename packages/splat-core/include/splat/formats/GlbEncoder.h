@@ -9,9 +9,9 @@
 namespace splat {
 
 struct GlbEncodeOptions {
-  // Frame the file is written in. The default matches the splats of a World Labs export, so
-  // `decodeGlb` with its default options reads the mesh back unchanged.
-  CoordinateFrame targetFrame = kWorldLabsFrame;
+  // Frame the file is written in. The default is glTF's, so `decodeGlb` with its default options
+  // reads the mesh back unchanged.
+  CoordinateFrame targetFrame = kInternalFrame;
 };
 
 // Encodes an internal-frame (RUB) mesh as a binary glTF (.glb) with one node, one mesh and

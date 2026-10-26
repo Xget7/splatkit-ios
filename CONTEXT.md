@@ -12,8 +12,13 @@ One Gaussian: a position, a covariance, a colour and an opacity.
 _Avoid_: point, gaussian, particle
 
 **Cloud**:
-The splats of a world decoded into memory, structure of arrays, in the engine's own frame.
+The splats of a world decoded into memory, structure of arrays, in the engine's coordinate frame.
 _Avoid_: point cloud, dataset, buffer
+
+**Coordinate frame**:
+Where a file's +X, +Y and +Z point, as three letters from r, l, u, d, b and f, such as `rub` or `rdf`.
+Decoding moves every input into the engine's `rub`; a host sets a source frame only for a file that stores another frame without declaring it.
+_Avoid_: coordinate system, axis convention, handedness
 
 **World**:
 What a host asks the engine to show: a source of splats plus, optionally, a collider.

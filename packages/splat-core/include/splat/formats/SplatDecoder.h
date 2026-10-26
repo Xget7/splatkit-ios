@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 
 #include "splat/core/CoordinateFrame.h"
 #include "splat/core/Result.h"
@@ -19,9 +20,9 @@ enum class SplatFormat {
 SplatFormat detectSplatFormat(const std::uint8_t* data, std::size_t size);
 
 struct SplatDecodeOptions {
-  // Frame the file was written in when the format does not tag it. Formats that do
-  // carry a frame ignore this.
-  CoordinateFrame sourceFrame = kWorldLabsFrame;
+  // Frame the splats were written in, overriding what the file declares. Nothing takes the
+  // file's tag, or its format's default frame without one.
+  std::optional<CoordinateFrame> sourceFrame;
   // Highest spherical-harmonics degree to materialize in memory. This does not modify the file.
   int maxShDegree = 3;
   // Largest decompressed payload accepted; see SpzDecodeOptions.

@@ -19,6 +19,9 @@ add_executable(splatkit_engine_tests
 target_link_libraries(splatkit_engine_tests PRIVATE splatkit_engine GTest::gtest_main)
 target_include_directories(splatkit_engine_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}
   $<TARGET_PROPERTY:spz,INTERFACE_INCLUDE_DIRECTORIES>)
+# spz's structs change with its extensions, so its headers need its definitions as well.
+target_compile_definitions(splatkit_engine_tests PRIVATE
+  $<TARGET_PROPERTY:spz,INTERFACE_COMPILE_DEFINITIONS>)
 target_compile_options(splatkit_engine_tests PRIVATE
   $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall -Wextra -Wpedantic -Werror>
 )

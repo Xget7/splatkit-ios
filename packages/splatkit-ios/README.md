@@ -54,6 +54,7 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `linearBlending` | Blend in linear light instead of the encoded colour space |
 | `splatBudget`, `residencyBudget` | Most splats drawn per frame, most splats resident on the GPU; a tiled scene that fits the residency whole is fetched whole, so turning never meets a coarse stand-in |
 | `shDegree`, `maxShDegree` | Harmonics drawn, harmonics kept from the file |
+| `sourceFrame` | The frame later worlds, tiles and colliders were written in: `.rdf` for World Labs Marble exports, `.rub`, or `CoordinateFrame("rfu")` for any three letters from r, l, u, d, b and f. Nil, the default, keeps each file's declared frame, else `rub`; a `.lodsplat` ignores it |
 | `setWalkVelocity(forward:right:)`, `walk(forward:right:)` | Continuous walking in meters per second, or a single step in meters; the host draws its own control and drives these |
 | `look(deltaYaw:deltaPitch:)` | Turns the camera by radians, for a look pad or mouse |
 | `setCharacter(_:)`, `character` | The walker's shape in walk mode: `CharacterSettings(eyeHeight:bodyRadius:stepHeight:)` |
@@ -110,6 +111,7 @@ Dev-only switches; `--quality`, `--depth-key-bits`, `--lod-error-pixels` and `--
 | `--shot tour` | ISS camera, +Y up: `overview`, `orbit` (default), `detail`, `flyby`, `tour` |
 | `--run-seconds 20` | Bounded run with resource monitoring |
 | `--metalfx 0` | Upscales a `--scale` below 1 with the linear blit instead of MetalFX |
+| `--source-frame rdf` | Sets `sourceFrame`; the bundled kitchen loads as `rdf` without it |
 
 Defaults: 32-bit sorting, hardware raster.
 Culling, LOD and depth quantization are approximations pending visual acceptance.

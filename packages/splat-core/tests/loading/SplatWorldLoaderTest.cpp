@@ -10,6 +10,7 @@
 #include <gtest/gtest.h>
 
 #include "load-spz.h"
+#include "splat/formats/GlbEncoder.h"
 #include "splat/formats/SpzDecoder.h"
 #include "splat/lod/LodFile.h"
 #include "splat/lod/LodTree.h"
@@ -131,6 +132,62 @@ TEST(SplatWorldLoader, LoadsAWorldFromAFile) {
   ASSERT_FALSE(missing.ok());
   EXPECT_EQ(missing.error().code, ErrorCode::unreadable);
   EXPECT_EQ(loader.takeWorld(), nullptr);
+}
+
+// The SPZ format stores right, up, back unless the file says otherwise, so a file written to the
+// format's default loads exactly as written.
+TEST(SplatWorldLoader, AnSpzInTheFormatsDefaultFrameLoadsAsWritten) {
+  spz::GaussianCloud cloud;
+  cloud.numPoints = 1;
+  cloud.positions = {1.0f, 2.0f, 3.0f};
+  cloud.scales = {-3.0f, -3.0f, -3.0f};
+  cloud.rotations = {0.0f, 0.0f, 0.0f, 1.0f};
+  cloud.alphas = {0.0f};
+  cloud.colors = {0.0f, 0.0f, 0.0f};
+  spz::PackOptions pack;
+  pack.from = spz::CoordinateSystem::RUB;
+  std::vector<std::uint8_t> bytes;
+  ASSERT_TRUE(spz::saveSpz(cloud, pack, &bytes));
+
+  SplatWorldLoader loader;
+  ASSERT_TRUE(loader.loadWorld(bytes.data(), bytes.size()).ok());
+  const auto world = loader.takeWorld();
+  ASSERT_NE(world, nullptr);
+  const auto& positions = world->splats().positions;
+  ASSERT_EQ(positions.size(), 3u);
+  EXPECT_NEAR(positions[0], 1.0f, 1e-3f);
+  EXPECT_NEAR(positions[1], 2.0f, 1e-3f);
+  EXPECT_NEAR(positions[2], 3.0f, 1e-3f);
+}
+
+// A source frame set on the loader applies to the splats and the collider alike.
+TEST(SplatWorldLoader, ReadsTheWorldAndColliderInTheSourceFrameItIsGiven) {
+  spz::GaussianCloud cloud;
+  cloud.numPoints = 1;
+  cloud.positions = {1.0f, 2.0f, 3.0f};
+  cloud.scales = {-3.0f, -3.0f, -3.0f};
+  cloud.rotations = {0.0f, 0.0f, 0.0f, 1.0f};
+  cloud.alphas = {0.0f};
+  cloud.colors = {0.0f, 0.0f, 0.0f};
+  std::vector<std::uint8_t> splats;
+  ASSERT_TRUE(spz::saveSpz(cloud, {}, &splats));
+  TriangleMesh mesh;
+  mesh.positions = {1, 2, 3, 2, 2, 3, 1, 4, 5};
+  mesh.indices = {0, 1, 2};
+  const auto collider = encodeGlb(mesh);
+
+  SplatWorldLoader loader;
+  loader.setSourceFrame(CoordinateFrame::kRdf);
+  ASSERT_TRUE(loader.loadWorld(splats.data(), splats.size()).ok());
+  ASSERT_TRUE(loader.loadCollider(collider.data(), collider.size()).ok());
+  const auto world = loader.takeWorld();
+  ASSERT_NE(world, nullptr);
+  EXPECT_NEAR(world->splats().positions[1], -2.0f, 1e-3f);
+  EXPECT_NEAR(world->splats().positions[2], -3.0f, 1e-3f);
+  const auto loaded = loader.takeCollider();
+  ASSERT_NE(loaded, nullptr);
+  EXPECT_NEAR(loaded->boundsMin().y, -4.0f, 0.05f);  // the collider pads its bounds
+  EXPECT_NEAR(loaded->boundsMax().z, -3.0f, 0.05f);
 }
 
 TEST(SplatWorldLoader, ColliderBytesThatAreNotGlbFail) {

@@ -70,16 +70,17 @@ struct Mat4 {
     return r;
   }
 
-  // Perspective with vertical field of view, mapping z in [-near, -far] to depth [0, 1].
-  static Mat4 perspective(float fovyRadians, float aspect, float near, float far) {
+  // Perspective with vertical field of view, mapping z in [-nearPlane, -farPlane] to depth
+  // [0, 1]. Not `near` and `far`: zlib's zconf.h defines `far` as an empty macro.
+  static Mat4 perspective(float fovyRadians, float aspect, float nearPlane, float farPlane) {
     const float ys = 1 / std::tan(fovyRadians * 0.5f);
     const float xs = ys / aspect;
-    const float zs = far / (near - far);
+    const float zs = farPlane / (nearPlane - farPlane);
     Mat4 r;
     r.at(0, 0) = xs;
     r.at(1, 1) = ys;
     r.at(2, 2) = zs;
-    r.at(2, 3) = near * zs;
+    r.at(2, 3) = nearPlane * zs;
     r.at(3, 2) = -1;
     return r;
   }

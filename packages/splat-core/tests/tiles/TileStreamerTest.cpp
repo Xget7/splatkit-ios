@@ -100,7 +100,7 @@ struct BuiltWorld {
     auto built = buildTiles(clusters(200, 0.3f, 20.0f), dir.string(), options);
     EXPECT_TRUE(built.ok());
     // The builder wrote the cloud's own coordinates; read them back unchanged.
-    auto opened = openTiledWorld((dir.path() / "tileset.json").string(), kInternalFrame);
+    auto opened = openTiledWorld((dir.path() / "tileset.json").string());
     EXPECT_TRUE(opened.ok()) << (opened.ok() ? "" : opened.error().message);
     world = opened.value();
   }
@@ -325,13 +325,17 @@ TEST(TileStreamer, AMissingTileFileIsReportedAndItsParentStays) {
   EXPECT_TRUE(parentDrawn);
 }
 
-TEST(TiledWorld, ConvertsBoundsBetweenFrames) {
-  const Bounds b{{1, 2, 3}, {4, 5, 6}};
-  const Bounds r = convertBounds(b, CoordinateFrame::rdf, CoordinateFrame::rub);
-  EXPECT_EQ(r.min, (std::array<float, 3>{1, -5, -6}));
-  EXPECT_EQ(r.max, (std::array<float, 3>{4, -2, -3}));
-  const Bounds same = convertBounds(b, CoordinateFrame::rub, CoordinateFrame::rub);
-  EXPECT_EQ(same.min, b.min);
+TEST(TiledWorld, ReadsBoundsInTheFrameTheTilesWereWrittenIn) {
+  const BuiltWorld built;
+  const std::string index = (built.dir.path() / "tileset.json").string();
+  auto asRdf = openTiledWorld(index, CoordinateFrame::kRdf);
+  ASSERT_TRUE(asRdf.ok()) << asRdf.error().message;
+  EXPECT_EQ(asRdf.value().sourceFrame, CoordinateFrame::kRdf);
+  const Tileset& written = *built.world.tileset;
+  const Bounds& b = written.tiles[written.root].bounds;
+  const Bounds& r = asRdf.value().tileset->tiles[written.root].bounds;
+  EXPECT_EQ(r.min, (std::array<float, 3>{b.min[0], -b.max[1], -b.max[2]}));
+  EXPECT_EQ(r.max, (std::array<float, 3>{b.max[0], -b.min[1], -b.min[2]}));
 }
 
 }  // namespace
