@@ -11,7 +11,7 @@
 namespace splatkit {
 
 // Stable ascending sort of uint32 key/value pairs. No camera or splat knowledge.
-// Call reserve while idle, fill keys()/values(), then encode on the render queue.
+// Call reserve while idle, fill keys()/values() on the GPU, then encode on the render queue.
 // The GPU-written count must not exceed capacity(). The sorted values land in values();
 // keys() is scratch afterwards, since the last pass skips the key write nobody reads.
 // Scratch is shared across frames: all encodes and their consumers use one queue.

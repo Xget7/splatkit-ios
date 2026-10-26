@@ -16,7 +16,9 @@ bool MetalVisibilityPass::create(id<MTLDevice> device, id<MTLLibrary> library, K
   bool ok = true;
   for (uint32_t slot = 0; slot < kFramesInFlight; ++slot) {
     count_[slot] = metal::buffer(device, sizeof(uint32_t));
-    drawArguments_[slot] = metal::buffer(device, kDrawBatches * kDrawArgumentBytes);
+    // The CPU reads the count and writes the ranges; only the GPU touches the draw arguments.
+    drawArguments_[slot] =
+        metal::buffer(device, kDrawBatches * kDrawArgumentBytes, MTLResourceStorageModePrivate);
     ranges_[slot] = metal::buffer(device, size_t{kMaxRanges} * sizeof(SplatRenderer::Range));
     rangeStarts_[slot] = metal::buffer(device, size_t{kMaxRanges + 1} * sizeof(uint32_t));
     ok = ok && count_[slot] != nil && drawArguments_[slot] != nil && ranges_[slot] != nil &&
@@ -83,7 +85,8 @@ bool MetalVisibilityPass::reserve(uint32_t capacity, uint32_t activeCapacity) {
     indexedOnly_ = activeCapacity > 0 && activeCapacity < sourceCapacity;
     return true;
   }
-  id<MTLBuffer> projected = metal::buffer(device_, size_t{capacity} * sizeof(ProjectedSplat));
+  id<MTLBuffer> projected = metal::buffer(device_, size_t{capacity} * sizeof(ProjectedSplat),
+                                          MTLResourceStorageModePrivate);
   if (projected == nil) {
     LOGE("visibility buffers for %u splats failed", capacity);
     return false;

@@ -133,7 +133,7 @@ TEST_F(MetalVisibilityPassTest, FullSetAboveTwoMillionIsNotSampled) {
   [cmd waitUntilCompleted];
   ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
   ASSERT_EQ(visibility.count(0), n);
-  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
+  const auto projected = Gpu::get().readback<ProjectedSplat>(visibility.projected());
   std::vector<bool> seen(n, false);
   for (uint32_t i = 0; i < n; ++i) {
     ASSERT_LT(projected[i].index, n);
@@ -155,8 +155,8 @@ TEST_F(MetalVisibilityPassTest, EmptyFrameClearsPreviousIndirectDraws) {
     ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
     EXPECT_EQ(visibility.count(0), step == 0 ? 8u : 0u);
   }
-  const auto* draws =
-      static_cast<const MTLDrawPrimitivesIndirectArguments*>(visibility.drawArguments(0).contents);
+  const auto draws =
+      Gpu::get().readback<MTLDrawPrimitivesIndirectArguments>(visibility.drawArguments(0));
   for (uint32_t i = 0; i < kDrawBatches; ++i) {
     EXPECT_EQ(draws[i].instanceCount, 0u);
   }
@@ -243,14 +243,14 @@ TEST_F(MetalVisibilityPassTest, CullsAndOrdersTheRangesFrontToBack) {
 
   ASSERT_EQ(visibility.count(1), 3u);
   // The order names projections; each projection remembers its slab index.
-  const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
-  const auto* projected = static_cast<const uint32_t*>(visibility.projected().contents);
+  const auto order = Gpu::get().readback<uint32_t>(visibility.order());
+  const auto projected = Gpu::get().readback<uint32_t>(visibility.projected());
   const uint32_t stride = sizeof(ProjectedSplat) / sizeof(uint32_t);
   std::vector<uint32_t> drawn;
   for (int i = 0; i < 3; ++i) drawn.push_back(projected[order[i] * stride + stride - 1]);
   EXPECT_EQ(drawn, (std::vector<uint32_t>{2, 4, 0}));
   // The batches partition the instances, in order.
-  const auto* draw = static_cast<const uint32_t*>(visibility.drawArguments(1).contents);
+  const auto draw = Gpu::get().readback<uint32_t>(visibility.drawArguments(1));
   uint32_t next = 0;
   for (uint32_t b = 0; b < kDrawBatches; ++b) {
     EXPECT_EQ(draw[b * 4], 4u);        // vertices per instance
@@ -363,7 +363,7 @@ TEST_F(MetalVisibilityPassTest, KeepsAQuadCrossingTheEdgeAndCullsTransparentSpla
   [cmd waitUntilCompleted];
   ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
   ASSERT_EQ(visibility.count(0), 2u);
-  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
+  const auto projected = Gpu::get().readback<ProjectedSplat>(visibility.projected());
   std::vector<uint32_t> kept = {projected[0].index, projected[1].index};
   std::sort(kept.begin(), kept.end());
   EXPECT_EQ(kept, (std::vector<uint32_t>{0, 3}));
@@ -406,7 +406,7 @@ TEST_F(MetalVisibilityPassTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadi
   [cmd waitUntilCompleted];
   ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
   const uint32_t count = visibility.count(0);
-  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
+  const auto projected = Gpu::get().readback<ProjectedSplat>(visibility.projected());
   std::vector<uint32_t> kept;
   const ProjectedSplat* huge = nullptr;
   for (uint32_t i = 0; i < count; ++i) {
@@ -453,15 +453,15 @@ TEST(MetalVisibilityPassKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIn
     [cmd waitUntilCompleted];
     ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
     ASSERT_EQ(visibility.count(0), 6u);
-    const auto* keys = static_cast<const uint32_t*>(visibility.depthKeys().contents);
-    const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
-    const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
+    const auto keys = Gpu::get().readback<uint32_t>(visibility.depthKeys());
+    const auto order = Gpu::get().readback<uint32_t>(visibility.order());
+    const auto projected = Gpu::get().readback<ProjectedSplat>(visibility.projected());
     // Same quantization bin keeps 1 before 2 within this single SIMD group, even
     // though 2 is slightly nearer. Float32 ordering would reverse them.
     const uint32_t expected[n - 2] = {4, 1, 2, 3, 0, 5};
     // The sort leaves the keys as the cull wrote them; sorted here they must be the
     // quantized depths of the expected order.
-    std::vector<uint32_t> sortedKeys(keys, keys + (n - 2));
+    std::vector<uint32_t> sortedKeys(keys.begin(), keys.begin() + (n - 2));
     std::sort(sortedKeys.begin(), sortedKeys.end());
     for (uint32_t i = 0; i < n - 2; ++i) {
       ASSERT_LT(order[i], n);
@@ -484,8 +484,6 @@ TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
   for (uint32_t i = 0; i < capacity; ++i) {
     if (i % 3 == 0) source[i].position[2] = 2;  // mixed live/dead lanes
   }
-  const auto* order = static_cast<const uint32_t*>(visibility.order().contents);
-  const auto* projected = static_cast<const ProjectedSplat*>(visibility.projected().contents);
   for (uint32_t n : {1u, 31u, 32u, 33u, 255u, 256u, 257u, 513u, 0u}) {
     const uint32_t slot = n % kFramesInFlight;
     const SplatRenderer::Range range{0, n};
@@ -497,6 +495,8 @@ TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
     ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
     const uint32_t expected = n - (n + 2) / 3;
     ASSERT_EQ(visibility.count(slot), expected);
+    const auto order = gpu.readback<uint32_t>(visibility.order());
+    const auto projected = gpu.readback<ProjectedSplat>(visibility.projected());
     std::vector<bool> seen(n, false);
     for (uint32_t i = 0; i < expected; ++i) {
       ASSERT_LT(order[i], expected);
@@ -506,8 +506,8 @@ TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
       EXPECT_FALSE(seen[id]);
       seen[id] = true;
     }
-    const auto* draws = static_cast<const MTLDrawPrimitivesIndirectArguments*>(
-        visibility.drawArguments(slot).contents);
+    const auto draws =
+        Gpu::get().readback<MTLDrawPrimitivesIndirectArguments>(visibility.drawArguments(slot));
     uint32_t next = 0;
     for (uint32_t b = 0; b < kDrawBatches; ++b) {
       EXPECT_EQ(draws[b].vertexCount, 4u);

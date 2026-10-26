@@ -107,8 +107,8 @@ class MetalFrameComputeTest : public testing::Test {
     run(selection, sort);
     Cut cut;
     cut.selected = compute.lastSelectedCount();
-    const auto* order = static_cast<const uint32_t*>(compute.order().contents);
-    const auto* projected = static_cast<const ProjectedSplat*>(compute.projected().contents);
+    const auto order = test::Gpu::get().readback<uint32_t>(compute.order());
+    const auto projected = test::Gpu::get().readback<ProjectedSplat>(compute.projected());
     for (uint32_t i = 0; i < compute.lastDrawCount(); ++i)
       cut.drawn.push_back(projected[order[i]].index);
     return cut;
@@ -178,13 +178,13 @@ TEST_F(MetalFrameComputeTest, AFlatWorldIsProjectedSortedFrontToBackAndCounted) 
   run(nil, sort);
   EXPECT_EQ(compute_->lastDrawCount(), 3u);
   EXPECT_GT(compute_->lastSortMillis(), 0.0);
-  const auto* order = static_cast<const uint32_t*>(compute_->order().contents);
-  const auto* projected = static_cast<const ProjectedSplat*>(compute_->projected().contents);
+  const auto order = test::Gpu::get().readback<uint32_t>(compute_->order());
+  const auto projected = test::Gpu::get().readback<ProjectedSplat>(compute_->projected());
   std::vector<uint32_t> drawn;
   for (int i = 0; i < 3; ++i) drawn.push_back(projected[order[i]].index);
   EXPECT_EQ(drawn, (std::vector<uint32_t>{2, 0, 1}));
-  const auto* draws =
-      static_cast<const MTLDrawPrimitivesIndirectArguments*>(compute_->drawArguments(0).contents);
+  const auto draws =
+      test::Gpu::get().readback<MTLDrawPrimitivesIndirectArguments>(compute_->drawArguments(0));
   uint32_t next = 0;
   for (uint32_t b = 0; b < kDrawBatches; ++b) {
     EXPECT_EQ(draws[b].baseInstance, next);
@@ -207,8 +207,8 @@ TEST_F(MetalFrameComputeTest, SixteenBitKeysOrderTheSameWorld) {
   ASSERT_NE(sort, nil);
   run(nil, sort);
   EXPECT_EQ(compute_->lastDrawCount(), 3u);
-  const auto* order = static_cast<const uint32_t*>(compute_->order().contents);
-  const auto* projected = static_cast<const ProjectedSplat*>(compute_->projected().contents);
+  const auto order = test::Gpu::get().readback<uint32_t>(compute_->order());
+  const auto projected = test::Gpu::get().readback<ProjectedSplat>(compute_->projected());
   EXPECT_EQ(projected[order[0]].index, 2u);
   EXPECT_EQ(projected[order[2]].index, 1u);
 }
