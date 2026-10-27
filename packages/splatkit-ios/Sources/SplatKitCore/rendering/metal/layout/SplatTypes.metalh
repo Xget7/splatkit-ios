@@ -40,10 +40,13 @@ struct Projected {
   uint index;
 };
 
+// Every vertex output crosses the tiler's parameter buffer, four per splat, so the record is
+// kept to 24 bytes: depth carries log2 of the peak opacity (splatDepth) at full float precision,
+// since a quad's depth is constant and only has to stay between the mask and the clear.
 struct SplatVertex {
   float4 position [[position]];
-  half2 gaussian;        // corner * radius * kGaussianScale; its squared length is the exp2 exponent
-  half4 color [[flat]];  // rgb, log2(opacity)
+  half2 gaussian;       // corner * radius * kGaussianScale; its squared length is the exp2 exponent
+  uint color [[flat]];  // packColor: rgb as unorm 10:10:10 and a 2-bit scale
 };
 
 struct BlitVertex {
@@ -69,11 +72,16 @@ struct DrawArguments {
   uint vertexCount, instanceCount, vertexStart, baseInstance;
 };
 
-// Splats draw at kSplatDepth under a LessEqual test; the saturation mask writes the nearer
+// Splats draw around kSplatDepth under a LessEqual test; the saturation mask writes the nearer
 // kMaskDepth, so a pixel that is already opaque rejects every later splat.
 constant float kSplatDepth = 0.5;
 constant float kMaskDepth = 0.25;
 constant float kSaturated = 254.0 / 255.0;  // coverage at which a pixel counts as opaque
+// A splat's depth is kSplatDepth plus its log2 opacity times this scale. Clamped to
+// kMaxLog2Alpha, depths stay within [0.375, 0.625]: behind the mask and in front of the clear.
+constant float kAlphaDepthScale = 1.0 / 128.0;
+constant float kMaxLog2Alpha = 16.0;
+constant half kMaxColorScale = 4.0h;  // the brightest colour channel a splat vertex carries
 
 // A quad stops where the Gaussian falls to kQuadMinAlpha, and never past these radii: a blob at
 // 2.5 sigma keeps 4 % of its peak, and an LOD opacity of 1000 stays visible out to 4.9 sigma.

@@ -16,7 +16,7 @@ vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[in
     SplatVertex out;
     out.position = float4(0.0, 0.0, 2.0, 1.0);
     out.gaussian = half2(0.0);
-    out.color = half4(0.0);
+    out.color = 0;
     return out;
   }
   return expandQuad(cam, p, vertexId);
@@ -33,13 +33,13 @@ vertex SplatVertex projectedVertex(uint vertexId [[vertex_id]], uint instanceId 
 fragment half4 splatFragment(SplatVertex in [[stage_in]]) {
   half power = splatPower(in);
   if (power < kLog2MinAlpha) discard_fragment();
-  return half4(in.color.rgb, exp2(min(power, 0.0h)));
+  return half4(splatColor(in), exp2(min(power, 0.0h)));
 }
 
 fragment half4 splatFragmentUnder(SplatVertex in [[stage_in]]) {
   half power = splatPower(in);
   if (power < kLog2MinAlpha) discard_fragment();
-  return half4(in.color.rgb, 1.0h) * exp2(min(power, 0.0h));
+  return half4(splatColor(in), 1.0h) * exp2(min(power, 0.0h));
 }
 
 // One oversized triangle covers the screen.

@@ -174,6 +174,46 @@ TEST_F(MetalSplatPipelineTest, AGpuOrderDrawsTheSortedProjectionsFrontToBack) {
   EXPECT_LT(pixel[1], 80);
 }
 
+// One splat at the centre, 2.5 m away, with the given colour and peak opacity, drawn in GPU order
+// over the background. Its centre falls half a pixel off the measured pixel's centre, where the
+// Gaussian keeps kCentreFalloff of the peak.
+TEST_F(MetalSplatPipelineTest, AGpuOrderBlendsPartialAndLodOpacitiesOverTheBackground) {
+  constexpr float kCentreFalloff = 0.991f;
+  constexpr float kBackground[3] = {0.05f, 0.05f, 0.08f};
+  constexpr float kColour[3] = {0.6f, 0.2f, 0.4f};
+  const auto drawOne = [&](float alpha) {
+    splat::SplatCloud cloud;
+    cloud.positions = {0, 0, -2.5f};
+    cloud.colors = {kColour[0], kColour[1], kColour[2]};
+    cloud.alphas = {alpha};
+    cloud.covariances = {0.05f, 0, 0, 0.05f, 0, 0.05f};
+    auto world = MetalWorld::upload(gpu_->device, cloud, 0);
+    EXPECT_NE(world, nullptr);
+    EXPECT_TRUE(compute_->configureFlatWorld(1));
+    const SplatRenderer::Range range{0, 1};
+    frame_.ranges = &range;
+    frame_.rangeCount = 1;
+    id<MTLCommandBuffer> sort = compute_->encodeVisibilityAndSort(frame_, 0, *world);
+    [sort commit];
+    [sort waitUntilCompleted];
+    return centreAfter([&](id<MTLCommandBuffer> cmd) {
+      pipeline_.encode(cmd, *target_, drawable_, compute_->uniforms(0), world.get(), 0,
+                       {compute_->projected(), compute_->order(), compute_->drawArguments(0)}, 0,
+                       true);
+    });
+  };
+  const auto expect = [&](const std::vector<uint8_t>& bgra, float coverage) {
+    for (int c = 0; c < 3; ++c) {
+      const float value = coverage * kColour[c] + (1 - coverage) * kBackground[c];
+      EXPECT_NEAR(bgra[2 - c], value * 255, 1.0f) << "channel " << c << " at " << coverage;
+    }
+  };
+  expect(drawOne(0.5f), 0.5f * kCentreFalloff);
+  expect(drawOne(0.1f), 0.1f * kCentreFalloff);
+  // An LOD opacity above one saturates the centre.
+  expect(drawOne(4.0f), 1.0f);
+}
+
 TEST_F(MetalSplatPipelineTest, ATargetColourReplacesTheDrawable) {
   ASSERT_TRUE(target_->resize(kSize, kSize, 0.5f, MTLPixelFormatBGRA8Unorm));
   ASSERT_TRUE(target_->ensureDepth(kSize / 2, kSize / 2));

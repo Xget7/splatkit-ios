@@ -74,8 +74,8 @@ TEST(MetalPrepareDrawArgumentsTest, WritesExactlyTheDrawBatches) {
   ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
 
   const auto* records = static_cast<const MTLDrawPrimitivesIndirectArguments*>(draws.contents);
-  // 64 splats split at 1/64, 2/64, 4/64 ... of the set.
-  const uint32_t expectedInstances[kDrawBatches] = {1, 1, 2, 4, 8, 16, 32};
+  // 64 splats split at 8/64, 16/64, 32/64 ... of the set.
+  const uint32_t expectedInstances[kDrawBatches] = {8, 8, 16, 32};
   uint32_t start = 0;
   for (uint32_t b = 0; b < kDrawBatches; ++b) {
     EXPECT_EQ(records[b].vertexCount, 4u);

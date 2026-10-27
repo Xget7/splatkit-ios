@@ -139,18 +139,36 @@ inline bool projectSplat(constant Camera& cam, Splat s, uint index, const device
   return true;
 }
 
+// Harmonics push many colours past one. The two spare bits pick a scale of 1 to kMaxColorScale,
+// the smallest that holds the brightest channel, so ordinary colours keep all ten bits and
+// only colours beyond kMaxColorScale clamp.
+inline uint packColor(float3 rgb) {
+  float scale = clamp(ceil(max3(rgb.r, rgb.g, rgb.b)), 1.0, float(kMaxColorScale));
+  return pack_float_to_unorm10a2(float4(rgb / scale, (scale - 1.0) / (kMaxColorScale - 1.0)));
+}
+
+inline float splatDepth(float log2Alpha) {
+  return kSplatDepth + clamp(log2Alpha, -kMaxLog2Alpha, kMaxLog2Alpha) * kAlphaDepthScale;
+}
+
 inline SplatVertex expandQuad(constant Camera& cam, Projected p, uint vertexId) {
   float2 corner = kCorners[vertexId];
   float2 delta = (corner.x * unpackHalf2(p.axis1) + corner.y * unpackHalf2(p.axis2)) * 2.0 * p.radius / cam.screenSize;
-  SplatVertex out;
-  out.position = float4(p.center + delta, kSplatDepth, 1.0);
-  out.gaussian = half2(p.radius * corner * kGaussianScale);
   half2 color1 = as_type<half2>(p.color1);
-  out.color = half4(as_type<half2>(p.color0), color1.x, log2(max(color1.y, HALF_MIN)));
+  float log2Alpha = log2(max(color1.y, HALF_MIN));
+  SplatVertex out;
+  out.position = float4(p.center + delta, splatDepth(log2Alpha), 1.0);
+  out.gaussian = half2(p.radius * corner * kGaussianScale);
+  out.color = packColor(float3(float2(as_type<half2>(p.color0)), color1.x));
   return out;
 }
 
 // log2 of the unclamped alpha. LOD opacities above 1 make it positive near the centre.
 inline half splatPower(SplatVertex in) {
-  return in.color.a - dot(in.gaussian, in.gaussian);
+  return half((in.position.z - kSplatDepth) / kAlphaDepthScale) - dot(in.gaussian, in.gaussian);
+}
+
+inline half3 splatColor(SplatVertex in) {
+  half4 packed = unpack_unorm10a2_to_half(in.color);
+  return packed.rgb * (1.0h + (kMaxColorScale - 1.0h) * packed.a);
 }
