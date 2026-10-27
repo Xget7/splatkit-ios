@@ -9,6 +9,10 @@ constant uint kSortPerSimdgroup = 32 * kSortPerThread;
 constant uint kSortSimdgroups = kSortThreads / 32;
 // The sorted keys are never read after the sort; the last pass writes only the values.
 constant bool kLastSortPass [[function_constant(5)]];
+// The sort is an argsort: the first pass takes each key's index as its value instead of reading
+// an identity permutation someone else wrote.
+constant bool kFirstSortPass [[function_constant(6)]];
+constant bool kReadsValues = !kFirstSortPass;
 
 kernel void prepareRadixSort(const device uint* count [[buffer(0)]],
                             device SortDispatch* dispatch [[buffer(1)]]) {
@@ -99,7 +103,7 @@ kernel void radixScatter(uint tid [[thread_index_in_threadgroup]],
                          uint lane [[thread_index_in_simdgroup]],
                          uint sg [[simdgroup_index_in_threadgroup]],
                          const device uint* keysIn [[buffer(0)]],
-                         const device uint* valuesIn [[buffer(1)]],
+                         const device uint* valuesIn [[buffer(1), function_constant(kReadsValues)]],
                          device uint* keysOut [[buffer(2)]],
                          device uint* valuesOut [[buffer(3)]],
                          const device uint* count [[buffer(4)]],
@@ -162,6 +166,6 @@ kernel void radixScatter(uint tid [[thread_index_in_threadgroup]],
     uint d = (keys[row] >> shift) & (kSortBins - 1);
     uint dst = digitBase[d] + blockBase[d] + sgCounts[sg][d] + ranks[row];
     if (!kLastSortPass) keysOut[dst] = keys[row];
-    valuesOut[dst] = valuesIn[e];
+    valuesOut[dst] = kFirstSortPass ? e : valuesIn[e];
   }
 }

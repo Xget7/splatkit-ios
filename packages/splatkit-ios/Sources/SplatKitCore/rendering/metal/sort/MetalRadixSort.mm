@@ -10,22 +10,28 @@ bool MetalRadixSort::create(id<MTLDevice> device, id<MTLLibrary> library) {
   prepare_ = metal::pipeline(device, library, "prepareRadixSort");
   histogram_ = metal::pipeline(device, library, "radixHistogram");
   scan_ = metal::pipeline(device, library, "radixScan");
-  for (bool last : {false, true}) {
+  // Both key widths take at least two passes, so no pass is both the first and the last.
+  auto scatter = [&](bool first, bool last) {
     MTLFunctionConstantValues* constants = [MTLFunctionConstantValues new];
+    [constants setConstantValue:&first type:MTLDataTypeBool atIndex:kFnFirstSortPass];
     [constants setConstantValue:&last type:MTLDataTypeBool atIndex:kFnLastSortPass];
-    (last ? scatterLast_ : scatter_) = metal::pipeline(device, library, "radixScatter", constants);
-  }
+    return metal::pipeline(device, library, "radixScatter", constants);
+  };
+  scatterFirst_ = scatter(true, false);
+  scatter_ = scatter(false, false);
+  scatterLast_ = scatter(false, true);
   // The shader's blocked layout and ballot masks use 32 lanes per SIMD group.
   if (histogram_.threadExecutionWidth != 32 || scan_.threadExecutionWidth != 32 ||
-      scatter_.threadExecutionWidth != 32 || scatterLast_.threadExecutionWidth != 32) {
+      scatterFirst_.threadExecutionWidth != 32 || scatter_.threadExecutionWidth != 32 ||
+      scatterLast_.threadExecutionWidth != 32) {
     LOGE("radix sort requires 32-lane SIMD groups");
     return false;
   }
   // Every buffer here is written by a GPU pass before any pass reads it, so none needs the CPU.
   totals_ = metal::buffer(device, kBins * sizeof(uint32_t), MTLResourceStorageModePrivate);
   dispatch_ = metal::buffer(device, 4 * sizeof(uint32_t), MTLResourceStorageModePrivate);
-  return prepare_ != nil && histogram_ != nil && scan_ != nil && scatter_ != nil &&
-         scatterLast_ != nil && totals_ != nil && dispatch_ != nil;
+  return prepare_ != nil && histogram_ != nil && scan_ != nil && scatterFirst_ != nil &&
+         scatter_ != nil && scatterLast_ != nil && totals_ != nil && dispatch_ != nil;
 }
 
 bool MetalRadixSort::reserve(uint32_t capacity) {
@@ -84,7 +90,9 @@ void MetalRadixSort::encode(id<MTLCommandBuffer> cmd, id<MTLBuffer> count, KeyBi
     [enc setBuffer:totals_ offset:0 atIndex:2];
     [enc dispatchThreadgroups:MTLSizeMake(kBins, 1, 1) threadsPerThreadgroup:threads];
 
-    [enc setComputePipelineState:pass + 1 == passes ? scatterLast_ : scatter_];
+    [enc setComputePipelineState:pass == 0            ? scatterFirst_
+                                 : pass + 1 == passes ? scatterLast_
+                                                      : scatter_];
     [enc setBuffer:keys_[in] offset:0 atIndex:0];
     [enc setBuffer:values_[in] offset:0 atIndex:1];
     [enc setBuffer:keys_[out] offset:0 atIndex:2];

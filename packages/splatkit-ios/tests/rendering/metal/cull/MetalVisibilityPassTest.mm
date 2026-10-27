@@ -3,6 +3,7 @@
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <cstring>
 #include <utility>
 #include <vector>
 
@@ -176,7 +177,7 @@ TEST_F(MetalVisibilityPassTest, RejectsRangesOutsideANewerSmallerWorld) {
   [cmd waitUntilCompleted];
 }
 
-TEST_F(MetalVisibilityPassTest, RejectsKeyAndValueBuffersSmallerThanTheReservation) {
+TEST_F(MetalVisibilityPassTest, RejectsAKeyBufferSmallerThanTheReservation) {
   VisibilityInput input(8);
   ASSERT_TRUE(visibility.reserve(8));
   const SplatRenderer::Range range{0, 8};
@@ -186,15 +187,13 @@ TEST_F(MetalVisibilityPassTest, RejectsKeyAndValueBuffersSmallerThanTheReservati
     return [gpu.device newBufferWithLength:length options:MTLResourceStorageModeShared];
   };
   id<MTLCommandBuffer> cmd = [gpu.queue commandBuffer];
-  auto project = [&](id<MTLBuffer> keys, id<MTLBuffer> values) {
+  auto project = [&](id<MTLBuffer> keys) {
     return visibility.pass.encodeProject(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1,
-                                         keys, values);
+                                         keys);
   };
-  EXPECT_FALSE(project(buffer(fits - 4), buffer(fits)));
-  EXPECT_FALSE(project(buffer(fits), buffer(fits - 4)));
-  EXPECT_FALSE(project(nil, buffer(fits)));
-  EXPECT_FALSE(project(buffer(fits), nil));
-  EXPECT_TRUE(project(buffer(fits), buffer(fits)));
+  EXPECT_FALSE(project(buffer(fits - 4)));
+  EXPECT_FALSE(project(nil));
+  EXPECT_TRUE(project(buffer(fits)));
   [cmd commit];
   [cmd waitUntilCompleted];
   EXPECT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
@@ -420,25 +419,43 @@ TEST_F(MetalVisibilityPassTest, CullsByFootprintAndDepthPlanesAndCapsTheQuadRadi
   EXPECT_NEAR(huge->radius, 512.0f / 400.0f, 0.02f);
 }
 
-TEST(MetalVisibilityPassKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIndices) {
+// The 16-bit key counts float steps above the near plane, 2^11 at a time: a fixed fraction of
+// the depth rather than of the whole depth range.
+uint32_t floatBits(float value) {
+  uint32_t bits;
+  std::memcpy(&bits, &value, sizeof(bits));
+  return bits;
+}
+
+uint32_t relativeDepthKey(float depth, float zNear) {
+  const uint32_t steps = floatBits(depth) - floatBits(zNear);
+  return std::min(steps >> 11, 65535u);
+}
+
+TEST(MetalVisibilityPassKeysTest, QuantizesCameraDepthRelativeToItAndSortsSourceAndLodIndices) {
   Gpu& gpu = Gpu::get();
-  constexpr uint32_t n = 8;
+  constexpr uint32_t n = 9;
+  constexpr float zNear = 0.05f;
   VisibilityInput input(n);
   auto* camera = static_cast<CameraUniform*>(input.uniforms.contents);
-  // Exactly representable planes: near=1, far=257. Also test camera translation.
-  camera->proj = splat::Mat4::perspective(1, 1, 1, 257);
+  camera->proj = splat::Mat4::perspective(1, 1, zNear, 200);
   camera->view.at(2, 3) = -10;
   camera->cameraPosition[2] = 10;
-  const float depths[n] = {200, 2.002f, 2.001f, 128, 1.001f, 257, 0.5f, -1};
+  // 0.4002 and 0.4003 m, a close-up's overlapping layers, share no key; 2.0001 and 2.0002 m,
+  // 0.005 % apart, share one and keep their compaction order. Behind the camera (-1) and past
+  // the far plane (250) are culled.
+  const float depths[n] = {150, 2.0002f, 2.0001f, 0.4003f, 0.4002f, 0.06f, 199, 250, -1};
   auto* source = static_cast<GpuSplat*>(input.splats.contents);
   for (uint32_t i = 0; i < n; ++i) source[i].position[2] = 10 - depths[i];
-  const uint32_t ids[n] = {0, 1, 2, 3, 4, 5, 6, 7};
+  const uint32_t ids[n] = {0, 1, 2, 3, 4, 5, 6, 7, 8};
   auto indices = [gpu.device newBufferWithBytes:ids
                                          length:sizeof(ids)
                                         options:MTLResourceStorageModeShared];
   auto count = [gpu.device newBufferWithBytes:&n
                                        length:sizeof(n)
                                       options:MTLResourceStorageModeShared];
+  constexpr uint32_t kept = n - 2;
+  const uint32_t expected[kept] = {5, 4, 3, 1, 2, 0, 6};
   for (bool indexed : {false, true}) {
     SCOPED_TRACE(indexed);
     VisibilityRig visibility;
@@ -452,26 +469,23 @@ TEST(MetalVisibilityPassKeysTest, QuantizesCameraDepthAndSortsBothSourceAndLodIn
     [cmd commit];
     [cmd waitUntilCompleted];
     ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
-    ASSERT_EQ(visibility.count(0), 6u);
+    ASSERT_EQ(visibility.count(0), kept);
     const auto keys = Gpu::get().readback<uint32_t>(visibility.depthKeys());
     const auto order = Gpu::get().readback<uint32_t>(visibility.order());
     const auto projected = Gpu::get().readback<ProjectedSplat>(visibility.projected());
-    // Same quantization bin keeps 1 before 2 within this single SIMD group, even
-    // though 2 is slightly nearer. Float32 ordering would reverse them.
-    const uint32_t expected[n - 2] = {4, 1, 2, 3, 0, 5};
     // The sort leaves the keys as the cull wrote them; sorted here they must be the
     // quantized depths of the expected order.
-    std::vector<uint32_t> sortedKeys(keys.begin(), keys.begin() + (n - 2));
+    std::vector<uint32_t> sortedKeys(keys.begin(), keys.begin() + kept);
     std::sort(sortedKeys.begin(), sortedKeys.end());
-    for (uint32_t i = 0; i < n - 2; ++i) {
+    for (uint32_t i = 0; i < kept; ++i) {
       ASSERT_LT(order[i], n);
       EXPECT_EQ(projected[order[i]].index, expected[i]);
-      const auto key = static_cast<uint32_t>((depths[expected[i]] - 1) / 256 * 65535);
-      EXPECT_EQ(sortedKeys[i], key);
-      EXPECT_LE(sortedKeys[i], 65535u);
+      // The GPU's view transform rounds the depth; one step of slack covers it.
+      EXPECT_NEAR(sortedKeys[i], relativeDepthKey(depths[expected[i]], zNear), 1u);
     }
-    EXPECT_EQ(sortedKeys[0], 0u);
-    EXPECT_EQ(sortedKeys[5], 65535u);
+    EXPECT_LT(sortedKeys[1], sortedKeys[2]);  // 0.4002 before 0.4003
+    EXPECT_EQ(sortedKeys[3], sortedKeys[4]);  // 2.0002 and 2.0001 tie
+    EXPECT_LT(sortedKeys[kept - 1], 65535u);  // 199 m stays inside the 16 bits
   }
 }
 

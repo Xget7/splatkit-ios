@@ -4,16 +4,18 @@
 constant bool kIndexedLOD [[function_constant(3)]];
 constant bool kQuantizedDepth [[function_constant(4)]];
 
-// Finite, forward-Z Metal perspective, as produced by Mat4::perspective.
-// Recover the camera's actual clip planes without changing the shared Camera ABI.
-// This is linear camera depth, not nonlinear post-projection depth or float16.
+// The bits of a positive float grow with its value, and their difference from the near plane's
+// counts steps of nearly constant relative size: 2^11 units are at most 2^-12 of the depth.
+// Close-up layers keep distinct keys where a linear mapping of a long depth range would tie
+// them; 0.05 to 200 m spans about 49,000 keys, and depths beyond 0.05 * 2^16 m share the last.
+// Finite, forward-Z Metal perspective, as produced by Mat4::perspective, gives the near plane.
+constant uint kDepthKeyShift = 11;
+constant uint kDepthKeyMax = 65535;
 static uint quantizedDepthKey(constant Camera& cam, float depth) {
   float zNear = cam.proj[3][2] / cam.proj[2][2];
-  float zFar = cam.proj[3][2] / (cam.proj[2][2] + 1.0f);
-  float normalized = clamp((depth - zNear) / (zFar - zNear), 0.0f, 1.0f);
-  // Reject nonfinite source depths before emission; keep their conversion defined.
-  ushort key = ushort(isfinite(normalized) ? normalized * 65535.0f : 0.0f);
-  return uint(key);  // upper 16 bits zero: two radix passes sort it
+  // max also keeps a nonfinite depth defined; the caller drops it.
+  uint steps = as_type<uint>(max(depth, zNear)) - as_type<uint>(zNear);
+  return min(steps >> kDepthKeyShift, kDepthKeyMax);  // upper 16 bits zero: two radix passes
 }
 
 static uint findRange(const device uint* starts, uint rangeCount, uint t) {
@@ -33,7 +35,6 @@ kernel void visibility(uint t [[thread_position_in_grid]],
                        const device uint* rangeStarts [[buffer(3)]],
                        constant uint& rangeCount [[buffer(4)]],
                        device uint* keys [[buffer(5)]],
-                       device uint* values [[buffer(6)]],
                        device atomic_uint* count [[buffer(7)]],
                        const device uint* shData [[buffer(8)]],
                        device Projected* projected [[buffer(9)]],
@@ -73,7 +74,6 @@ kernel void visibility(uint t [[thread_position_in_grid]],
   base = simd_broadcast(base, 0);
   if (visible) {
     keys[base + rank] = key;
-    values[base + rank] = base + rank;
     projected[base + rank] = p;
   }
 }

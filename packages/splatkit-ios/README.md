@@ -106,7 +106,7 @@ Dev-only switches; `--quality`, `--depth-key-bits`, `--lod-error-pixels` and `--
 
 | Switch | Effect |
 |---|---|
-| `--depth-key-bits 16` | Two radix passes; uint32 storage unchanged; ties may shimmer |
+| `--depth-key-bits 32` | Four radix passes on full float depth instead of the default two on 16-bit relative keys |
 | `--budget 4000000` | LOD capacity, at most 4M; not guaranteed quality |
 | `--quality ultra` | Starting level of the on-screen picker: `ultra`, `high` (default), `balanced`, `fast` |
 | `--shot tour` | ISS camera, +Y up: `overview`, `orbit` (default), `detail`, `flyby`, `tour` |
@@ -114,7 +114,7 @@ Dev-only switches; `--quality`, `--depth-key-bits`, `--lod-error-pixels` and `--
 | `--metalfx 0` | Upscales a `--scale` below 1 with the linear blit instead of MetalFX |
 | `--source-frame rdf` | Sets `sourceFrame`; the bundled kitchen loads as `rdf` without it |
 
-Defaults: 32-bit sorting, hardware raster.
+Defaults: 16-bit sort keys (32 on request), hardware raster.
 Culling, LOD and depth quantization are approximations pending visual acceptance.
 Private allocations still consume unified memory.
 The dev memory guard cannot cancel in-flight work or prevent allocation spikes.

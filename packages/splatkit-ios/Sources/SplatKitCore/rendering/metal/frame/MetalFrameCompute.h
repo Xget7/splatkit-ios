@@ -36,9 +36,9 @@ class MetalFrameCompute {
   MetalFrameCompute(const MetalFrameCompute&) = delete;
   MetalFrameCompute& operator=(const MetalFrameCompute&) = delete;
 
-  // Allocates the uniforms and builds the ordering pipelines with 32-bit keys. False only
-  // when the uniforms could not be allocated; a device that cannot order on the GPU leaves
-  // gpuSort() false.
+  // Allocates the uniforms and builds the ordering pipelines with the policy's default key
+  // width. False only when the uniforms could not be allocated; a device that cannot order on
+  // the GPU leaves gpuSort() false.
   bool create();
   bool gpuSort() const { return gpuSort_; }
   KeyBits depthBits() const { return visibility_.depthBits(); }
@@ -77,7 +77,7 @@ class MetalFrameCompute {
   id<MTLBuffer> uniforms(uint32_t slot) const { return uniforms_[slot]; }
   // The projections and the sorted order into them, and the slot's indirect draw arguments.
   id<MTLBuffer> projected() const { return visibility_.projected(); }
-  id<MTLBuffer> order() const { return sort_.values(); }
+  id<MTLBuffer> order() const { return sort_.order(); }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return visibility_.drawArguments(slot); }
 
   // Every compute pipeline of the ordering and the current selection, so tests can tell whether a

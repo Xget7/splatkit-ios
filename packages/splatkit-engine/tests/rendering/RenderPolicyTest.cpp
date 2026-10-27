@@ -11,6 +11,12 @@ RenderPolicySupport supportWith(RenderPolicy fallback) {
   return support;
 }
 
+// 16-bit keys, relative to the depth, matched 32-bit images above 50 dB on close-ups and halve the
+// radix passes; 32 stays available.
+TEST(RenderPolicy, DefaultsTo16BitDepthKeys) {
+  EXPECT_EQ(RenderPolicy{}.sortDepth, SortKeyBits::low16);
+}
+
 TEST(RenderPolicy, CopiesSupportedFieldsIntoTheEffectivePolicy) {
   RenderPolicy fallback;
   fallback.sortDepth = SortKeyBits::full32;

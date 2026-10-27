@@ -66,6 +66,7 @@ TEST_F(MetalSplatRendererTest, TheFallbackPolicyResolvesWithoutWarnings) {
   const DeviceCapabilities caps = renderer->deviceCapabilities();
   const RenderPolicyResolution fallback = resolveRenderPolicy(caps.policy.fallback, caps.policy);
   EXPECT_TRUE(fallback.warnings.empty());
+  EXPECT_EQ(caps.policy.fallback.sortDepth, RenderPolicy{}.sortDepth);
 }
 
 // VulkanSplatPipelineTest.CpuOrderDrawDropsSplatsUnderTheCutoff is the CPU-order half of this.

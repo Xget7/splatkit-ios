@@ -26,7 +26,7 @@ struct VisibilityRig {
               id<MTLBuffer> sh, int shDegree, const SplatRenderer::Range* ranges,
               uint32_t rangeCount, id<MTLBuffer> indices = nil, id<MTLBuffer> activeCount = nil) {
     if (!pass.encodeProject(cmd, slot, uniforms, splats, sh, shDegree, ranges, rangeCount,
-                            sort.keys(), sort.values(), indices, activeCount))
+                            sort.keys(), indices, activeCount))
       return false;
     sort.encode(cmd, pass.countBuffer(slot), pass.depthBits());
     pass.encodeIndirect(cmd, slot);
@@ -36,7 +36,7 @@ struct VisibilityRig {
   id<MTLBuffer> projected() const { return pass.projected(); }
   id<MTLBuffer> drawArguments(uint32_t slot) const { return pass.drawArguments(slot); }
   // The sorted indices into projected().
-  id<MTLBuffer> order() const { return sort.values(); }
+  id<MTLBuffer> order() const { return sort.order(); }
   // The depth keys as the cull wrote them, which the sort leaves in place.
   id<MTLBuffer> depthKeys() const { return sort.keys(); }
 };

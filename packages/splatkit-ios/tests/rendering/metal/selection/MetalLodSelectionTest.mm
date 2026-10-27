@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <set>
 #include "rendering/metal/MetalSplatRenderer.h"
 #include "rendering/metal/cull/MetalVisibilityPass.h"
@@ -167,11 +168,15 @@ TEST(MetalLodSelectionTest, OfflineFixtureRendersWithBoundedDrawCount) {
   renderer->setDrawableSize(width, height);
   ASSERT_TRUE(reference ? renderer->uploadWorld(tree.value().nodes, 1)
                         : renderer->uploadLodWorld(tree.value(), 1, budget));
-  // The example's quality presets draw at 0.5 px with 16-bit depth keys.
-  if (const char* errorPixels = std::getenv("SPLAT_LOD_ERROR_PIXELS")) {
+  // The example's quality presets draw at 0.5 px with 16-bit depth keys; SPLAT_LOD_SORT_BITS=32
+  // compares them with full float keys.
+  const char* errorPixels = std::getenv("SPLAT_LOD_ERROR_PIXELS");
+  const char* sortBits = std::getenv("SPLAT_LOD_SORT_BITS");
+  if (errorPixels || sortBits) {
     RenderPolicy policy;
-    policy.lodErrorPixels = std::strtof(errorPixels, nullptr);
-    policy.sortDepth = SortKeyBits::low16;
+    if (errorPixels) policy.lodErrorPixels = std::strtof(errorPixels, nullptr);
+    policy.sortDepth =
+        sortBits && std::strcmp(sortBits, "32") == 0 ? SortKeyBits::full32 : SortKeyBits::low16;
     std::string reason;
     ASSERT_TRUE(renderer->applyRenderPolicy(policy, &reason)) << reason;
   }

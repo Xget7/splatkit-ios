@@ -20,8 +20,9 @@ namespace splatkit {
 // Call reserve only while idle. All encodes and raster consumers use one command queue.
 class MetalVisibilityPass {
  public:
-  // Both widths sort by linear view depth: Full32 by its float bits, Low16 quantized between
-  // finite forward-Z Mat4::perspective planes. Shader key width and radix passes agree.
+  // Both widths sort by linear view depth: Full32 by its float bits, Low16 by steps of at most
+  // 0.024 % of the depth above the near plane of a finite forward-Z Mat4::perspective.
+  // Shader key width and radix passes agree.
   bool create(id<MTLDevice> device, id<MTLLibrary> library, KeyBits depthBits = KeyBits::Full32);
   // Rebuilds the visibility pipelines for a new key width, keeping every reserved buffer
   // and the radix scratch. The key width and the shader's quantized flag must agree, so
@@ -40,16 +41,15 @@ class MetalVisibilityPass {
   uint32_t capacity() const { return capacity_; }
 
   // Resets the slot's count, then culls and projects the ranges into `projected()`, writing one
-  // uint32 depth key into `keys` and the projection's index into `values` per survivor (Low16
-  // only uses the lower 16 bits of a key). Both buffers must hold at least capacity() entries,
-  // or this returns false. Invalid ranges fail before encoding any work. Empty ranges produce an
-  // empty draw. Caller owns uniforms/source buffers and must keep slot inputs unchanged until this
-  // frame completes. Ranges must be disjoint and refer to the reserved source.
+  // uint32 depth key per survivor into `keys` at its projection's index (Low16 only uses the
+  // lower 16 bits of a key). `keys` must hold at least capacity() entries, or this returns
+  // false. Invalid ranges fail before encoding any work. Empty ranges produce an empty draw.
+  // Caller owns uniforms/source buffers and must keep slot inputs unchanged until this frame
+  // completes. Ranges must be disjoint and refer to the reserved source.
   bool encodeProject(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms,
                      id<MTLBuffer> splats, id<MTLBuffer> sh, int shDegree,
                      const SplatRenderer::Range* ranges, uint32_t rangeCount, id<MTLBuffer> keys,
-                     id<MTLBuffer> values, id<MTLBuffer> indices = nil,
-                     id<MTLBuffer> activeCount = nil);
+                     id<MTLBuffer> indices = nil, id<MTLBuffer> activeCount = nil);
   // Turns the slot's survivor count into the indirect draw arguments. Encode it after the
   // sort of the same command buffer.
   void encodeIndirect(id<MTLCommandBuffer> cmd, uint32_t slot);

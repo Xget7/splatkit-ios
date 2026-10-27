@@ -40,5 +40,6 @@ inline constexpr size_t kFnShDegree = 0;
 inline constexpr size_t kFnIndexedLod = 3;
 inline constexpr size_t kFnQuantizedDepth = 4;
 inline constexpr size_t kFnLastSortPass = 5;
+inline constexpr size_t kFnFirstSortPass = 6;
 
 }  // namespace splatkit

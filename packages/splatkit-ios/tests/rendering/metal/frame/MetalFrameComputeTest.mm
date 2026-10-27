@@ -120,9 +120,9 @@ class MetalFrameComputeTest : public testing::Test {
   SplatRenderer::Frame frame_;
 };
 
-TEST_F(MetalFrameComputeTest, StartsWithGpuOrderingAndFullWidthKeys) {
+TEST_F(MetalFrameComputeTest, StartsWithGpuOrderingAndThePolicyDefaultKeyWidth) {
   EXPECT_TRUE(compute_->gpuSort());
-  EXPECT_EQ(compute_->depthBits(), KeyBits::Full32);
+  EXPECT_EQ(compute_->depthBits(), KeyBits::Low16);
   EXPECT_FALSE(compute_->hasLod());
   EXPECT_EQ(compute_->lodPixels(), 1.0f);
   EXPECT_NE(compute_->uniforms(0), nil);

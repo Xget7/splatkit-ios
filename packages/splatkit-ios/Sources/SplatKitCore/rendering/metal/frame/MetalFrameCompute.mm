@@ -44,8 +44,10 @@ bool MetalFrameCompute::create() {
     uniform = metal::buffer(device_, sizeof(CameraUniform));
     if (uniform == nil) return false;
   }
-  gpuSort_ =
-      visibility_.create(device_, library_, KeyBits::Full32) && sort_.create(device_, library_);
+  // The pipelines start at the policy's default key width, which the fallback policy reports.
+  const KeyBits bits =
+      RenderPolicy{}.sortDepth == SortKeyBits::low16 ? KeyBits::Low16 : KeyBits::Full32;
+  gpuSort_ = visibility_.create(device_, library_, bits) && sort_.create(device_, library_);
   lodPipelines_ = MetalLodSelection::Pipelines::compile(device_, library_);
   LOGI("Metal depth keys: %u bits, %u radix passes (uint32 scratch)",
        static_cast<uint32_t>(depthBits()), static_cast<uint32_t>(depthBits()) / 8);
@@ -204,7 +206,7 @@ id<MTLCommandBuffer> MetalFrameCompute::encodeVisibilityAndSort(const SplatRende
   const int degree = world.drawDegree(frame.shDegree);
   if (!visibility_.encodeProject(sort, slot, uniforms_[slot], world.splats(), world.harmonics(),
                                  degree, lod_ ? nullptr : frame.ranges, lod_ ? 0 : frame.rangeCount,
-                                 sort_.keys(), sort_.values(), lod_ ? lod_->indices() : nil,
+                                 sort_.keys(), lod_ ? lod_->indices() : nil,
                                  lod_ ? lod_->count() : nil)) {
     LOGE("invalid visibility ranges");
     return nil;
