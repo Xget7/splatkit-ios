@@ -30,7 +30,7 @@ view.resume()
 ```
 
 Forward `resume()`, `pause()` and `release()` from the host's lifecycle; the layer follows the view's window.
-The display link asks for 120 Hz, which an iPhone grants only when the host's Info.plist sets `CADisableMinimumFrameDurationOnPhone` to true.
+The display link asks for the display's maximum, which an iPhone grants above 60 Hz only when the host's Info.plist sets `CADisableMinimumFrameDurationOnPhone` to true; `maxFramesPerSecond` caps it.
 A world the app cannot hold calls `worldFailed` before it decodes, with the memory it needs and the format to prepare it as, instead of iOS ending the app; [LoadCost.cpp](../splat-core/src/loading/LoadCost.cpp) holds the estimate.
 A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xget7/splatkit/blob/main/scripts/prepare-world.sh), which also builds `.lodsplat` trees and colliders.
 
@@ -49,6 +49,7 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `focus(x:y:)` | Pick an anchor through normalized view coordinates against the collider; false keeps the previous anchor |
 | `animateOrbit(degrees:degreesPerSecond:easeInOut:)` | Run a finite engine-driven orbit and idle again when it finishes |
 | `renderScale` | Fraction of the view's resolution the splats are drawn at, 0.1 to 2 |
+| `maxFramesPerSecond` | Most frames a second drawn, 1 to 240; nil, the default, is the display's maximum. 60 halves the GPU work of a 120 Hz panel |
 | `spatialUpscaling` | Below a render scale of 1, upscale with MetalFX instead of a linear blit; on by default |
 | `cullMarginDegrees` | Angular margin kept drawn around the view |
 | `linearBlending` | Blend in linear light instead of the encoded colour space |

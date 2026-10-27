@@ -162,6 +162,24 @@ public final class SplatMetalView: UIView {
         }
     }
 
+    /// The most frames a second the view draws, clamped to 1 to 240, or nil, the default, for
+    /// the display's own maximum: 120 on ProMotion, which an iPhone grants only when the host's
+    /// Info.plist sets `CADisableMinimumFrameDurationOnPhone` to true. A cap of 60 halves the GPU
+    /// time and battery of a view that holds still most of the time. A value that is not finite
+    /// and positive keeps the previous cap.
+    public var maxFramesPerSecond: Float? {
+        didSet {
+            if let value = maxFramesPerSecond {
+                guard value.isFinite, value > 0 else {
+                    maxFramesPerSecond = oldValue
+                    return
+                }
+                maxFramesPerSecond = min(max(value, 1), 240)
+            }
+            renderThread.setMaxFramesPerSecond(maxFramesPerSecond)
+        }
+    }
+
     /// Below a render scale of one, upscale with MetalFX instead of a linear blit. On by
     /// default; devices without the scaler keep the blit.
     public var spatialUpscaling: Bool = true {

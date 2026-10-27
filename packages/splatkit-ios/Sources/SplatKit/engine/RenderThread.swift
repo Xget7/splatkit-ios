@@ -5,12 +5,23 @@ import SplatKitCore
 #endif
 
 /// Owns the native engine and drives it from a dedicated thread, one frame per display
-/// link tick, like the Android render thread.
+/// link tick and no more than the host's frame rate cap, like the Android render thread.
 ///
 /// The main thread never touches the engine. Everything is posted here; the calls that
 /// must complete before the layer goes away block the caller until done. Decoding runs
 /// on a loader queue so frames keep flowing; the engine uploads on its next frame.
 final class RenderThread {
+    // Without a cap the link asks for the most a ProMotion panel shows. The floor is as low as
+    // the system may slow the link to save power.
+    private static let displayMaximumFramesPerSecond: Float = 120
+    private static let floorFramesPerSecond: Float = 30
+
+    /// The display link range for a cap; nil asks for the display's maximum.
+    private static func frameRateRange(maxFramesPerSecond: Float?) -> CAFrameRateRange {
+        let maximum = maxFramesPerSecond ?? displayMaximumFramesPerSecond
+        return CAFrameRateRange(minimum: min(floorFramesPerSecond, maximum), maximum: maximum, preferred: maximum)
+    }
+
     private let thread: Thread
     private let ready = DispatchSemaphore(value: 0)
     private var runLoop: CFRunLoop!
@@ -19,6 +30,7 @@ final class RenderThread {
     // Created on the render thread; read by the any-thread getters (stats, camera pose).
     private(set) var engine: SKSplatEngine?
     private var rendering = false
+    private var maxFramesPerSecond: Float?
 
     /// False when Metal could not be brought up; every call is then a no-op.
     var isAvailable: Bool { engine != nil }
@@ -97,9 +109,16 @@ final class RenderThread {
             guard !rendering else { return }
             rendering = true
             let link = CADisplayLink(target: self, selector: #selector(frame(_:)))
-            link.preferredFrameRateRange = CAFrameRateRange(minimum: 30, maximum: 120, preferred: 120)
+            link.preferredFrameRateRange = Self.frameRateRange(maxFramesPerSecond: maxFramesPerSecond)
             link.add(to: RunLoop.current, forMode: .default)
             displayLink = link
+        }
+    }
+
+    func setMaxFramesPerSecond(_ fps: Float?) {
+        post { [self] in
+            maxFramesPerSecond = fps
+            displayLink?.preferredFrameRateRange = Self.frameRateRange(maxFramesPerSecond: fps)
         }
     }
 
