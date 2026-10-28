@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Dev app run file",
+  "description": "What the iOS and Android dev apps load and how they run it, passed whole as the --run argument (iOS) or the run extra (Android). Without one, the app opens the default world for interactive use.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version"],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "world": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["file"],
+      "properties": {
+        "file": {
+          "type": "string",
+          "minLength": 1,
+          "description": "An absolute path, or a name in the app's Documents (iOS, then the bundle) or external files dir (Android). A .json file streams a tiled world."
+        },
+        "source_frame": {
+          "type": "string",
+          "pattern": "^(?=.*[rlRL])(?=.*[udUD])(?=.*[bfBF])[rludbfRLUDBF]{3}$",
+          "description": "The frame the world and collider were written in, one letter for each of rl, ud and bf, such as rdf; defaults to the format's own frame."
+        },
+        "collider": { "type": "string", "minLength": 1, "description": "A collider GLB, found like file." }
+      }
+    },
+    "renderer": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "The quality level first, then each field given here.",
+      "properties": {
+        "quality": {
+          "enum": ["ultra", "high", "balanced", "fast", "medium", "low"],
+          "description": "iOS takes ultra, high, balanced or fast; Android takes ultra, high, medium or low. Defaults to high."
+        },
+        "budget": { "type": "integer", "minimum": 0, "maximum": 2147483647, "description": "Splats a hierarchy world loads, 0 for the device default." },
+        "subpixel": { "type": "number", "minimum": 0, "description": "Footprint in pixels under which a splat is not drawn." },
+        "lod_error_pixels": { "type": "number", "exclusiveMinimum": 0, "description": "Screen error a hierarchy node may cover before it splits." },
+        "lod_splat_limit": { "type": "integer", "minimum": 0, "maximum": 2147483647, "description": "Most splats a frame selects, 0 for the loaded budget." }
+      }
+    },
+    "pose": {
+      "type": "array",
+      "items": { "type": "number" },
+      "minItems": 5,
+      "maxItems": 5,
+      "description": "Starting camera x, y, z in metres, then yaw and pitch in radians."
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["seconds"],
+      "description": "A scripted run: HUD hidden, screen kept awake, touch and gyroscope off. Without orbit the camera turns once in place and logs the frame time distribution.",
+      "properties": {
+        "seconds": { "type": "number", "exclusiveMinimum": 0, "description": "Length of the turn or the orbit." },
+        "orbit": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["anchor", "degrees"],
+          "description": "iOS only: orbits anchor from pose after the first frame, then stops the run.",
+          "properties": {
+            "anchor": { "type": "array", "items": { "type": "number" }, "minItems": 3, "maxItems": 3 },
+            "degrees": { "type": "number", "not": { "const": 0 }, "description": "Azimuth sweep; positive turns toward +X." }
+          }
+        },
+        "capture_at": {
+          "type": "number",
+          "minimum": 0,
+          "description": "iOS only: seconds after the first frame to write Documents/capture.png."
+        },
+        "monitor": {
+          "type": "boolean",
+          "description": "iOS only: logs footprint, Metal allocation and thermal state at 2 Hz and stops the run on memory or thermal pressure."
+        }
+      }
+    }
+  }
+}

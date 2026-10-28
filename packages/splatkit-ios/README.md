@@ -102,19 +102,10 @@ Colours blend in the encoded space by default, on a `bgra8Unorm` layer; `linearB
 Start motion after `splatView(_:worldFrameReady:)`, not upload-only `worldReady`.
 Keep the view attached/resumed while loading; readiness means GPU completion, not visual acceptance.
 
-Dev-only switches; `--quality`, `--depth-key-bits`, `--lod-error-pixels` and `--lod-splat-limit` set the view's `renderPolicy`, the rest apply before renderer creation:
+The dev app takes its world, renderer settings, pose and scripted run from one [run file](../../scripts/benchmarks/run.schema.json), passed whole after `--run`.
+Its `renderer` section applies the quality level (`ultra`, `high` by default, `balanced`, `fast`), then `budget`, `subpixel`, `lod_error_pixels` and `lod_splat_limit`; `run.monitor` adds the resource monitor.
 
-| Switch | Effect |
-|---|---|
-| `--depth-key-bits 32` | Four radix passes on full float depth instead of the default two on 16-bit relative keys |
-| `--budget 4000000` | LOD capacity, at most 4M; not guaranteed quality |
-| `--quality ultra` | Starting level of the on-screen picker: `ultra`, `high` (default), `balanced`, `fast` |
-| `--shot tour` | ISS camera, +Y up: `overview`, `orbit` (default), `detail`, `flyby`, `tour` |
-| `--run-seconds 20` | Bounded run with resource monitoring |
-| `--metalfx 0` | Upscales a `--scale` below 1 with the linear blit instead of MetalFX |
-| `--source-frame rdf` | Sets `sourceFrame`; the bundled kitchen loads as `rdf` without it |
-
-Defaults: 16-bit sort keys (32 on request), hardware raster.
+Defaults: 16-bit sort keys (32 at the ultra level), hardware raster.
 Culling, LOD and depth quantization are approximations pending visual acceptance.
 Private allocations still consume unified memory.
 The dev memory guard cannot cancel in-flight work or prevent allocation spikes.

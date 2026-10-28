@@ -20,7 +20,7 @@ FILES = (
     ".github/workflows/ios.yml", ".github/workflows/engine.yml", ".github/workflows/core.yml",
     ".github/actions/changes", ".github/ci-filters.yml",
     ".github/ISSUE_TEMPLATE", ".github/PULL_REQUEST_TEMPLATE.md",
-    "docs/BENCHMARKS.md", "docs/benchmarks",
+    "docs/BENCHMARKS.md", "docs/benchmarks", "scripts/benchmarks/run.schema.json",
 )
 # React Native publishes this package at its repository root, with distribution/ files beside it.
 RN_PACKAGE = "packages/react-native-splatkit"
