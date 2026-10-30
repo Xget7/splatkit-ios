@@ -50,6 +50,8 @@ Lioness by Spenser Dickerson: [CC BY 4.0](https://superspl.at/scene/7e4e9bcb).
 
 ## Xiaomi Mi 9: Vulkan GPU pipeline
 
+For device-specific findings and rejected approaches, including reports without raw timings, see [Adreno 640 findings](gpu-refs/vulkan/README.md#adreno-640-findings).
+
 Physical Mi 9, Adreno 640, driver `0x801f6000`; minified Release, validation off, SH0, 1080x2261, 30-second turns.
 LOD, visibility, radix and indirect draw run on the GPU.
 
