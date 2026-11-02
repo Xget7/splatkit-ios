@@ -1,6 +1,9 @@
 #include "splatkit/rendering/GpuLayout.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstring>
+#include <limits>
 
 #include <gtest/gtest.h>
 
@@ -61,6 +64,78 @@ TEST(GpuLayout, HarmonicsPackedOverOldRecordsReplaceEveryWord) {
   const auto fresh = packSh(cloud, 1);
   for (std::size_t w = 0; w < shStride(1); ++w) EXPECT_EQ(reused[w], fresh[shStride(1) + w]);
   EXPECT_EQ(reused[shStride(1)], 0xffffffffu);  // past the range: untouched
+}
+
+// Decode the public packed layout independently of the packer, as the shader does.
+float decodeSh8(const uint32_t* record, size_t scalar) {
+  float magnitude = 0;
+  std::memcpy(&magnitude, record, sizeof(magnitude));
+  const uint32_t byte = (record[1 + scalar / 4] >> ((scalar % 4) * 8)) & 255u;
+  return (static_cast<int>(byte) - 128) / 127.0f * magnitude;
+}
+
+TEST(GpuLayout, ScaledHarmonicsHaveOneScaleAndFourCoefficientsPerWord) {
+  const size_t words[] = {0, 4, 7, 13};
+  const size_t halfWords[] = {0, 5, 12, 23};
+  for (int degree = 0; degree <= 3; ++degree) {
+    EXPECT_EQ(shStride(degree, ShStorage::scaled8), words[degree]);
+    EXPECT_EQ(shStride(degree), halfWords[degree]);
+    EXPECT_EQ(packSh(twoSplats(degree), degree, ShStorage::scaled8).size(), 2 * words[degree]);
+  }
+}
+
+TEST(GpuLayout, ScaledHarmonicsPreserveExtremaWithoutClippingAndBoundRoundingError) {
+  for (int degree = 1; degree <= 3; ++degree) {
+    auto cloud = twoSplats(degree);
+    const size_t coefficients = cloud.sh.size() / 2;
+    for (size_t i = 0; i < coefficients; ++i) {
+      // More than SPZ's original range, as rotated or authored coefficients may be.
+      const float value = -5.0f + 10.0f * static_cast<float>(i) / (coefficients - 1);
+      cloud.sh[i] = value;
+      cloud.sh[coefficients + i] = value * 0.01f;
+    }
+    const auto packed = packSh(cloud, degree, ShStorage::scaled8);
+    for (size_t splat = 0; splat < 2; ++splat) {
+      const float magnitude = splat == 0 ? 5.0f : 0.05f;
+      const auto* record = packed.data() + splat * shStride(degree, ShStorage::scaled8);
+      for (size_t i = 0; i < coefficients; ++i)
+        EXPECT_NEAR(decodeSh8(record, i), cloud.sh[splat * coefficients + i],
+                    magnitude / 254.0f + 1.0e-6f);
+      EXPECT_FLOAT_EQ(decodeSh8(record, 0), -magnitude);
+      EXPECT_FLOAT_EQ(decodeSh8(record, coefficients - 1), magnitude);
+    }
+  }
+}
+
+TEST(GpuLayout, ScaledHarmonicsTruncateBandsAndReplaceOnlyTheRequestedRecord) {
+  auto cloud = twoSplats(3);
+  for (size_t i = 0; i < cloud.sh.size(); ++i) cloud.sh[i] = static_cast<float>(i);
+  const auto packed = packSh(cloud, 1, ShStorage::scaled8);
+  const size_t stride = shStride(1, ShStorage::scaled8);
+  std::vector<uint32_t> reused(2 * stride, 0xffffffffu);
+  packShRange(cloud, 1, 1, 1, reused.data(), ShStorage::scaled8);
+  for (size_t w = 0; w < stride; ++w) EXPECT_EQ(reused[w], packed[stride + w]);
+  EXPECT_EQ(reused[stride], 0xffffffffu);
+  EXPECT_EQ(reused[stride - 1] >> 8, 0u);  // three padding bytes, not old tile data
+  // Degree 1 keeps nine values from the second record; discarded bands cannot set its scale.
+  EXPECT_FLOAT_EQ(decodeSh8(reused.data(), 8), 53.0f);
+}
+
+TEST(GpuLayout, ScaledHarmonicsRepresentZeroAndPropagateInvalidInput) {
+  auto cloud = twoSplats(1);
+  std::fill(cloud.sh.begin(), cloud.sh.end(), 0.0f);
+  auto packed = packSh(cloud, 1, ShStorage::scaled8);
+  for (size_t i = 0; i < 9; ++i) EXPECT_EQ(decodeSh8(packed.data(), i), 0.0f);
+  const float invalid[] = {std::numeric_limits<float>::quiet_NaN(),
+                           std::numeric_limits<float>::infinity(),
+                           -std::numeric_limits<float>::infinity()};
+  for (const float value : invalid) {
+    cloud.sh[4] = value;
+    packed = packSh(cloud, 1, ShStorage::scaled8);
+    EXPECT_TRUE(std::isnan(decodeSh8(packed.data(), 4)));
+    // Invalid input cannot contaminate the independently scaled next splat.
+    EXPECT_EQ(decodeSh8(packed.data() + shStride(1, ShStorage::scaled8), 4), 0.0f);
+  }
 }
 
 // The Metal renderer's buffers per splat: a 32 byte record, and for each splat a frame may

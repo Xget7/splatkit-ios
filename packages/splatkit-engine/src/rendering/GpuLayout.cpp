@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstring>
+#include <limits>
 
 #include "splat/lod/LodTree.h"
 #include "splat/math/Half.h"
@@ -34,10 +35,38 @@ uint32_t packHalf2(float a, float b) {
   return static_cast<uint32_t>(splat::toHalf(a)) | (static_cast<uint32_t>(splat::toHalf(b)) << 16);
 }
 
+// A scale per splat avoids clipping coefficients after frame conversion or tree building.
+void packSh8(const float* source, size_t coefficients, uint32_t* out) {
+  float magnitude = 0.0f;
+  for (size_t h = 0; h < coefficients; ++h) {
+    if (!std::isfinite(source[h])) {
+      magnitude = std::numeric_limits<float>::quiet_NaN();
+      break;
+    }
+    magnitude = std::max(magnitude, std::abs(source[h]));
+  }
+  std::memcpy(out, &magnitude, sizeof(magnitude));
+  const size_t words = (coefficients + 3) / 4;
+  for (size_t w = 0; w < words; ++w) {
+    uint32_t packed = 0;
+    for (size_t lane = 0; lane < 4; ++lane) {
+      const size_t h = w * 4 + lane;
+      if (h >= coefficients) break;
+      const int quantized = magnitude > 0.0f && std::isfinite(magnitude)
+                                ? static_cast<int>(std::lround((source[h] / magnitude) * 127.0f))
+                                : 0;
+      packed |= static_cast<uint32_t>(quantized + 128) << (lane * 8);
+    }
+    out[1 + w] = packed;
+  }
+}
+
 }  // namespace
 
-std::size_t shStride(int degree) {
-  return (shCoefficients(degree) * 3 + 1) / 2;
+std::size_t shStride(int degree, ShStorage storage) {
+  if (degree == 0) return 0;
+  const size_t coefficients = shCoefficients(degree) * 3;
+  return storage == ShStorage::scaled8 ? 1 + (coefficients + 3) / 4 : (coefficients + 1) / 2;
 }
 
 std::uint64_t gpuWorldBytes(const splat::LoadCost& cost) {
@@ -53,22 +82,27 @@ bool carriesSh(const splat::SplatCloud& cloud, int degree) {
          cloud.sh.size() >= n * 3 * shCoefficients(cloud.shDegree);
 }
 
-std::vector<uint32_t> packSh(const splat::SplatCloud& cloud, int degree) {
+std::vector<uint32_t> packSh(const splat::SplatCloud& cloud, int degree, ShStorage storage) {
   const std::size_t n = cloud.count();
-  std::vector<uint32_t> packed(n * shStride(degree), 0);
-  packShRange(cloud, degree, 0, n, packed.data());
+  std::vector<uint32_t> packed(n * shStride(degree, storage), 0);
+  packShRange(cloud, degree, 0, n, packed.data(), storage);
   return packed;
 }
 
 void packShRange(const splat::SplatCloud& cloud, int degree, size_t offset, size_t count,
-                 uint32_t* out) {
+                 uint32_t* out, ShStorage storage) {
+  if (degree == 0 || count == 0) return;
   const size_t n = cloud.count();
   const std::size_t sourceCoefficients = n == 0 ? 0 : cloud.sh.size() / (n * 3);
   const std::size_t halves = shCoefficients(degree) * 3;
-  const std::size_t stride = shStride(degree);
+  const std::size_t stride = shStride(degree, storage);
   // Each word is written once and never read: `out` may be write-combined mapped memory.
   for (std::size_t i = 0; i < count; ++i) {
     const float* src = &cloud.sh[(offset + i) * sourceCoefficients * 3];
+    if (storage == ShStorage::scaled8) {
+      packSh8(src, halves, out + i * stride);
+      continue;
+    }
     for (std::size_t w = 0; w < stride; ++w) {
       const std::size_t h = w * 2;
       const uint32_t low = h < halves ? splat::toHalf(src[h]) : 0u;

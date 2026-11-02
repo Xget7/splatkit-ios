@@ -1,0 +1,22 @@
+--------- beginning of main
+--------- beginning of system
+11-02 16:15:03.271  9954 10057 I SplatKit: validation layers: on
+11-02 16:15:03.445  9954 10057 I SplatKit: Vulkan pipeline cache: loaded 381618 B
+11-02 16:15:03.450  9954 10057 I SplatKit: Vulkan device: Adreno (TM) 640, API 1.1.128, driver 0x801f6000
+11-02 16:15:03.450  9954 10057 I SplatKit: Vulkan capabilities: subgroup 64, compute subgroup ops basic vote arithmetic ballot shuffle shuffle_relative, shared memory 32768 B, workgroup invocations 1024, storage buffer range 536870912 B, device-local heap 5767012352 B, float16 arithmetic yes, 16-bit storage no
+11-02 16:15:03.549  9954 10057 I SplatKit: benchmark queued: 0.001 s, waiting for a world
+11-02 16:15:03.706  9954 10057 I SplatKit: Swapchain 1080x2340, 1 quarter turns, 4 images, format 37, present mode 1
+11-02 16:15:03.706  9954 10057 I SplatKit: pipelines for format 37
+11-02 16:15:03.826  9954  9954 I SplatKit: surface changed to 2340x1080, display rotation 1
+11-02 16:15:05.819  9954 10057 I SplatKit: 0.0 fps, gpu 0.6 ms, sort 0.0 ms, cull 0.0 ms, select 0.0 ms, 0 drawn of 0 selected of 0, pos 0.00 0.00 0.00, yaw 0.00 pitch 0.00, fly, submitted frames, p95 0.0 ms, 1% low 0.0 fps, 0 dropped
+11-02 16:15:25.678  9954 10114 I SplatKit: decoded 1855777 splats in 15800 ms, sh degree 3, bounds y [-0.08, 0.62], reordered in 6323 ms
+11-02 16:15:26.000  9954 10057 I SplatKit: Vulkan GPU frame: resident 1855777, visible capacity 1855777, LOD 0, radix bits 16
+11-02 16:15:30.151  9954 10057 I SplatKit: Vulkan policy: 16-bit sort keys, 1.00px LOD error, 0 LOD splat limit
+11-02 16:15:30.155  9954 10057 I SplatKit: uploaded 1855777 splats in 4467 ms, sh degree 3
+11-02 16:15:31.539  9954 10057 I SplatKit: benchmark started: 1855777 splats, one turn over 0.001 s, gpu 45.9 C
+11-02 16:15:31.550  9954 10057 I SplatKit: benchmark window: start 0.0 end 5.9, 1 frames, frame mean 5863.5 p95 5863.5 p99 5863.5 max 5863.5, gpu mean 0.6 p95 0.6 p99 0.6, gpu samples 1, gpu 46.3 C
+11-02 16:15:31.550  9954 10057 I SplatKit: benchmark: 1 frames, 0.2 fps mean, frame ms mean 5863.5 p50 5863.5 p95 5863.5 max 5863.5
+11-02 16:15:31.550  9954 10057 I SplatKit: benchmark gpu ms: mean 0.6 p50 0.6 p95 0.6 max 0.6, gpu 46.3 C at the end
+11-02 16:15:31.550  9954 10057 I SplatKit: benchmark tails: frame p99 5863.5, gpu p99 0.6, gpu samples 1 of 1
+11-02 16:15:31.626  9954 10057 I SplatKit: 0.3 fps, gpu 0.6 ms, sort 0.0 ms, cull 0.0 ms, select 0.0 ms, 0 drawn of 1855777 selected of 1855777, pos 0.00 0.27 0.90, yaw 6.28 pitch 0.00, fly, submitted frames, p95 0.0 ms, 1% low 0.0 fps, 0 dropped
+11-02 16:15:33.558  9954 10057 I SplatKit: 0.0 fps, gpu 107.5 ms, sort 14.6 ms, cull 33.5 ms, select 0.0 ms, 1571303 drawn of 1855777 selected of 1855777, pos 0.00 0.27 0.90, yaw 6.28 pitch 0.00, fly, submitted frames, p95 0.0 ms, 1% low 0.0 fps, 0 dropped

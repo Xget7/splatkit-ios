@@ -1,0 +1,12 @@
+IsStatusOverride: false
+ThermalEventListeners:
+	callbacks: 1
+	killed: false
+	broadcasts count: -1
+ThermalStatusListeners:
+	callbacks: 3
+	killed: false
+	broadcasts count: -1
+Thermal Status: 0
+Cached temperatures:
+HAL Ready: false

@@ -1,0 +1,13 @@
+{
+  "pixels": [
+    2344,
+    1082
+  ],
+  "mae_8bit": 0.16285296789537768,
+  "max_channel_error_8bit": 81.0,
+  "psnr_db": 52.05062762751262,
+  "pixels_any_difference_pct": 12.080594336111233,
+  "pixels_error_over_8_pct": 0.03134600947556352,
+  "colored_foreground_mae_8bit": 1.0158375843215066,
+  "limits": "one fixed view; no perceptual acceptance threshold; quantized SH8 approximate"
+}

@@ -69,15 +69,22 @@ struct alignas(8) ProjectedSplat {
 static_assert(sizeof(ProjectedSplat) == 32, "ProjectedSplat must match the shader struct");
 static_assert(offsetof(ProjectedSplat, index) == 28, "ProjectedSplat must match the shader struct");
 
-// Uints per splat of the harmonics buffer: bands 1 to `degree` as halves, channel fastest,
-// two per uint, each splat starting on a uint.
-std::size_t shStride(int degree);
+enum class ShStorage { float16, scaled8 };
+
+// Bands 1 to `degree`, channel fastest, each splat starting on a uint.
+// float16: two halves per uint. scaled8: one float max-absolute coefficient, then four
+// bytes per uint; decode each byte as (byte - 128) / 127 * maxAbs. Finite coefficients
+// are never clipped; rounding error is at most maxAbs / 254 (plus float rounding).
+// A nonfinite coefficient makes the packed scaled8 scale NaN.
+// Degree 0 has no record. The return value includes padding and the scaled8 header.
+std::size_t shStride(int degree, ShStorage storage = ShStorage::float16);
 
 // True when every splat carries harmonics up to `degree`.
 bool carriesSh(const splat::SplatCloud& cloud, int degree);
 
 // Requires cloud.shDegree >= degree.
-std::vector<uint32_t> packSh(const splat::SplatCloud& cloud, int degree);
+std::vector<uint32_t> packSh(const splat::SplatCloud& cloud, int degree,
+                             ShStorage storage = ShStorage::float16);
 
 // GPU bytes a world of this cost takes, sized after the Metal renderer: the records, the
 // per-splat draw buffers and the tree's selection data.
@@ -89,6 +96,6 @@ std::vector<GpuSplat> packSplats(const splat::SplatCloud& cloud);
 // Bounded staging for large resident worlds. The caller validates the range and capacity.
 void packSplatRange(const splat::SplatCloud& cloud, size_t offset, size_t count, GpuSplat* out);
 void packShRange(const splat::SplatCloud& cloud, int degree, size_t offset, size_t count,
-                 uint32_t* out);
+                 uint32_t* out, ShStorage storage = ShStorage::float16);
 
 }  // namespace splatkit
