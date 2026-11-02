@@ -1,7 +1,0 @@
-diff --git a/packages/splatkit-engine/src/engine/SplatEngine.cpp b/packages/splatkit-engine/src/engine/SplatEngine.cpp
-index ceb5146..c1c3148 100644
---- a/packages/splatkit-engine/src/engine/SplatEngine.cpp
-+++ b/packages/splatkit-engine/src/engine/SplatEngine.cpp
-@@ -335 +335 @@ void SplatEngine::driveBenchmark(float dt, const GpuWorldInfo& world) {
--  if (benchmark_.running()) camera_.look(benchmark_.step(dt, renderer_->lastGpuMillis()), 0.0f);
-+  if (benchmark_.running()) (void)benchmark_.step(dt, renderer_->lastGpuMillis());
