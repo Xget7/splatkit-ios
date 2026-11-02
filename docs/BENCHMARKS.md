@@ -2,7 +2,7 @@
 
 Historical measurements on physical phones, for the builds and settings listed below.
 Short runs do not establish sustained performance; hour-long thermal behaviour remains unmeasured.
-See [validation](VALIDATION.md) for reproduction and acceptance checks.
+See [validation](https://github.com/Xget7/splatkit/blob/main/docs/VALIDATION.md) for reproduction and acceptance checks.
 
 ## iPhone 17 Pro: Metal
 
@@ -10,7 +10,7 @@ Historical tooling smoke only, not representative performance acceptance: Power 
 One 30-second orbit averaged 119.2 FPS; a clipped 22-second moving-camera interval reported system consumption of 24.66 percentage points of battery per hour, brightness 55%, thermal state Nominal.
 This is the system's estimated rate during one short probe, not app-only drain, measured charge loss or sustained autonomy; no strategy A/B was run.
 The stock Instruments 27.1 template crashed twice; Blank plus the Power Profiler instrument captured and exported samples successfully.
-[Evidence and local trace paths](benchmarks/2026-10-23-ios-power-probe.json), [app log](benchmarks/2026-10-23-ios-power-probe.log), [workflow](VALIDATION.md#ios-power-comparisons).
+[Evidence and local trace paths](benchmarks/2026-10-23-ios-power-probe.json), [app log](benchmarks/2026-10-23-ios-power-probe.log), [workflow](https://github.com/Xget7/splatkit/blob/main/docs/VALIDATION.md#ios-power-comparisons).
 
 The [full-capture analysis](benchmarks/2026-10-23-ios-battery-analysis.json) extends the moving window through the end of the orbit: 26.21 battery percentage points/hour over 23.5 observed seconds, versus 24.66 in the earlier clipped 22-second window.
 The system rate peaked at 49.88 for one ~1-second sample and stayed above 40 for ~2 seconds; a ~4-second still tail after 2 seconds of settling averaged 4.72, not a sustained idle baseline.
@@ -50,7 +50,7 @@ Lioness by Spenser Dickerson: [CC BY 4.0](https://superspl.at/scene/7e4e9bcb).
 
 ## Xiaomi Mi 9: Vulkan GPU pipeline
 
-For device-specific findings and rejected approaches, including reports without raw timings, see [Adreno 640 findings](gpu-refs/vulkan/README.md#adreno-640-findings).
+For device-specific findings and rejected approaches, including reports without raw timings, see [Adreno 640 findings](https://github.com/Xget7/splatkit/blob/main/docs/gpu-refs/vulkan/README.md#adreno-640-findings).
 
 Physical Mi 9, Adreno 640, driver `0x801f6000`; minified Release, validation off, SH0, 1080x2261, 30-second turns.
 LOD, visibility, radix and indirect draw run on the GPU.

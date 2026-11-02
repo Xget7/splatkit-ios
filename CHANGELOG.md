@@ -13,6 +13,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alp
 
 - Breaking: an SPZ loads in the frame its coordinate system tag declares, else in the SPZ default `rub`, and a collider GLB in glTF's `rub`; an untagged World Labs Marble export and its collider need `sourceFrame = .rdf`.
 
+## [0.1.0-beta.2] - 2026-10-23
+
+- Refresh the pinned XCFramework and checksum for the beta.2 shared engine release.
+
 ## [0.1.0-beta.1] - 2026-09-30
 
 ### Added
@@ -104,3 +108,5 @@ The XCFramework carries the same engine as alpha.4; only the Swift sources and t
 [0.1.0-alpha.3]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.3
 [0.1.0-alpha.2]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.1
+
+[0.1.0-beta.2]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-beta.2

@@ -14,11 +14,11 @@ For source builds, build the static libraries with `scripts/build-ios.sh` from t
 - the Swift sources in `Sources/SplatKit`,
 - a bridging header importing `SplatKit/SKSplatEngine.h`, with `Sources/SplatKitCore/include` in the header search paths,
 - `build/ios/lib` in the library search paths and `-lsplatkit_ios -lsplatkit_engine -lsplat_core -lspz -lzstd -lz -lc++` in the linker flags,
-- the Metal, QuartzCore, CoreMotion, ImageIO, CoreGraphics and UniformTypeIdentifiers frameworks.
+- the Metal, QuartzCore, CoreMotion, ImageIO, CoreGraphics and UniformTypeIdentifiers frameworks, plus MetalFX for device builds.
 
 `scripts/package-ios.sh` builds the XCFramework; `Package.swift` pins its release checksum.
 The source-built Objective-C engine exposes atomic `applyCameraRequest:reason:` and the effective `cameraState`; see [the bridge contract](Sources/SplatKitCore/include/SplatKit/SKSplatEngine.h).
-These additions require a rebuilt XCFramework.
+Current-source APIs listed under Unreleased in the [changelog](https://github.com/Xget7/splatkit-ios/blob/main/CHANGELOG.md), including `sourceFrame`, require a rebuilt XCFramework; the pinned beta.2 binary predates them.
 
 ```swift
 let view = SplatMetalView()
@@ -51,7 +51,7 @@ A PLY is converted offline by [`scripts/prepare-world.sh`](https://github.com/Xg
 | `renderScale` | Fraction of the view's resolution the splats are drawn at, 0.1 to 2 |
 | `maxFramesPerSecond` | Most frames a second drawn, 1 to 240; nil, the default, is the display's maximum. 60 halves the GPU work of a 120 Hz panel |
 | `spatialUpscaling` | Below a render scale of 1, upscale with MetalFX instead of a linear blit; on by default |
-| `cullMarginDegrees` | Angular margin kept drawn around the view |
+| `cullMarginDegrees` | Angular margin a streamed tileset keeps resident around the view |
 | `linearBlending` | Blend in linear light instead of the encoded colour space |
 | `splatBudget`, `residencyBudget` | Most splats drawn per frame, most splats resident on the GPU; a tiled scene that fits the residency whole is fetched whole, so turning never meets a coarse stand-in |
 | `shDegree`, `maxShDegree` | Harmonics drawn, harmonics kept from the file |

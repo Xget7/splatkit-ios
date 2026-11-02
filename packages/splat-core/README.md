@@ -29,7 +29,7 @@ Set `SPLAT_FIXTURES_DIR` to a folder with World Labs example files to run the in
 ## Converting a PLY
 
 The engine reads `.spz`, `.lodsplat` and tilesets.
-SPZ trees are built locally on the loader CPU; `.lodsplat` files carry a prepared tree ([load pipeline](../../docs/ARCHITECTURE.md#load-shared-cpu)).
+SPZ trees are built locally on the loader CPU; `.lodsplat` files carry a prepared tree ([load pipeline](https://github.com/Xget7/splatkit/blob/main/docs/ARCHITECTURE.md#load-shared-cpu)).
 [`scripts/prepare-world.sh`](../../scripts/prepare-world.sh) builds these tools and runs `splat-convert`, `splat_lod_build` and `splat_collider` in order; the [React Native guide](https://github.com/Xget7/splatkit/tree/main/packages/react-native-splatkit#preparing-a-world) explains its flags.
 Call the tools directly for the options below.
 A scene from SuperSplat, Polycam or the Mip-NeRF 360 set comes as a Gaussian splat PLY; `tools/ply2spz` (built with `SPLAT_CORE_BUILD_TOOLS`) packs it:
@@ -38,7 +38,7 @@ A scene from SuperSplat, Polycam or the Mip-NeRF 360 set comes as a Gaussian spl
 build/tools/ply2spz bicycle.ply bicycle.spz --sh 1 --keep 2
 ```
 
-`--sh N` keeps harmonics up to degree N (degree 3 costs 92 bytes per splat on the GPU) and `--keep N` keeps every Nth splat, for scenes too big for a phone.
+`--sh N` keeps harmonics up to degree N (degree 3 costs 92 bytes per splat in the default half-SH GPU buffer) and `--keep N` keeps every Nth splat, for scenes too big for a phone.
 `--prune-alpha T` drops the splats whose stored opacity is below T: at `1/255` (0.0039) only what draws nothing goes, so the picture is unchanged, and any higher value trades the faintest layers for speed, a choice to make with captures side by side.
 Neither tool prunes unless asked; the default output is the whole scene.
 `tools/splat-tile` takes the same `--sh` and `--prune-alpha` before partitioning a scene into streamed tiles of at most `--tile` splats (65536 by default), each with at most `--fan-out` children (4 by default).
