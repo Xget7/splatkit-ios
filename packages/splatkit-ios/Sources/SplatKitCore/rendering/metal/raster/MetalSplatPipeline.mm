@@ -1,13 +1,11 @@
 #include "rendering/metal/raster/MetalSplatPipeline.h"
 
+#include <TargetConditionals.h>
+
 #include "rendering/metal/layout/MetalDrawArguments.h"
 #include "splatkit/Log.h"
 
 namespace splatkit {
-
-namespace {
-constexpr MTLClearColor kBackground = {0.05, 0.05, 0.08, 1.0};
-}  // namespace
 
 bool MetalSplatPipeline::create(id<MTLDevice> device, id<MTLLibrary> library,
                                 MTLPixelFormat format) {
@@ -71,6 +69,8 @@ bool MetalSplatPipeline::create(id<MTLDevice> device, id<MTLLibrary> library,
     LOGE("background pipeline: %s", error.localizedDescription.UTF8String);
     return false;
   }
+  // Simulator GPUs lack the framebuffer fetch used by the saturation mask.
+#if !TARGET_OS_SIMULATOR
   // The saturation mask touches the depth buffer only.
   MTLRenderPipelineDescriptor* mask = [MTLRenderPipelineDescriptor new];
   mask.vertexFunction = [library newFunctionWithName:@"blitVertex"];
@@ -83,6 +83,7 @@ bool MetalSplatPipeline::create(id<MTLDevice> device, id<MTLLibrary> library,
     LOGE("saturation mask pipeline: %s", error.localizedDescription.UTF8String);
     return false;
   }
+#endif
   MTLDepthStencilDescriptor* depth = [MTLDepthStencilDescriptor new];
   depth.depthCompareFunction = MTLCompareFunctionLessEqual;
   depth.depthWriteEnabled = NO;
@@ -105,7 +106,8 @@ void MetalSplatPipeline::encode(id<MTLCommandBuffer> cmd, const MetalRenderTarge
   pass.colorAttachments[0].loadAction = MTLLoadActionClear;
   pass.colorAttachments[0].storeAction = MTLStoreActionStore;
   // Front to back accumulates onto nothing and puts the background under at the end.
-  pass.colorAttachments[0].clearColor = gpuOrder ? MTLClearColorMake(0, 0, 0, 0) : kBackground;
+  pass.colorAttachments[0].clearColor =
+      (gpuOrder || transparentBackground_) ? MTLClearColorMake(0, 0, 0, 0) : background_;
   // The depth buffer is nil when the caller could not allocate one.
   if (target.depth() != nil) {
     pass.depthAttachment.texture = target.depth();
@@ -121,11 +123,14 @@ void MetalSplatPipeline::encode(id<MTLCommandBuffer> cmd, const MetalRenderTarge
       [encoder setVertexBuffer:gpu.order offset:0 atIndex:2];
       id<MTLBuffer> arguments = gpu.arguments;
       for (uint32_t batch = 0; batch < kDrawBatches; ++batch) {
+#if !TARGET_OS_SIMULATOR
+        // Skip framebuffer fetch on the simulator; all batches still blend front to back.
         if (batch > 0) {
           [encoder setRenderPipelineState:maskPipeline_];
           [encoder setDepthStencilState:maskDepth_];
           [encoder drawPrimitives:MTLPrimitiveTypeTriangle vertexStart:0 vertexCount:3];
         }
+#endif
         [encoder setRenderPipelineState:projectedPipeline_];
         [encoder setDepthStencilState:splatDepth_];
         [encoder drawPrimitives:MTLPrimitiveTypeTriangleStrip
@@ -145,10 +150,10 @@ void MetalSplatPipeline::encode(id<MTLCommandBuffer> cmd, const MetalRenderTarge
                 instanceCount:drawCount];
     }
   }
-  if (gpuOrder) {
-    const float background[4] = {static_cast<float>(kBackground.red),
-                                 static_cast<float>(kBackground.green),
-                                 static_cast<float>(kBackground.blue), 1.0f};
+  if (gpuOrder && !transparentBackground_) {
+    const float background[4] = {static_cast<float>(background_.red),
+                                 static_cast<float>(background_.green),
+                                 static_cast<float>(background_.blue), 1.0f};
     [encoder setRenderPipelineState:backgroundPipeline_];
     [encoder setDepthStencilState:splatDepth_];
     [encoder setFragmentBytes:background length:sizeof(background) atIndex:0];

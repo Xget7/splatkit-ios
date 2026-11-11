@@ -113,7 +113,9 @@ TEST(TileStreamer, StreamsDownToTheFinestTilesNearTheCamera) {
   TileStreamer streamer(built.world, options);
   Frames frames;
   const TileView near = from({0, 0, 3}, 0.0001f);
+  EXPECT_TRUE(streamer.update(near, frames.completed).workPending);
   ASSERT_GE(settle(streamer, near, frames), 0);
+  EXPECT_FALSE(streamer.update(near, frames.completed).workPending);
 
   const Tileset& set = *built.world.tileset;
   std::size_t drawnSplats = 0;

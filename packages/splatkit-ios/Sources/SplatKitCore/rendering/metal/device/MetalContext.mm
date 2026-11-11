@@ -48,10 +48,13 @@ std::unique_ptr<MetalContext> MetalContext::create() {
     return nullptr;
   }
   // The embedded library uses SIMD reductions; reject unsupported GPUs before compiling it.
+  // The simulator reports Apple family 2 for the Mac GPU; let shader compilation decide.
+#if !TARGET_OS_SIMULATOR
   if (![c->device_ supportsFamily:MTLGPUFamilyApple7]) {
     LOGE("SplatKit requires Apple GPU family 7 or newer (A14/M1+)");
     return nullptr;
   }
+#endif
   c->queue_ = [c->device_ newCommandQueue];
   NSError* error = nil;
   c->library_ = metal::shaderLibrary(c->device_, &error);

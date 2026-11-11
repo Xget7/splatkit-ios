@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include "splatkit/Log.h"
 
 #include "rendering/metal/device/MetalShaderLibrary.h"
 #include "splatkit/rendering/GpuLayout.h"
@@ -15,7 +16,7 @@ bool validCloud(const splat::SplatCloud& cloud) {
   const size_t n = cloud.count();
   return n <= std::numeric_limits<uint32_t>::max() && cloud.positions.size() == n * 3 &&
          cloud.covariances.size() == n * 6 && cloud.colors.size() == n * 3 &&
-         cloud.alphas.size() == n;
+         cloud.alphas.size() == n && (cloud.labels.empty() || cloud.labels.size() == n);
 }
 
 }  // namespace
@@ -41,7 +42,24 @@ std::unique_ptr<MetalWorld> MetalWorld::upload(id<MTLDevice> device, const splat
   } else {
     std::memset(world->sh_.contents, 0, sizeof(uint32_t));
   }
+  if (!cloud.labels.empty()) {
+    const auto words = packLabels(cloud);
+    world->labels_ = metal::buffer(device, words.size() * sizeof(uint32_t));
+    if (!world->labels_) return nullptr;
+    std::memcpy(world->labels_.contents, words.data(), words.size() * sizeof(uint32_t));
+    world->labelCount_ = uint32_t{*std::max_element(cloud.labels.begin(), cloud.labels.end())} + 1;
+    for (auto& buffer : world->styles_) {
+      buffer = metal::buffer(device, labelStyleBytes(world->labelCount_));
+      if (!buffer) return nullptr;
+    }
+  }
   return world;
+}
+
+id<MTLBuffer> MetalWorld::styles(uint32_t slot, const LabelStyles* styles) const {
+  if (!labels_) return nil;
+  styleUploads_[slot].copy(styles_[slot].contents, labelCount_, styles);
+  return styles_[slot];
 }
 
 std::unique_ptr<MetalWorld> MetalWorld::slab(id<MTLDevice> device, uint32_t capacity,
@@ -61,6 +79,10 @@ std::unique_ptr<MetalWorld> MetalWorld::slab(id<MTLDevice> device, uint32_t capa
 }
 
 bool MetalWorld::uploadTile(uint32_t offset, const splat::SplatCloud& cloud) {
+  if (!cloud.labels.empty()) {
+    LOGE("labelled tile uploads are unsupported");
+    return false;
+  }
   if (!slab_ || !validCloud(cloud)) return false;
   const size_t n = cloud.count();
   if (offset > count_ || n > count_ - offset) return false;

@@ -93,6 +93,23 @@ TEST(MetalSplatPipelineCreateTest, ItIsReadyOnlyAfterCreateAndRemembersTheFormat
   EXPECT_EQ(pipeline.format(), MTLPixelFormatBGRA8Unorm_sRGB);
 }
 
+TEST_F(MetalSplatPipelineTest, BackgroundColorPreservesTransparentClearsOnBothOrderPaths) {
+  pipeline_.setBackgroundColor({0.2, 0.4, 0.6});
+  for (bool gpuOrder : {false, true}) {
+    for (bool transparent : {false, true}) {
+      pipeline_.setTransparentBackground(transparent);
+      const auto pixel = centreAfter([&](id<MTLCommandBuffer> cmd) {
+        pipeline_.encode(cmd, *target_, drawable_, compute_->uniforms(0), nullptr, 0, {}, 0,
+                         gpuOrder);
+      });
+      EXPECT_NEAR(pixel[0], transparent ? 0 : 153, 1);
+      EXPECT_NEAR(pixel[1], transparent ? 0 : 102, 1);
+      EXPECT_NEAR(pixel[2], transparent ? 0 : 51, 1);
+      EXPECT_EQ(pixel[3], transparent ? 0 : 255);
+    }
+  }
+}
+
 TEST_F(MetalSplatPipelineTest, WithoutAWorldTheCpuPassClearsToTheBackground) {
   const auto pixel = centreAfter([&](id<MTLCommandBuffer> cmd) { drawCpu(cmd, nullptr, 0); });
   EXPECT_NEAR(pixel[2], 13, 1);  // R, G, B of (0.05, 0.05, 0.08)

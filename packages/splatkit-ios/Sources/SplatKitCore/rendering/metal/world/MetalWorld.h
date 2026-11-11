@@ -1,3 +1,4 @@
+#include "../../../../../../splatkit-engine/src/labels/LabelStyleUpload.h"
 #pragma once
 
 #import <Metal/Metal.h>
@@ -6,6 +7,7 @@
 #include <array>
 #include <memory>
 
+#include "rendering/metal/layout/MetalFrameSlots.h"
 #include "rendering/metal/layout/MetalShaderTypes.h"
 #include "splatkit/rendering/SplatRenderer.h"
 
@@ -17,6 +19,7 @@ namespace splatkit {
 // The renderer guarantees no frame reads a slab range or order slot while it is written.
 class MetalWorld {
  public:
+  uint32_t labelCount() const { return labelCount_; }
   static std::unique_ptr<MetalWorld> upload(id<MTLDevice> device, const splat::SplatCloud& cloud,
                                             int maxShDegree);
   static std::unique_ptr<MetalWorld> slab(id<MTLDevice> device, uint32_t capacity, int shDegree);
@@ -30,6 +33,10 @@ class MetalWorld {
   int drawDegree(int requested) const {
     return std::clamp(std::min(requested, shDegree_), 0, kMaxShDegree);
   }
+  id<MTLBuffer> labels() const { return labels_; }
+  id<MTLBuffer> styles(uint32_t slot, const LabelStyles* styles) const;
+  std::size_t styleUploadBytes(uint32_t slot) const { return styleUploads_[slot].uploadedBytes(); }
+  std::size_t styleUploadOffset(uint32_t slot) const { return styleUploads_[slot].uploadOffset(); }
   id<MTLBuffer> splats() const { return splats_; }
   id<MTLBuffer> harmonics() const { return sh_; }
   id<MTLBuffer> order() const { return orders_[currentOrder_]; }
@@ -39,6 +46,10 @@ class MetalWorld {
   id<MTLDevice> device_ = nil;
   id<MTLBuffer> splats_ = nil;
   id<MTLBuffer> sh_ = nil;
+  id<MTLBuffer> labels_ = nil;
+  uint32_t labelCount_ = 0;
+  mutable std::array<LabelStyleUpload, kFramesInFlight> styleUploads_{};
+  std::array<id<MTLBuffer>, kFramesInFlight> styles_{};
   std::array<id<MTLBuffer>, 2> orders_{};
   uint32_t currentOrder_ = 0;
   uint32_t count_ = 0;

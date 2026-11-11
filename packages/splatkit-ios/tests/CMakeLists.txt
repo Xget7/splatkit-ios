@@ -29,3 +29,9 @@ target_compile_options(splatkit_ios_tests PRIVATE -Wall -Wextra -Werror -fobjc-a
 add_dependencies(splatkit_ios_tests splatkit_ios_shaders)
 include(GoogleTest)
 gtest_discover_tests(splatkit_ios_tests)
+
+# This consumer deliberately receives only the public target's usage requirements.
+add_executable(splatkit_metal_public_test rendering/metal/MetalRendererPublicTest.mm)
+target_link_libraries(splatkit_metal_public_test PRIVATE splatkit_ios GTest::gtest_main)
+target_compile_options(splatkit_metal_public_test PRIVATE -Wall -Wextra -Werror -fobjc-arc)
+gtest_discover_tests(splatkit_metal_public_test)

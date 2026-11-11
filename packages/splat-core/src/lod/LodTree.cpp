@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <stdexcept>
 #include <utility>
 
 #include "splat/math/SymmetricEigen.h"
@@ -241,10 +242,88 @@ void copyInLayoutOrder(const Nodes& nodes, const std::vector<uint32_t>& order, L
   }
 }
 
+using PartWeights = std::vector<std::pair<uint16_t, double>>;
+void mergePartWeights(PartWeights& sum, const PartWeights& child) {
+  PartWeights result;
+  result.reserve(sum.size() + child.size());
+  auto a = sum.begin();
+  auto b = child.begin();
+  while (a != sum.end() || b != child.end()) {
+    if (b == child.end() || (a != sum.end() && a->first < b->first))
+      result.push_back(*a++);
+    else if (a == sum.end() || b->first < a->first)
+      result.push_back(*b++);
+    else {
+      result.emplace_back(a->first, a->second + b->second);
+      ++a;
+      ++b;
+    }
+  }
+  sum.swap(result);
+}
+
+PartWeights leafWeights(const LodTree& tree, const LodNode& node) {
+  PartWeights leaves;
+  PartWeights sum;
+  for (uint32_t c = node.childStart; c < node.childStart + node.childCount; ++c)
+    if (tree.layout[c].childCount == 0)
+      leaves.emplace_back(tree.nodes.labels[c], tree.nodes.alphas[c]);
+  std::stable_sort(leaves.begin(), leaves.end(),
+                   [](const auto& a, const auto& b) { return a.first < b.first; });
+  for (const auto& entry : leaves) {
+    if (!sum.empty() && sum.back().first == entry.first)
+      sum.back().second += entry.second;
+    else
+      sum.push_back(entry);
+  }
+  return sum;
+}
+
+// One part label per node, in node order. A leaf keeps its splat's part; a merged
+// node takes the part whose leaves under it hold the most opacity, the lower part on a tie, so a
+// wide view styles each merged node like most of what it stands in for.
+void labelInLayoutOrder(const std::vector<uint16_t>& splatLabels,
+                        const std::vector<uint32_t>& order, LodTree& tree) {
+  const std::size_t total = order.size();
+  std::vector<uint16_t>& labels = tree.nodes.labels;
+  labels.assign(total, 0);
+  // Children follow their parent in the layout, so walking it backwards meets every child
+  // first. A merged node's weights live until its parent has summed them.
+  std::vector<uint32_t> ordinals(total);
+  uint32_t interiors = 0;
+  for (std::size_t i = 0; i < total; ++i)
+    if (tree.layout[i].childCount != 0) ordinals[i] = interiors++;
+  std::vector<PartWeights> merged(interiors);
+  PartWeights sum;
+  for (std::size_t i = total; i-- > 0;) {
+    const LodNode& node = tree.layout[i];
+    if (node.childCount == 0) {
+      labels[i] = splatLabels[order[i]];
+      continue;
+    }
+    sum = leafWeights(tree, node);
+    for (uint32_t c = node.childStart; c < node.childStart + node.childCount; ++c) {
+      if (tree.layout[c].childCount == 0) continue;
+      mergePartWeights(sum, merged[ordinals[c]]);
+      PartWeights().swap(merged[ordinals[c]]);
+    }
+    double heaviest = -1;
+    for (const auto& [part, weight] : sum) {
+      merged[ordinals[i]].emplace_back(part, weight);
+      if (weight > heaviest) {
+        heaviest = weight;
+        labels[i] = static_cast<uint16_t>(part);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 LodTree buildLodTree(SplatCloud cloud, const LodBuildOptions& options) {
   const std::size_t leaves = cloud.count();
+  if (!cloud.labels.empty() && cloud.labels.size() != leaves)
+    throw std::invalid_argument("part label count must match splat count");
   Nodes nodes = takeLeaves(cloud, leaves);
 
   LodTree tree;
@@ -255,6 +334,8 @@ LodTree buildLodTree(SplatCloud cloud, const LodBuildOptions& options) {
 
   const std::vector<uint32_t> order = layOutBreadthFirst(nodes, root, tree);
   copyInLayoutOrder(nodes, order, tree);
+  if (!cloud.labels.empty() && cloud.labels.size() == leaves)
+    labelInLayoutOrder(cloud.labels, order, tree);
   tree.nodes.shDegree = cloud.shDegree;
   tree.nodes.bounds = cloud.bounds;
   return tree;

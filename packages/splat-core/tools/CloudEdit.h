@@ -88,6 +88,12 @@ inline int pruneAlpha(spz::GaussianCloud& cloud, float opacity) {
 // Truncates the harmonics to `degree`; spz stores them per point, coefficient major.
 inline void truncateSh(spz::GaussianCloud& cloud, int degree) {
   if (degree >= cloud.shDegree) return;
+  // A zero-byte copy still cannot take an element address from an empty vector.
+  if (degree == 0) {
+    cloud.sh.clear();
+    cloud.shDegree = 0;
+    return;
+  }
   const int from = (cloud.shDegree + 1) * (cloud.shDegree + 1) - 1;
   const int to = (degree + 1) * (degree + 1) - 1;
   std::vector<float> sh(static_cast<size_t>(cloud.numPoints) * to * 3);

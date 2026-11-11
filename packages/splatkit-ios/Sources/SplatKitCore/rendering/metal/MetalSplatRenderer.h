@@ -4,11 +4,14 @@
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <cstdint>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
 #include <vector>
+#include "rendering/metal/backdrop/MetalBackdrop.h"
 
+#include "SplatKit/metal/MetalRenderer.h"
 #include "rendering/metal/device/MetalContext.h"
 #include "rendering/metal/diagnostics/MetalFrameCapture.h"
 #include "rendering/metal/frame/MetalFrameCompute.h"
@@ -17,7 +20,6 @@
 #include "rendering/metal/presentation/MetalSurface.h"
 #include "rendering/metal/raster/MetalSplatPipeline.h"
 #include "rendering/metal/world/MetalWorld.h"
-#include "splatkit/rendering/SplatRenderer.h"
 
 namespace splatkit {
 
@@ -26,7 +28,7 @@ namespace splatkit {
 // and the offscreen target a render scale needs, and the world bound to them. The layer is
 // attached and sized by the view; the world stays through a detach. draw() is the frame
 // script over those parts. Render thread only, except where noted.
-class MetalSplatRenderer final : public SplatRenderer {
+class MetalSplatRenderer final : public MetalRenderer {
  public:
   // Null when the device has no Metal.
   static std::unique_ptr<MetalSplatRenderer> create();
@@ -37,10 +39,11 @@ class MetalSplatRenderer final : public SplatRenderer {
 
   // The layer to present to, or nil when the view is going away. The renderer sets its
   // device and pixel format; the view sets its size through `setDrawableSize`.
-  void setLayer(CAMetalLayer* layer);
+  void setLayer(CAMetalLayer* layer) override;
   // The layer's size in pixels. Rebuilds the offscreen target if there is one.
-  void setDrawableSize(uint32_t width, uint32_t height);
+  void setDrawableSize(uint32_t width, uint32_t height) override;
 
+  bool setSceneBackdrop(const SceneBackdrop& settings, std::string* reason) override;
   void setRenderScale(float scale) override;
   float renderScale() const override { return surface_->renderScale(); }
   void setSpatialUpscaling(bool enabled) override;
@@ -56,6 +59,7 @@ class MetalSplatRenderer final : public SplatRenderer {
   std::optional<std::uint64_t> availableMemory() const override;
   bool applyRenderPolicy(const RenderPolicy& policy, std::string* reason) override;
 
+  bool gpuFailed() override { return frameLoop_.gpuFailed(); }
   bool ready() const override { return surface_->ready(); }
   Extent drawExtent() const override { return surface_->drawExtent(); }
   uint32_t generation() const override { return surface_->generation(); }
@@ -71,13 +75,16 @@ class MetalSplatRenderer final : public SplatRenderer {
 
   // Any thread. A successful GPU frame of the current world has finished; uploads
   // alone and background frames do not qualify. Reset when the world is replaced.
+  bool hasCompletedWorldFrame() override {
+    return static_cast<const MetalSplatRenderer&>(*this).hasCompletedWorldFrame();
+  }
   bool hasCompletedWorldFrame() const { return frameLoop_.hasCompletedWorldFrame(); }
 
   // Pixels of a presented frame: BGRA, 8 bits each, rows top down, `width` by `height`.
   using CaptureHandler = MetalFrameCapture::Handler;
   // Hands the next frame's pixels to `handler`, from the GPU's completion thread. One
   // capture at a time; a request while one is pending replaces it.
-  void captureNextFrame(CaptureHandler handler);
+  void captureNextFrame(CaptureHandler handler) override;
   uint64_t submittedFrames() const override { return frameLoop_.submittedFrames(); }
   uint64_t completedFrames() override {
     return frameLoop_.gpuFailed() ? 0 : frameLoop_.completedFrames();
@@ -108,10 +115,17 @@ class MetalSplatRenderer final : public SplatRenderer {
 
  private:
   MetalSplatRenderer() = default;
+  void encodeScene(id<MTLCommandBuffer> cmd, id<MTLTexture> drawable, const Frame& frame,
+                   uint32_t slot, uint32_t drawCount, bool gpuOrder);
 
   std::unique_ptr<MetalContext> context_;
   MetalFrameLoop frameLoop_{kFramesInFlight};
   MetalSplatPipeline pipeline_;
+  std::array<float, 3> backdropBackground_{0.05f, 0.05f, 0.08f};
+  id<MTLLibrary> backdropLibrary_ = nil;
+  SceneBackdrop backdropSettings_;
+  std::map<MTLPixelFormat, std::unique_ptr<MetalBackdrop>> backdrops_;
+  MetalBackdrop* activeBackdrop_ = nullptr;
 
   std::unique_ptr<MetalFrameCompute> compute_;
   std::unique_ptr<MetalSurface> surface_;

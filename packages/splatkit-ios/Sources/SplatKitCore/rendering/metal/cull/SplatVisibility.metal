@@ -1,6 +1,15 @@
 #include "../layout/SplatTypes.metalh"
 #include "../layout/SplatProjection.metalh"
 
+constant bool kPartLabels [[function_constant(7)]];
+struct PartStyle {
+  packed_float3 tint;
+  float tintAmount;
+  float brightness;
+  float opacity;
+  float2 reserved;
+};
+struct PartStyles { PartStyle palette[10]; uint states[1]; };
 constant bool kIndexedLOD [[function_constant(3)]];
 constant bool kQuantizedDepth [[function_constant(4)]];
 
@@ -39,7 +48,9 @@ kernel void visibility(uint t [[thread_position_in_grid]],
                        const device uint* shData [[buffer(8)]],
                        device Projected* projected [[buffer(9)]],
                        const device uint* activeIndices [[buffer(10), function_constant(kIndexedLOD)]],
-                       const device uint* activeCount [[buffer(11), function_constant(kIndexedLOD)]]) {
+                       const device uint* activeCount [[buffer(11), function_constant(kIndexedLOD)]],
+                       const device ushort* labels [[buffer(12), function_constant(kPartLabels)]],
+                       const device PartStyles& styles [[buffer(13), function_constant(kPartLabels)]]) {
   const uint total = kIndexedLOD ? activeCount[0] : rangeStarts[rangeCount];
   bool visible = false;
   uint key = 0;
@@ -56,6 +67,22 @@ kernel void visibility(uint t [[thread_position_in_grid]],
     }
     Splat s = splats[index];
     visible = projectSplat(cam, s, index, shData, p);
+    if (kPartLabels && visible) {
+      uint state = styles.states[labels[index]];
+      PartStyle style = styles.palette[state];
+      if (style.tintAmount != 0 || style.brightness != 1 || style.opacity != 1) {
+      float2 rg = float2(as_type<half2>(p.color0));
+      float2 ba = float2(as_type<half2>(p.color1));
+      float3 rgb = float3(rg, ba.x);
+      if (cam.outputLinear == 1u) rgb = pow(rgb, float3(1.0 / kDisplayGamma));
+      rgb = mix(rgb, float3(style.tint), style.tintAmount) * style.brightness;
+      if (cam.outputLinear == 1u) rgb = pow(rgb, float3(kDisplayGamma));
+      p.color0 = as_type<uint>(half2(rgb.rg));
+      p.color1 = as_type<uint>(half2(rgb.b, ba.y * style.opacity));
+      visible = ba.y * style.opacity >= kQuadMinAlpha;
+      }
+    }
+    if (visible) revealGlow(cam, s.py, p);
     // Both key widths order by view depth, which the blend order along a view ray needs;
     // positive IEEE float bits sort in ascending numeric order. Behind the camera a
     // negative depth yields a key in the high half, after every visible splat, and

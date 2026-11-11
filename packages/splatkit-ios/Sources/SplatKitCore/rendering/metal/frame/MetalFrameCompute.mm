@@ -43,6 +43,8 @@ bool MetalFrameCompute::create() {
   for (auto& uniform : uniforms_) {
     uniform = metal::buffer(device_, sizeof(CameraUniform));
     if (uniform == nil) return false;
+    const CameraUniform initial{};
+    std::memcpy(uniform.contents, &initial, sizeof(initial));
   }
   // The pipelines start at the policy's default key width, which the fallback policy reports.
   const KeyBits bits =
@@ -152,7 +154,13 @@ void MetalFrameCompute::updateCamera(const SplatRenderer::Frame& frame, uint32_t
   u.cameraPosition[0] = frame.cameraPosition.x;
   u.cameraPosition[1] = frame.cameraPosition.y;
   u.cameraPosition[2] = frame.cameraPosition.z;
-  std::memcpy(uniforms_[slot].contents, &u, sizeof(u));
+  u.cameraPosition[3] = 1;
+  std::memcpy(uniforms_[slot].contents, &u, offsetof(CameraUniform, reveal));
+  if (!(revealCache_[slot] == frame.reveal)) {
+    std::memcpy(static_cast<char*>(uniforms_[slot].contents) + offsetof(CameraUniform, reveal),
+                &frame.reveal, sizeof(RevealUniform));
+    revealCache_[slot] = frame.reveal;
+  }
 }
 
 void MetalFrameCompute::adaptLodThreshold() {
@@ -207,7 +215,8 @@ id<MTLCommandBuffer> MetalFrameCompute::encodeVisibilityAndSort(const SplatRende
   if (!visibility_.encodeProject(sort, slot, uniforms_[slot], world.splats(), world.harmonics(),
                                  degree, lod_ ? nullptr : frame.ranges, lod_ ? 0 : frame.rangeCount,
                                  sort_.keys(), lod_ ? lod_->indices() : nil,
-                                 lod_ ? lod_->count() : nil)) {
+                                 lod_ ? lod_->count() : nil, world.labels(),
+                                 world.styles(slot, frame.labelStyles))) {
     LOGE("invalid visibility ranges");
     return nil;
   }

@@ -63,13 +63,22 @@ TEST_F(MetalFrameLoopTest, AnAcquiredSlotHoldsWaitIdleUntilItIsReleased) {
   for (uint32_t i = 0; i < kFramesInFlight; ++i) loop.release();
 }
 
-TEST_F(MetalFrameLoopTest, AFailedGpuRefusesFramesAndHoldsNoSlot) {
+TEST(MetalFailureLatch, AnUnsubmittedFrameCanReleaseItsSlotAndRetry) {
+  MetalFrameLoop loop(kFramesInFlight);
+  ASSERT_TRUE(loop.acquire());
+  loop.release();
+  EXPECT_FALSE(loop.gpuFailed());
+  EXPECT_TRUE(loop.acquire());
+  loop.release();
+}
+
+TEST(MetalFailureLatch, AFailedGpuRefusesFramesAndHoldsNoSlot) {
   MetalFrameLoop loop(kFramesInFlight);
   EXPECT_FALSE(loop.gpuFailed());
   loop.failureLatch()->store(true);
   EXPECT_TRUE(loop.gpuFailed());
   EXPECT_FALSE(loop.acquire());
-  EXPECT_TRUE(idleWithin(loop, std::chrono::seconds(5)));
+  loop.waitIdle();
   EXPECT_EQ(loop.lastGpuMillis(), 0.0);
 }
 

@@ -1,4 +1,5 @@
 #pragma once
+#include "splatkit/reveal/Reveal.h"
 
 #include <cstddef>
 #include <cstdint>
@@ -20,8 +21,9 @@ struct alignas(16) CameraUniform {
   // Pixels: a splat whose source sigma times its quad radius is smaller is not drawn.
   float minPixelRadius;
   float cameraPosition[4];
+  RevealUniform reveal;
 };
-static_assert(sizeof(CameraUniform) == 176);
+static_assert(sizeof(CameraUniform) == 208);
 static_assert(offsetof(CameraUniform, focal) == 128);
 static_assert(offsetof(CameraUniform, outputLinear) == 152);
 static_assert(offsetof(CameraUniform, minPixelRadius) == 156);
@@ -41,5 +43,8 @@ inline constexpr size_t kFnIndexedLod = 3;
 inline constexpr size_t kFnQuantizedDepth = 4;
 inline constexpr size_t kFnLastSortPass = 5;
 inline constexpr size_t kFnFirstSortPass = 6;
+inline constexpr size_t kFnPartLabels = 7;
 
 }  // namespace splatkit
+
+static_assert(offsetof(splatkit::CameraUniform, reveal) == 176);

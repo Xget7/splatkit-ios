@@ -30,6 +30,7 @@ namespace splatkit {
 // frame loop must outlive it. Encode only; draw() commits what is returned.
 class MetalFrameCompute {
  public:
+  bool prepareLabels() { return gpuSort_ && visibility_.createLabelPipelines(); }
   MetalFrameCompute(id<MTLDevice> device, id<MTLCommandQueue> queue, id<MTLLibrary> library,
                     MetalFrameLoop& frameLoop);
 
@@ -94,6 +95,7 @@ class MetalFrameCompute {
   float lodPixels() const { return lodThreshold_.pixels(); }
 
  private:
+  std::array<RevealUniform, kFramesInFlight> revealCache_{};
   // What the selection and sort completion handlers write, with the frame loop's failure latch
   // they set. The handlers hold a share of it: Metal documents no order between one command
   // buffer's handlers and another's, so a handler can still be running after the render

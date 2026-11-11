@@ -1,11 +1,14 @@
 #pragma once
 
+#include "splatkit/rendering/SceneBackdrop.h"
+
 #include <algorithm>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <vector>
@@ -20,7 +23,10 @@
 #include "splatkit/camera/WalkCamera.h"
 #include "splatkit/diagnostics/Benchmark.h"
 #include "splatkit/diagnostics/StatsPublisher.h"
+#include "splatkit/highlight/Highlight.h"
+#include "splatkit/pick/PickIndex.h"
 #include "splatkit/rendering/SplatRenderer.h"
+#include "splatkit/reveal/Reveal.h"
 
 namespace splatkit {
 
@@ -59,14 +65,70 @@ class SplatEngine {
   // Render thread, before a decode.
   RenderPolicyResolution setRenderPolicy(const RenderPolicy& requested);
 
-  void render(int64_t frameTimeNanos);
+  // Advance one vsync; true only when the renderer accepted a draw.
+  bool render(int64_t frameTimeNanos);
+  // Display-link/render thread, serialized with input and settings.
+  bool needsFrame() const;
+
+  using ViewDirection = WalkCamera::ViewDirection;
+  // Render thread. Opt in before drawing; disabled hosts do no snapshot work.
+  void setDrawnFrameQueriesEnabled(bool enabled);
+  // Any thread; normalized top-left xy in [0, 1], zero for no part. May take milliseconds.
+  // Queries use only the last successful draw. Picking ignores reveal and requires
+  // setPartPickingEnabled before loading.
+  std::uint16_t pick(float x, float y) const;
+  // Any thread; packed xyz to normalized top-left xy. Returns the in-front count,
+  // writing NaN before publication or behind the near plane.
+  std::size_t project(const float* points, std::size_t count, float* out) const;
+  // False before publication, leaving the output unchanged.
+  bool drawnDirection(ViewDirection& out) const;
+  // Render thread. Applies to the next successfully uploaded world; zero seconds disables it.
+  // Reject the whole request unless every value meets the RevealSettings bounds.
+  bool setReveal(const RevealSettings& settings);
 
   // Decodes an SPZ world. Thread safe. Errors are reported and leave the current world.
-  void loadWorld(const std::uint8_t* data, std::size_t size);
+  bool loadWorld(const std::uint8_t* data, std::size_t size);
+  bool loadWorld(const std::uint8_t* data, std::size_t size,
+                 const splat::SplatWorldLoader::LoadOptions& options);
+  bool loadWorldFile(const std::string& path, const splat::SplatWorldLoader::LoadOptions& options);
   // Decodes a collider GLB and builds its grid. Thread safe; applied on the next frame.
   void loadCollider(const std::uint8_t* data, std::size_t size);
   // The same from a file, mapped rather than copied through the host's heap.
-  void loadWorldFile(const std::string& path);
+  bool loadWorldFile(const std::string& path);
+  bool loadWorld(const std::uint8_t* data, std::size_t size, const std::uint8_t* labels,
+                 std::size_t labelsSize);
+  using LoadOptions = splat::SplatWorldLoader::LoadOptions;
+  bool loadWorld(const std::uint8_t* data, std::size_t size, const std::uint8_t* labels,
+                 std::size_t labelsSize, const LoadOptions& options);
+  bool loadWorldFile(const std::string& path, const std::string& labelsPath,
+                     const LoadOptions& options);
+  template <typename Path, std::enable_if_t<std::is_convertible_v<Path, std::string>, int> = 0>
+  bool loadWorldFile(const std::string& path, Path&& labelsPath) {
+    return loadWorldFile(path, std::string(std::forward<Path>(labelsPath)), LoadOptions{});
+  }
+
+  // Any thread. Supersedes decoding, pending uploads and completion events.
+  // Legacy calls retain last-completion ordering within the current reservation.
+  // A callback selected before supersession may finish afterward without blocking rendering.
+  uint64_t beginLoad();
+  bool loadWorld(uint64_t request, const std::uint8_t* data, std::size_t size,
+                 const std::uint8_t* labels = nullptr, std::size_t labelsSize = 0,
+                 const LoadOptions& options = {});
+  bool loadWorldFile(uint64_t request, const std::string& path, const std::string& labelsPath = {},
+                     const LoadOptions& options = {});
+  // Render thread. Requests before a labelled world arrives are rejected with a warning.
+  void highlightParts(const std::uint16_t* labels, std::size_t count);
+  // Render thread. Restyles current parts with a fade and every later highlight, across loads.
+  // Rejects the whole look unless every value meets the HighlightLook bounds.
+  bool setHighlightLook(const HighlightLook& look);
+  const HighlightLook& highlightLook() const { return highlightLook_; }
+  // Picking retains CPU geometry only when explicitly enabled before loading.
+  void setPartPickingEnabled(bool enabled) { partPickingEnabled_.store(enabled); }
+  // Render thread only, serialized with draws, loads and highlight changes.
+  std::uint16_t pickPart(const Ray& ray) const {
+    // Picking intentionally ignores the reveal sweep.
+    return picks_ ? picks_->pick(ray, highlight_ ? &highlight_->styles() : nullptr) : 0;
+  }
   void loadColliderFile(const std::string& path);
   // A tiled world from its index file; tiles stream in as the camera needs them. Thread
   // safe. Errors are reported and leave the current world.
@@ -84,6 +146,14 @@ class SplatEngine {
   void setCameraAnchor(splat::Vec3 point);
   bool orbit(float deltaAzimuth, float deltaElevation);
   bool dolly(float deltaRadius);
+  // Accepted limits cancel automatic rotation and framing, then clamp the pose immediately.
+  bool setOrbitLimits(const WalkCamera::OrbitLimits& limits) {
+    return camera_.setOrbitLimits(limits);
+  }
+  // Direction angles are radians. Holds through resize until a dolly or pose replaces it.
+  // Explicit framing replaces automatic rotation and any previous framing motion.
+  bool frameBounds(const splat::Bounds& bounds, float durationSeconds,
+                   std::optional<ViewDirection> from = std::nullopt);
   // Normalized view coordinates, top-left (0, 0), bottom-right (1, 1). False on a miss.
   bool focus(float x, float y);
   // A finite turn in degrees at degrees per second. False without an anchor or for
@@ -99,7 +169,15 @@ class SplatEngine {
 
   // What the host needs to know about loading. Ready events fire on the render thread
   // once the data is in use; failures fire on whichever thread found them.
-  enum class Event { worldReady = 0, worldFailed = 1, colliderReady = 2, colliderFailed = 3 };
+  enum class Event {
+    worldReady = 0,
+    worldFailed = 1,
+    colliderReady = 2,
+    colliderFailed = 3,
+    gpuFailed = 4,
+    worldFrameReady = 5,
+    labelsMismatch = 6
+  };
   using EventSink = std::function<void(Event, const std::string& message, uint32_t splatCount)>;
   void setEventSink(EventSink sink) { events_ = std::move(sink); }
 
@@ -110,6 +188,17 @@ class SplatEngine {
   // pixel each. Render thread.
   void setRenderScale(float scale) { renderer_->setRenderScale(scale); }
   float renderScale() const { return renderer_->renderScale(); }
+  // Render thread. Unsupported backends retain their existing clear and return a reason.
+  bool setSceneBackdrop(const SceneBackdrop& settings, std::string* reason = nullptr) {
+    auto* extension = dynamic_cast<SceneBackdropRenderer*>(renderer_.get());
+    if (extension != nullptr) {
+      if (!extension->setSceneBackdrop(settings, reason)) return false;
+      redrawNeeded_ = true;
+      return true;
+    }
+    if (reason != nullptr) *reason = "Scene backdrop is unsupported by this renderer";
+    return false;
+  }
   void setSpatialUpscaling(bool enabled) { renderer_->setSpatialUpscaling(enabled); }
   bool spatialUpscaling() const { return renderer_->spatialUpscaling(); }
 
@@ -184,6 +273,47 @@ class SplatEngine {
   const std::string& gpuDescription() const { return renderer_->deviceDescription(); }
 
  private:
+  struct FrameCamera;
+  struct DrawnView {
+    splat::Mat4 view;
+    splat::Mat4 projection;
+    splat::Mat4 cameraToWorld;
+    Extent extent;
+    Lens lens;
+    ViewDirection direction;
+    std::shared_ptr<const PickIndex> picks;
+    LabelStyles styles;
+    bool styled = false;
+    bool valid = false;
+  };
+  void publishView(const FrameCamera& camera, Extent extent);
+  void configureWorldFrame(SplatRenderer::Frame& frame, const FrameCamera& camera);
+  DrawnView publishedView() const;
+  bool drawnQueriesEnabled_ = false;
+  mutable std::mutex viewMutex_;
+  DrawnView drawnView_;
+  std::atomic<bool> loadsPending_{false};
+  bool streamingPending_ = false;
+  std::optional<splat::Bounds> requestedBounds_;
+  Extent requestedExtent_;
+  // Serializes reservations with upload and event selection, never host callbacks.
+  std::mutex loadMutex_;
+  uint64_t uploadedLoad_ = 0;
+  bool finishLoad(uint64_t request,
+                  const splat::Result<splat::SplatWorldLoader::WorldReport>& report);
+  RevealSettings revealSettings_;
+  bool updateReveal(float wallSeconds);
+  Reveal reveal_;
+  bool revealDrawn_ = false;
+  bool pollGpuEvents();
+  bool gpuFailureReported_ = false;
+  bool worldFramePending_ = false;
+  void preparePartPicking(splat::SplatWorldLoader::World& world);
+  std::atomic<bool> partPickingEnabled_{false};
+  std::shared_ptr<const PickIndex> picks_;
+  std::unique_ptr<Highlight> highlight_;
+  HighlightLook highlightLook_;
+  std::size_t labelCount_ = 0;
   static constexpr int kMaxShDegree = 3;
   static constexpr int kMinResidency = 100000;
   static constexpr int kMaxResidency = 32000000;

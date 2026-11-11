@@ -6,6 +6,22 @@
 namespace splatkit {
 namespace {
 
+TEST(SplatEngineEvents, ReportsTerminalGpuFailureOnceOnRender) {
+  class FailedRenderer : public StubRenderer {
+   public:
+    bool gpuFailed() override { return true; }
+  };
+  SplatEngine engine(std::make_unique<FailedRenderer>());
+  int failures = 0;
+  engine.setEventSink([&](SplatEngine::Event event, const std::string&, uint32_t) {
+    EXPECT_EQ(event, SplatEngine::Event::gpuFailed);
+    ++failures;
+  });
+  engine.render(1);
+  engine.render(2);
+  EXPECT_EQ(failures, 1);
+}
+
 // A host that sets a pose and reads it back before any frame ran must see the new pose,
 // even without a world.
 TEST(SplatEngineCamera, ATeleportIsReadableBeforeTheNextFrame) {

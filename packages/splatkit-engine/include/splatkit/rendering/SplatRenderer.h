@@ -1,4 +1,5 @@
 #pragma once
+#include "splatkit/reveal/Reveal.h"
 
 #include <cstdint>
 #include <optional>
@@ -9,6 +10,7 @@
 #include "splat/lod/LodTree.h"
 #include "splat/math/Mat4.h"
 #include "splat/math/Vec3.h"
+#include "splatkit/labels/LabelStyles.h"
 #include "splatkit/rendering/RenderPolicy.h"
 
 namespace splatkit {
@@ -69,6 +71,8 @@ class SplatRenderer {
 
   // True when a surface is up: frames can be drawn and worlds uploaded.
   virtual bool ready() const = 0;
+  virtual bool gpuFailed() { return false; }
+  virtual bool hasCompletedWorldFrame() { return false; }
   // Where the splats are drawn: the surface's size with the render scale applied.
   virtual Extent drawExtent() const = 0;
   // Counts the rebuilds of the surface's images. A frame drawn before one is gone.
@@ -119,6 +123,11 @@ class SplatRenderer {
     splat::Mat4 view = splat::Mat4::identity();
     splat::Mat4 proj = splat::Mat4::identity();
     splat::Vec3 cameraPosition;
+    // Borrowed during draw; generation changes copy states and palette into an available slot.
+    // State count must equal the highest world label plus one. Null restores captured styles.
+    const LabelStyles* labelStyles = nullptr;
+    // Appended to preserve existing aggregate initializers. Positive infinity means idle.
+    RevealUniform reveal;
   };
   // Records and presents one frame. Returns false when nothing was presented, e.g. the
   // surface was rebuilt instead; the caller keeps the order for the next frame.

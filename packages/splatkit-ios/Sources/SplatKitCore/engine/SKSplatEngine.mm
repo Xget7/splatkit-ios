@@ -1,4 +1,5 @@
 #import "SplatKit/SKSplatEngine.h"
+#include "engine/SKEventMapping.h"
 
 #include <memory>
 #include <optional>
@@ -6,9 +7,9 @@
 #include <string_view>
 #include <vector>
 
+#include "SplatKit/metal/MetalRenderer.h"
 #include "diagnostics/SKPngWriter.h"
 #include "engine/SKTypeConversions.h"
-#include "rendering/metal/MetalSplatRenderer.h"
 #include "splat/core/CoordinateFrame.h"
 #include "splatkit/Log.h"
 #include "splatkit/engine/SplatEngine.h"
@@ -32,7 +33,7 @@ std::optional<splat::CoordinateFrame> parseFrame(NSString* letters) {
 }  // namespace
 
 @implementation SKSplatEngine {
-  splatkit::MetalSplatRenderer* _renderer;  // owned by the engine
+  splatkit::MetalRenderer* _renderer;  // owned by the engine
   std::unique_ptr<splatkit::SplatEngine> _engine;
   bool _awaitingWorldFrame;
   uint32_t _worldFrameSplatCount;
@@ -40,12 +41,12 @@ std::optional<splat::CoordinateFrame> parseFrame(NSString* letters) {
 
 + (nullable instancetype)create {
   splatkit::setLogSink(&nslogSink);
-  auto renderer = splatkit::MetalSplatRenderer::create();
+  auto renderer = splatkit::MetalRenderer::create();
   if (!renderer) return nil;
   return [[self alloc] initWithRenderer:std::move(renderer)];
 }
 
-- (instancetype)initWithRenderer:(std::unique_ptr<splatkit::MetalSplatRenderer>)renderer {
+- (instancetype)initWithRenderer:(std::unique_ptr<splatkit::MetalRenderer>)renderer {
   self = [super init];
   if (self == nil) return nil;
   _renderer = renderer.get();
@@ -60,7 +61,8 @@ std::optional<splat::CoordinateFrame> parseFrame(NSString* letters) {
       strongSelf->_worldFrameSplatCount = splatCount;
     }
     if (strongSelf.eventHandler == nil) return;
-    strongSelf.eventHandler(static_cast<SKSplatEvent>(event), @(message.c_str()), splatCount);
+    const auto mapped = splatkit::publicEvent(event);
+    if (mapped) strongSelf.eventHandler(*mapped, @(message.c_str()), splatCount);
   });
   return self;
 }

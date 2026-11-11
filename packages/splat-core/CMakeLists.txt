@@ -25,6 +25,7 @@ find_package(Threads REQUIRED)
 
 add_library(splat_core STATIC
   src/formats/SplatDecoder.cpp
+  src/formats/PartLabels.cpp
   src/formats/SpzDecoder.cpp
   src/formats/FrameTransform.cpp
   src/formats/SpzFrame.cpp
@@ -54,6 +55,7 @@ add_library(splat_core STATIC
   src/tiles/TileStreamer.cpp
 )
 target_include_directories(splat_core PUBLIC include)
+target_include_directories(splat_core SYSTEM PRIVATE third_party/picosha2)
 find_package(ZLIB REQUIRED)  # the SPZ gzip container is inflated here, with a ceiling
 target_link_libraries(splat_core PRIVATE spz nlohmann_json::nlohmann_json ZLIB::ZLIB PUBLIC Threads::Threads)
 target_compile_options(splat_core PRIVATE

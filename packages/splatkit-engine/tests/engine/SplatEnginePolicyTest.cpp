@@ -28,6 +28,83 @@ class PolicyRecordingRenderer final : public StubRenderer {
   RenderPolicy applied;
 };
 
+class BackdropRecordingRenderer final : public StubRenderer, public SceneBackdropRenderer {
+ public:
+  SceneBackdrop applied;
+  SceneBackdrop drawn;
+  bool draw(const Frame& frame) override {
+    drawn = applied;
+    return StubRenderer::draw(frame);
+  }
+  bool setSceneBackdrop(const SceneBackdrop& settings, std::string*) override {
+    applied = settings;
+    return true;
+  }
+};
+
+TEST(SplatEnginePolicy, SceneBackdropReachesTheRendererAndReportsUnsupported) {
+  auto renderer = std::make_unique<BackdropRecordingRenderer>();
+  auto* observed = renderer.get();
+  SplatEngine engine(std::move(renderer));
+  SceneBackdrop settings;
+  settings.enabled = true;
+  settings.gain = 0.7f;
+  ASSERT_TRUE(engine.setSceneBackdrop(settings));
+  EXPECT_TRUE(observed->applied.enabled);
+  EXPECT_FLOAT_EQ(observed->applied.gain, 0.7f);
+  engine.render(1);
+  EXPECT_EQ(observed->frames, 1u);
+  EXPECT_TRUE(observed->drawn.enabled);
+  EXPECT_FLOAT_EQ(observed->drawn.gain, 0.7f);
+  ASSERT_TRUE(engine.setSceneBackdrop({}));
+  engine.render(2);
+  EXPECT_FALSE(observed->drawn.enabled);
+  SplatEngine unsupported(std::make_unique<StubRenderer>());
+  std::string reason;
+  EXPECT_FALSE(unsupported.setSceneBackdrop(settings, &reason));
+  EXPECT_NE(reason.find("unsupported"), std::string::npos);
+}
+
+TEST(SplatEnginePolicy, BackgroundColorAppliesOnTheNextRedrawAndRejectsInvalidChannels) {
+  auto renderer = std::make_unique<PolicyRecordingRenderer>();
+  auto* observed = renderer.get();
+  observed->capabilities.policy.backgroundColor = true;
+  SplatEngine engine(std::move(renderer));
+  EXPECT_EQ(engine.renderPolicy().backgroundColor, (std::array<double, 3>{0.05, 0.05, 0.08}));
+  engine.render(1);
+  engine.render(2);
+  const auto frames = observed->frames;
+  auto policy = engine.renderPolicy();
+  policy.backgroundColor = {0.2, 0.4, 0.6};
+  ASSERT_TRUE(engine.setRenderPolicy(policy).accepted);
+  EXPECT_EQ(observed->applied.backgroundColor, policy.backgroundColor);
+  engine.render(3);
+  EXPECT_EQ(observed->frames, frames + 1);
+  for (const double invalid : {-0.1, 1.1, std::numeric_limits<double>::infinity(),
+                               std::numeric_limits<double>::quiet_NaN()}) {
+    auto bad = policy;
+    bad.backgroundColor[1] = invalid;
+    EXPECT_FALSE(engine.setRenderPolicy(bad).accepted);
+    EXPECT_EQ(engine.renderPolicy().backgroundColor, policy.backgroundColor);
+  }
+  observed->refuse = true;
+  auto refused = policy;
+  refused.backgroundColor = {0, 0, 0};
+  EXPECT_FALSE(engine.setRenderPolicy(refused).accepted);
+  EXPECT_EQ(engine.renderPolicy().backgroundColor, policy.backgroundColor);
+}
+
+TEST(SplatEnginePolicy, UnsupportedBackgroundColorReportsFallback) {
+  SplatEngine engine(std::make_unique<PolicyRecordingRenderer>());
+  auto policy = engine.renderPolicy();
+  policy.backgroundColor = {0, 0, 0};
+  const auto result = engine.setRenderPolicy(policy);
+  ASSERT_TRUE(result.accepted);
+  ASSERT_EQ(result.warnings.size(), 1u);
+  EXPECT_EQ(result.warnings[0].field, "backgroundColor");
+  EXPECT_EQ(result.effective.backgroundColor, RenderPolicy{}.backgroundColor);
+}
+
 TEST(SplatEnginePolicy, EffectivePolicyReachesTheRenderer) {
   auto renderer = std::make_unique<PolicyRecordingRenderer>();
   PolicyRecordingRenderer* observed = renderer.get();

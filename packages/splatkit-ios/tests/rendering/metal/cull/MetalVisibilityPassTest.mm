@@ -1,11 +1,14 @@
 #import <Metal/Metal.h>
+#include "../../../../../splatkit-engine/src/labels/LabelStyleUpload.h"
 
 #include <gtest/gtest.h>
 
 #include <algorithm>
 #include <cstring>
+#include <memory>
 #include <utility>
 #include <vector>
+#include "splatkit/labels/LabelStyles.h"
 
 #include "rendering/metal/cull/MetalVisibilityPass.h"
 #include "splat/math/Half.h"
@@ -531,6 +534,97 @@ TEST_F(MetalVisibilityPassTest, CompactsSimdTailsAndClearsReusedSlots) {
     }
     EXPECT_EQ(next, expected);
   }
+}
+
+TEST_F(MetalVisibilityPassTest, DefaultPipelinesHaveNoLabelBindings) {
+  auto& gpu = Gpu::get();
+  EXPECT_EQ(visibility.pass.pipelines().size(), 9u);
+  for (uint32_t degree = 0; degree < 4; ++degree) {
+    for (bool indexed : {false, true}) {
+      auto constants = [MTLFunctionConstantValues new];
+      const bool disabled = false;
+      [constants setConstantValue:&degree type:MTLDataTypeUInt atIndex:kFnShDegree];
+      [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:kFnQuantizedDepth];
+      [constants setConstantValue:&disabled type:MTLDataTypeBool atIndex:kFnPartLabels];
+      [constants setConstantValue:&indexed type:MTLDataTypeBool atIndex:kFnIndexedLod];
+      NSError* error = nil;
+      auto function = [gpu.library newFunctionWithName:@"visibility"
+                                        constantValues:constants
+                                                 error:&error];
+      ASSERT_NE(function, nil);
+      MTLComputePipelineReflection* reflection = nil;
+      auto pipeline = [gpu.device newComputePipelineStateWithFunction:function
+                                                              options:MTLPipelineOptionBindingInfo
+                                                           reflection:&reflection
+                                                                error:&error];
+      ASSERT_NE(pipeline, nil);
+      for (id<MTLBinding> binding in reflection.bindings) {
+        if (binding.type == MTLBindingTypeBuffer && binding.isUsed) EXPECT_LT(binding.index, 12u);
+      }
+    }
+  }
+}
+
+TEST_F(MetalVisibilityPassTest, WideLabelStylesUseSeparatePipelinesAndPreservePlainPipelines) {
+  auto& gpu = Gpu::get();
+  VisibilityInput input(1);
+  ASSERT_TRUE(visibility.reserve(1));
+  const auto plain = visibility.pass.pipelines();
+  const uint32_t label = 65535;
+  auto labels = [gpu.device newBufferWithBytes:&label
+                                        length:sizeof(label)
+                                       options:MTLResourceStorageModeShared];
+  const SplatRenderer::Range identityRange{0, 1};
+  auto plainCommand = [gpu.queue commandBuffer];
+  ASSERT_TRUE(visibility.pass.encodeProject(plainCommand, 0, input.uniforms, input.splats, nil, 0,
+                                            &identityRange, 1, visibility.sort.keys(), nil, nil));
+  [plainCommand commit];
+  [plainCommand waitUntilCompleted];
+  ASSERT_EQ(plainCommand.status, MTLCommandBufferStatusCompleted);
+  const auto original = gpu.readback<ProjectedSplat>(visibility.projected());
+  LabelStyles identity(65536);
+  auto identityTable = [gpu.device newBufferWithLength:labelStyleBytes(65536)
+                                               options:MTLResourceStorageModeShared];
+  LabelStyleUpload identityUpload;
+  identityUpload.copy(identityTable.contents, 65536, &identity);
+  ASSERT_TRUE(visibility.pass.createLabelPipelines());
+  auto identityCommand = [gpu.queue commandBuffer];
+  ASSERT_TRUE(visibility.pass.encodeProject(identityCommand, 0, input.uniforms, input.splats, nil,
+                                            0, &identityRange, 1, visibility.sort.keys(), nil, nil,
+                                            labels, identityTable));
+  [identityCommand commit];
+  [identityCommand waitUntilCompleted];
+  ASSERT_EQ(identityCommand.status, MTLCommandBufferStatusCompleted);
+  const auto identical = gpu.readback<ProjectedSplat>(visibility.projected());
+  EXPECT_EQ(std::memcmp(original.data(), identical.data(), sizeof(ProjectedSplat)), 0);
+  auto styles = std::make_unique<LabelStyles>(65536);
+  auto states = styles->states();
+  states[65535] = 1;
+  styles->setStates(states);
+  auto palette = styles->palette();
+  palette[1].tint[1] = 1;
+  palette[1].tintAmount = 1;
+  styles->setPalette(palette);
+  auto table = [gpu.device newBufferWithLength:labelStyleBytes(styles->states().size())
+                                       options:MTLResourceStorageModeShared];
+  LabelStyleUpload upload;
+  ASSERT_TRUE(upload.copy(table.contents, styles->states().size(), styles.get()));
+  ASSERT_TRUE(visibility.pass.createLabelPipelines());
+  const SplatRenderer::Range range{0, 1};
+  auto cmd = [gpu.queue commandBuffer];
+  ASSERT_TRUE(visibility.pass.encodeProject(cmd, 0, input.uniforms, input.splats, nil, 0, &range, 1,
+                                            visibility.sort.keys(), nil, nil, labels, table));
+  [cmd commit];
+  [cmd waitUntilCompleted];
+  ASSERT_EQ(cmd.status, MTLCommandBufferStatusCompleted);
+  ASSERT_EQ(visibility.count(0), 1u);
+  const auto projected = gpu.readback<ProjectedSplat>(visibility.projected());
+  const uint32_t expected = uint32_t{splat::toHalf(1.0f)} << 16;
+  EXPECT_EQ(projected[0].color0, expected);
+  const auto withLabels = visibility.pass.pipelines();
+  ASSERT_EQ(withLabels.size(), 17u);
+  EXPECT_TRUE(std::equal(plain.begin(), plain.end(), withLabels.begin()));
+  EXPECT_EQ(plain.size(), 9u);
 }
 
 }  // namespace

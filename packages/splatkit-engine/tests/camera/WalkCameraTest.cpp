@@ -503,3 +503,95 @@ TEST(WalkCamera, AttitudeInTheReferenceFrameLooksNorth) {
 
 }  // namespace
 }  // namespace splatkit
+
+TEST(WalkCamera, LimitsAndFramingUseInjectedTime) {
+  splatkit::WalkCamera camera;
+  splatkit::WalkCamera::OrbitLimits limits;
+  limits.minAzimuth = -0.5f;
+  limits.maxAzimuth = 0.5f;
+  limits.maxRadius = 10;
+  ASSERT_TRUE(camera.setOrbitLimits(limits));
+  camera.setAnchor({0, 0, 0});
+  ASSERT_TRUE(camera.orbit(10, 10));
+  EXPECT_FLOAT_EQ(camera.orbitAzimuth(), limits.maxAzimuth);
+  EXPECT_FLOAT_EQ(camera.orbitElevation(), limits.maxElevation);
+  ASSERT_TRUE(camera.dolly(100));
+  EXPECT_FLOAT_EQ(camera.orbitRadius(), limits.maxRadius);
+  const splat::Bounds bounds{{1, 1, 1}, {3, 3, 3}};
+  constexpr float kDuration = 2;
+  ASSERT_TRUE(camera.frameBounds(bounds, splatkit::Lens{}, {100, 100}, kDuration));
+  EXPECT_FALSE(camera.update(-1));
+  EXPECT_TRUE(camera.update(kDuration / 2));
+  EXPECT_FLOAT_EQ(camera.anchor()->x, 1);
+  EXPECT_TRUE(camera.update(kDuration / 2));
+  EXPECT_FLOAT_EQ(camera.anchor()->x, 2);
+  EXPECT_FALSE(camera.orbitAnimationRunning());
+  limits.minRadius = -1;
+  EXPECT_FALSE(camera.setOrbitLimits(limits));
+}
+
+TEST(WalkCamera, FramingInterpolatesDirectionAndRejectsInvalidTargets) {
+  splatkit::WalkCamera camera;
+  camera.setAnchor({0, 0, 0});
+  const splat::Bounds bounds{{-1, -1, -1}, {1, 1, 1}};
+  const float start = camera.orbitAzimuth();
+  const float startElevation = camera.orbitElevation();
+  ASSERT_TRUE(camera.frameBounds(bounds, splatkit::Lens{}, {100, 100}, 1,
+                                 splatkit::WalkCamera::ViewDirection{start + 1, 0.5f}));
+  EXPECT_TRUE(camera.needsUpdate());
+  camera.update(0.5f);
+  EXPECT_NEAR(camera.orbitAzimuth(), start + 0.5f, 1e-5f);
+  EXPECT_NEAR(camera.orbitElevation(), (startElevation + 0.5f) / 2, 1e-5f);
+  camera.update(0.5f);
+  EXPECT_NEAR(camera.orbitAzimuth(), start + 1, 1e-5f);
+  EXPECT_NEAR(camera.orbitElevation(), 0.5f, 1e-5f);
+  EXPECT_FALSE(camera.needsUpdate());
+  ASSERT_TRUE(camera.frameBounds(bounds, splatkit::Lens{}, {100, 100}, 0));
+  EXPECT_NEAR(camera.orbitAzimuth(), start + 1, 1e-5f);
+  EXPECT_NEAR(camera.orbitElevation(), 0.5f, 1e-5f);
+  EXPECT_FALSE(camera.frameBounds(bounds, splatkit::Lens{}, {100, 100}, 0,
+                                  splatkit::WalkCamera::ViewDirection{NAN, 0}));
+  ASSERT_TRUE(camera.frameBounds(bounds, splatkit::Lens{}, {}, 1,
+                                 splatkit::WalkCamera::ViewDirection{0, 0}));
+  EXPECT_FALSE(camera.needsUpdate());
+  EXPECT_FLOAT_EQ(camera.orbitAzimuth(), 0);
+}
+
+TEST(WalkCamera, ExplicitLimitsAndFramingReplaceAutomaticRotation) {
+  for (const bool framing : {false, true}) {
+    splatkit::WalkCamera camera;
+    splatkit::CameraRequest request;
+    request.mode = splatkit::CameraMode::Orbit;
+    request.orbitRadiansPerSecond = 1;
+    ASSERT_TRUE(camera.applyCameraRequest(request).accepted);
+    if (framing) {
+      ASSERT_TRUE(camera.frameBounds({{-1, -1, -1}, {1, 1, 1}}, {}, {100, 100}, 0));
+    } else {
+      ASSERT_TRUE(camera.setOrbitLimits({}));
+    }
+    EXPECT_FLOAT_EQ(camera.cameraState().orbitRadiansPerSecond, 0);
+    EXPECT_FALSE(camera.needsUpdate());
+    const auto view = camera.viewMatrix().m;
+    EXPECT_FALSE(camera.update(1));
+    EXPECT_EQ(camera.viewMatrix().m, view);
+  }
+}
+
+TEST(WalkCamera, NonpositiveStepsPreserveImmediatelyAppliedCommands) {
+  splatkit::WalkCamera camera;
+  camera.setPosition({0, 0, 5});
+  camera.setAnchor({0, 0, 0});
+  ASSERT_TRUE(camera.orbit(1, 0.5f));
+  splatkit::WalkCamera::OrbitLimits limits;
+  limits.maxAzimuth = 0.25f;
+  ASSERT_TRUE(camera.setOrbitLimits(limits));
+  for (const float dt : {0.0f, -1.0f}) {
+    EXPECT_FALSE(camera.update(dt));
+    EXPECT_FLOAT_EQ(camera.orbitAzimuth(), 0.25f);
+  }
+  ASSERT_TRUE(camera.frameBounds({{-1, -1, -1}, {1, 1, 1}}, {}, {100, 100}, 0,
+                                 splatkit::WalkCamera::ViewDirection{0, 0}));
+  EXPECT_FALSE(camera.update(0));
+  EXPECT_FLOAT_EQ(camera.orbitAzimuth(), 0);
+  EXPECT_FLOAT_EQ(camera.orbitElevation(), 0);
+}

@@ -87,6 +87,7 @@ void reorderSpatially(SplatCloud& cloud) {
   permute(cloud.covariances, 6, order);
   permute(cloud.colors, 3, order);
   permute(cloud.alphas, 1, order);
+  permute(cloud.labels, 1, order);
   if (!cloud.sh.empty()) permute(cloud.sh, cloud.sh.size() / n, order);
 }
 

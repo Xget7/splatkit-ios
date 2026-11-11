@@ -73,6 +73,7 @@ public final class SplatMetalView: UIView {
             switch event {
             case .worldReady: delegate.splatView(self, worldReady: Int(count))
             case .worldFrameReady: delegate.splatView(self, worldFrameReady: Int(count))
+            case .gpuFailed: delegate.splatView(self, gpuFailed: message)
             case .worldFailed: delegate.splatView(self, worldFailed: message)
             case .colliderReady: delegate.splatViewColliderReady(self)
             case .colliderFailed: delegate.splatView(self, colliderFailed: message)

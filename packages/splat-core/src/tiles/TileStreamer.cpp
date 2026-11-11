@@ -54,6 +54,9 @@ TileStreamer::Step TileStreamer::update(const TileView& view, std::uint64_t comp
     step.arrived.push_back({tile, scheduler_.offset(tile), cloud.get()});
   }
   step.loading = loader_.pending();
+  // A worker can finish between take() and pending(). The plan still includes that
+  // uncommitted tile, so a display link must not sleep on the worker count alone.
+  step.workPending = !plan.load.empty() || !retired_.empty();
 
   if (plan.draw != drawn_) {
     drawn_ = std::move(plan.draw);

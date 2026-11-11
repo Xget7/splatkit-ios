@@ -8,8 +8,8 @@ let package = Package(
     targets: [
         .binaryTarget(
             name: "SplatKitCore",
-            url: "https://github.com/Xget7/splatkit-ios/releases/download/v0.1.0-beta.2/SplatKitCore.xcframework.zip",
-            checksum: "a0bf4f27782195ba2e2b6e6d6a1dab0410e603d3feb07445691529e12f3ea2cc"
+            url: "https://github.com/Xget7/splatkit-ios/releases/download/v0.1.0-beta.3/SplatKitCore.xcframework.zip",
+            checksum: "a8f902652102299e1ed96f63c7c737666a9e2527a04dc8bfbe4ae465a9450cc2"
         ),
         .target(
             name: "SplatKit",

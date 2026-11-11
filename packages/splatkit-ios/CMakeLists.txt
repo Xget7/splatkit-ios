@@ -31,7 +31,14 @@ splatkit_embed_text(splatkit_ios_shaders
   ${SPLATKIT_METAL_DIR}
 )
 
+splatkit_embed_text(splatkit_ios_backdrop
+  ${SPLATKIT_METAL_DIR}/backdrop/SplatBackdrop.metal
+  BackdropShaderSource
+  ${SPLATKIT_METAL_DIR}
+)
+
 add_library(splatkit_ios STATIC
+  Sources/SplatKitCore/rendering/metal/backdrop/MetalBackdrop.mm
   Sources/SplatKitCore/diagnostics/SKPngWriter.mm
   Sources/SplatKitCore/rendering/metal/MetalSplatRenderer.mm
   Sources/SplatKitCore/rendering/metal/cull/MetalVisibilityPass.mm
@@ -62,7 +69,7 @@ find_library(SPLATKIT_METALFX_FRAMEWORK MetalFX)
 if(SPLATKIT_METALFX_FRAMEWORK)
   target_link_libraries(splatkit_ios PUBLIC "-framework MetalFX")
 endif()
-add_dependencies(splatkit_ios splatkit_ios_shaders)
+add_dependencies(splatkit_ios splatkit_ios_shaders splatkit_ios_backdrop)
 
 if(SPLATKIT_IOS_BUILD_TESTS)
   enable_testing()

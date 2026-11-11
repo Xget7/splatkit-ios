@@ -20,6 +20,7 @@ namespace splatkit {
 // Call reserve only while idle. All encodes and raster consumers use one command queue.
 class MetalVisibilityPass {
  public:
+  bool createLabelPipelines();
   // Both widths sort by linear view depth: Full32 by its float bits, Low16 by steps of at most
   // 0.024 % of the depth above the near plane of a finite forward-Z Mat4::perspective.
   // Shader key width and radix passes agree.
@@ -49,7 +50,8 @@ class MetalVisibilityPass {
   bool encodeProject(id<MTLCommandBuffer> cmd, uint32_t slot, id<MTLBuffer> uniforms,
                      id<MTLBuffer> splats, id<MTLBuffer> sh, int shDegree,
                      const SplatRenderer::Range* ranges, uint32_t rangeCount, id<MTLBuffer> keys,
-                     id<MTLBuffer> indices = nil, id<MTLBuffer> activeCount = nil);
+                     id<MTLBuffer> indices = nil, id<MTLBuffer> activeCount = nil,
+                     id<MTLBuffer> labels = nil, id<MTLBuffer> styles = nil);
   // Turns the slot's survivor count into the indirect draw arguments. Encode it after the
   // sort of the same command buffer.
   void encodeIndirect(id<MTLCommandBuffer> cmd, uint32_t slot);
@@ -71,6 +73,8 @@ class MetalVisibilityPass {
   static constexpr int kShDegrees = 4;
 
   bool createPipelines();
+  std::array<id<MTLComputePipelineState>, kShDegrees> labelled_{};
+  std::array<id<MTLComputePipelineState>, kShDegrees> indexedLabelled_{};
 
   id<MTLDevice> device_ = nil;
   id<MTLLibrary> library_ = nil;

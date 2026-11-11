@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -33,6 +34,9 @@ struct RenderPolicy {
   bool enableHiZOcclusion = false;
   bool enableEarlyTermination = true;
   SortKeyBits sortDepth = SortKeyBits::low16;
+  // Opaque background RGB in attachment colour space, finite channels in [0, 1].
+  // Does not affect transparent draws or a scene backdrop.
+  std::array<double, 3> backgroundColor = {0.05, 0.05, 0.08};
 };
 
 // What one backend can apply and the ranges it accepts. A field left false is not
@@ -47,6 +51,7 @@ struct RenderPolicySupport {
   bool enableHiZOcclusion = false;
   bool enableEarlyTermination = false;
   bool sortDepth = false;
+  bool backgroundColor = false;
   float minLodErrorPixels = 1e-6f;
   float maxLodErrorPixels = 3.402823466e38f;  // FLT_MAX
   float minSubpixelThreshold = 0.0f;

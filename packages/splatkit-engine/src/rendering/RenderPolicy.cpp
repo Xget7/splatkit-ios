@@ -44,6 +44,10 @@ bool validRenderPolicy(const RenderPolicy& policy, std::string* error) {
   if (policy.sortDepth != SortKeyBits::low16 && policy.sortDepth != SortKeyBits::full32) {
     return reject("sortDepth must be 16 or 32");
   }
+  for (const double channel : policy.backgroundColor) {
+    if (!std::isfinite(channel) || channel < 0 || channel > 1)
+      return reject("backgroundColor must be finite and in [0, 1]");
+  }
   return true;
 }
 
@@ -115,6 +119,12 @@ RenderPolicyResolution resolveRenderPolicy(const RenderPolicy& requested,
        result.effective.enableHiZOcclusion, "enableHiZOcclusion", "Hi-Z occlusion");
   flag(support.enableEarlyTermination, requested.enableEarlyTermination,
        result.effective.enableEarlyTermination, "enableEarlyTermination", "early termination");
+
+  if (support.backgroundColor) {
+    result.effective.backgroundColor = requested.backgroundColor;
+  } else if (requested.backgroundColor != result.effective.backgroundColor) {
+    warn("backgroundColor", "backgroundColor is not configurable on this backend");
+  }
 
   if (support.sortDepth) {
     result.effective.sortDepth = requested.sortDepth;

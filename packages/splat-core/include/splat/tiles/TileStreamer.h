@@ -37,6 +37,7 @@ class TileStreamer {
   struct Step {
     std::vector<Arrival> arrived;
     std::vector<std::uint32_t> failed;  // could not be read; drawn by their parents from now on
+    bool workPending = false;           // planned loads or GPU-pinned retirements still need a step
     bool drawChanged = false;           // the set of tiles to draw is not the last one
     std::size_t loading = 0;            // tiles queued or being read
   };

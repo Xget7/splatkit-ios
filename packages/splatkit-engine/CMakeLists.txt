@@ -19,6 +19,9 @@ endif()
 # diagnostics and the GPU record layout. A platform supplies a SplatRenderer and a log
 # sink and gets the whole engine.
 add_library(splatkit_engine STATIC
+  src/labels/LabelStyles.cpp
+  src/highlight/Highlight.cpp
+  src/pick/PickIndex.cpp
   src/Log.cpp
   src/rendering/GpuLayout.cpp
   src/rendering/RenderPolicy.cpp

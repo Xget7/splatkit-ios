@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <filesystem>
+#include <new>
 #include <optional>
 #include <string>
 #include <vector>
@@ -76,6 +77,13 @@ class LodSplatFile : public testing::Test {
     return buildLodTree(std::move(cloud));
   }
 };
+
+TEST(LoadPeak, OrdinaryNewPreservesDefaultAlignment) {
+  constexpr std::size_t kDefaultAlignment = __STDCPP_DEFAULT_NEW_ALIGNMENT__;
+  void* block = ::operator new(kDefaultAlignment);
+  EXPECT_EQ(reinterpret_cast<std::uintptr_t>(block) % kDefaultAlignment, 0u);
+  ::operator delete(block);
+}
 
 TEST(LoadPeak, DecodingAGzipSpzPeaksWhereTheModelSays) {
   for (const std::uint32_t version : kGzipVersions) {

@@ -3,10 +3,13 @@
 Notable changes to the SplatKit iOS SDK and the shared C++ engine it ships.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); alphas may break APIs.
 
-## Unreleased
+## [0.1.0-beta.3] - 2026-11-11
 
 ### Added
 
+- `splatView(_:gpuFailed:)` on `SplatViewDelegate`, with an empty default, and `SKSplatEventGpuFailed` report a terminal GPU failure.
+- The Metal renderer runs on the iOS simulator.
+- `SplatKit/metal/MetalRenderer.h` builds a `SplatEngine` on Metal for native hosts, which reach the shared engine's part labels, highlight looks, picking, orbit limits, bounds framing, reveal sweeps, load verification, drawn frame queries and the Metal scene backdrop; the [Android changelog](https://github.com/Xget7/splatkit/blob/main/CHANGELOG.md) lists them.
 - `SplatMetalView.sourceFrame` and `CoordinateFrame`, any of the 48 axis-aligned frames named by three letters such as `.rub`, `.rdf` or `CoordinateFrame("rfu")`, for the world, tiles and collider loaded after it is set; `SKSplatEngine` gains `setSourceFrame:` and `canonicalSourceFrame:`.
 
 ### Changed
@@ -109,4 +112,5 @@ The XCFramework carries the same engine as alpha.4; only the Swift sources and t
 [0.1.0-alpha.2]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.2
 [0.1.0-alpha.1]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-alpha.1
 
+[0.1.0-beta.3]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-beta.3
 [0.1.0-beta.2]: https://github.com/Xget7/splatkit-ios/releases/tag/v0.1.0-beta.2

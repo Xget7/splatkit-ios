@@ -1,6 +1,8 @@
 #include "rendering/metal/MetalSplatRenderer.h"
+#include "BackdropShaderSource.h"
 
 #include <algorithm>
+#include <mutex>
 #include <utility>
 #include <vector>
 
@@ -8,6 +10,40 @@
 #include "splatkit/rendering/LodThreshold.h"
 
 namespace splatkit {
+
+std::unique_ptr<MetalRenderer> MetalRenderer::create() {
+  return MetalSplatRenderer::create();
+}
+
+bool MetalSplatRenderer::setSceneBackdrop(const SceneBackdrop& settings, std::string* reason) {
+  if (!settings.valid()) {
+    if (reason != nullptr) *reason = "Invalid scene backdrop settings";
+    return false;
+  }
+  if (settings.enabled && !compute_->gpuSort()) {
+    if (reason != nullptr) *reason = "Scene backdrop requires offscreen Metal compositing";
+    return false;
+  }
+  if (settings.enabled && backdropLibrary_ == nil) {
+    NSError* error = nil;
+    MTLCompileOptions* options = [MTLCompileOptions new];
+    options.languageVersion = MTLLanguageVersion2_3;
+    options.preprocessorMacros = @{@"SPLAT_QUAD_MIN_ALPHA" : @(kQuadMinAlpha)};
+    backdropLibrary_ = [context_->device() newLibraryWithSource:@(BackdropShaderSource)
+                                                        options:options
+                                                          error:&error];
+    if (backdropLibrary_ == nil) {
+      if (reason != nullptr)
+        *reason = error.localizedDescription.UTF8String ?: "Backdrop compilation failed";
+      return false;
+    }
+  }
+  backdropSettings_ = settings;
+  if (!settings.enabled && activeBackdrop_ != nullptr) activeBackdrop_->releaseTextures();
+  if (reason != nullptr) reason->clear();
+  return true;
+}
+
 namespace {
 
 // The residency range reported to the adapters.
@@ -104,6 +140,7 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
   // The LOD error threshold applies live to a hierarchy world and at its next upload; the
   // sub-pixel cutoff from the next frame, on both order paths.
   policy.subpixelThreshold = true;
+  policy.backgroundColor = true;
   policy.lodErrorPixels = compute_->gpuSort();
   policy.minLodErrorPixels = LodThreshold::kMinPolicyPixels;
   policy.maxLodErrorPixels = LodThreshold::kMaxPolicyPixels;
@@ -113,7 +150,11 @@ DeviceCapabilities MetalSplatRenderer::deviceCapabilities() const {
 }
 
 bool MetalSplatRenderer::applyRenderPolicy(const RenderPolicy& policy, std::string* reason) {
-  return compute_->configure(policy, reason);
+  if (!compute_->configure(policy, reason)) return false;
+  pipeline_.setBackgroundColor(policy.backgroundColor);
+  std::copy(policy.backgroundColor.begin(), policy.backgroundColor.end(),
+            backdropBackground_.begin());
+  return true;
 }
 
 std::optional<std::uint64_t> MetalSplatRenderer::availableMemory() const {
@@ -123,9 +164,13 @@ std::optional<std::uint64_t> MetalSplatRenderer::availableMemory() const {
 // Worlds.
 
 bool MetalSplatRenderer::uploadWorld(const splat::SplatCloud& cloud, int maxShDegree) {
+  frameLoop_.waitIdle();
+  if (!cloud.labels.empty() && !compute_->prepareLabels()) {
+    LOGE("labelled upload requires GPU sort and labelled visibility pipelines");
+    return false;
+  }
   auto world = MetalWorld::upload(context_->device(), cloud, maxShDegree);
   if (!world) return false;
-  frameLoop_.waitIdle();
   if (!compute_->configureFlatWorld(world->info().count)) return false;
   world_ = std::move(world);
   frameLoop_.clearCompletedWorldFrame();
@@ -134,10 +179,14 @@ bool MetalSplatRenderer::uploadWorld(const splat::SplatCloud& cloud, int maxShDe
 
 bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDegree,
                                         uint32_t budget) {
+  frameLoop_.waitIdle();
+  if (!tree.nodes.labels.empty() && !compute_->prepareLabels()) {
+    LOGE("labelled LOD visibility pipeline compilation failed");
+    return false;
+  }
   if (!compute_->gpuSort()) return false;
   auto world = MetalWorld::upload(context_->device(), tree.nodes, maxShDegree);
   if (!world) return false;
-  frameLoop_.waitIdle();
   if (!compute_->configureLodWorld(tree, budget)) return false;
   world_ = std::move(world);
   frameLoop_.clearCompletedWorldFrame();
@@ -145,9 +194,9 @@ bool MetalSplatRenderer::uploadLodWorld(const splat::LodTree& tree, int maxShDeg
 }
 
 bool MetalSplatRenderer::createSlab(uint32_t capacity, int shDegree) {
+  frameLoop_.waitIdle();
   auto world = MetalWorld::slab(context_->device(), capacity, shDegree);
   if (!world) return false;
-  frameLoop_.waitIdle();
   if (!compute_->configureFlatWorld(capacity)) return false;
   world_ = std::move(world);
   frameLoop_.clearCompletedWorldFrame();
@@ -168,7 +217,39 @@ uint32_t MetalSplatRenderer::takePresentTimes(std::vector<int64_t>* times) {
   return frameLoop_.takePresentTimes(times);
 }
 
+void MetalSplatRenderer::encodeScene(id<MTLCommandBuffer> cmd, id<MTLTexture> drawable,
+                                     const Frame& frame, uint32_t slot, uint32_t drawCount,
+                                     bool gpuOrder) {
+  const id<MTLTexture> colour = surface_->target().colorOr(drawable);
+  bool fill = false;
+  if (backdropSettings_.enabled) {
+    auto& backdrop = backdrops_[colour.pixelFormat];
+    if (!backdrop) backdrop = std::make_unique<MetalBackdrop>();
+    if (activeBackdrop_ != nullptr && activeBackdrop_ != backdrop.get())
+      activeBackdrop_->releaseTextures();
+    activeBackdrop_ = backdrop.get();
+    fill = activeBackdrop_->prepare(context_->device(), backdropLibrary_, colour);
+  }
+  pipeline_.setTransparentBackground(fill);
+  pipeline_.encode(cmd, surface_->target(), drawable, compute_->uniforms(slot), world_.get(),
+                   frame.shDegree,
+                   {compute_->projected(), compute_->order(), compute_->drawArguments(slot)},
+                   drawCount, gpuOrder);
+  if (fill) activeBackdrop_->encode(cmd, colour, backdropSettings_, backdropBackground_);
+}
+
 bool MetalSplatRenderer::draw(const Frame& frame) {
+  if (world_ && world_->labels() && frame.labelStyles &&
+      !frame.labelStyles->validFor(world_->labelCount())) {
+    LOGE("label state count or palette index is invalid");
+    return false;
+  }
+  // Labels are applied by visibility, so a CPU-order draw cannot honour them.
+  if (world_ && world_->labels() && frame.orderSource != OrderSource::gpu) {
+    static std::once_flag warning;
+    std::call_once(warning, [] { LOGE("labelled draws require GPU ordering"); });
+    return false;
+  }
   if (frameLoop_.gpuFailed()) return false;
   if (!ready() || !pipeline_.ready()) return false;
   if (!frameLoop_.acquire()) return false;
@@ -206,11 +287,11 @@ bool MetalSplatRenderer::draw(const Frame& frame) {
 
   id<MTLCommandBuffer> cmd = [context_->queue() commandBuffer];
   id<MTLTexture> colour = surface_->target().colorOr(drawable.texture);
-  surface_->ensureDepth(colour.width, colour.height);
-  pipeline_.encode(cmd, surface_->target(), drawable.texture, compute_->uniforms(slot),
-                   world_.get(), frame.shDegree,
-                   {compute_->projected(), compute_->order(), compute_->drawArguments(slot)},
-                   drawCount, gpuOrder);
+  if (cmd == nil || !surface_->ensureDepth(colour.width, colour.height)) {
+    frameLoop_.release();
+    return false;
+  }
+  encodeScene(cmd, drawable.texture, frame, slot, drawCount, gpuOrder);
   surface_->encodeOutput(cmd, drawable.texture);
   MetalFrameCapture::Readback readback = capture_->encode(cmd, drawable.texture);
   if (readback) surface_->allowReadback(false);

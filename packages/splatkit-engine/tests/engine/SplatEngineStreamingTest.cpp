@@ -115,6 +115,7 @@ TEST(SplatEngineStreaming, ATileRangeIsRewrittenOnlyAfterTheFramesThatDrewItFini
       engine.setCameraLookAt({x + wobble, 0, 4}, {x, 0, 0}, {0, 1, 0});
       gpu.tick();
       engine.render(now += kFrameNanos);
+      EXPECT_TRUE(engine.needsFrame()) << "streaming frames are still in flight";
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }

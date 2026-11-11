@@ -13,7 +13,13 @@ struct Camera {
   uint outputLinear;   // 1 when the target is sRGB and expects linear values
   float minPixelRadius;  // pixels: smallest source sigma times quad radius that is drawn
   float4 cameraPosition;  // world space
+  float4 reveal; // level, band, tint amount, brightness boost
+  float4 revealTint;
 };
+
+static_assert(sizeof(Camera) == 208, "camera layout");
+static_assert(__builtin_offsetof(Camera, reveal) == 176, "reveal layout");
+static_assert(__builtin_offsetof(Camera, revealTint) == 192, "reveal tint layout");
 
 // Spherical harmonics: degree by function constant, so degree 0 pays nothing.
 constant uint SH_DEGREE [[function_constant(0)]];

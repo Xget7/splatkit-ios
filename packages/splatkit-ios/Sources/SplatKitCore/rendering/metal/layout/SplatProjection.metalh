@@ -77,6 +77,7 @@ inline float3 shColor(const device uint* shData, uint index, float3 d) {
 
 inline bool projectSplat(constant Camera& cam, Splat s, uint index, const device uint* shData,
                          thread Projected& out) {
+  if (!(cam.reveal.x - s.py >= 0.0)) return false;
   float4 rgba = unpackUnorm4x8(s.rgba8);
   // Peak opacity sent to rasterization, including LOD's above-one override. A peak below the
   // quad cutoff has no quad at all. Dark but opaque splats are kept: they occlude.
@@ -171,4 +172,18 @@ inline half splatPower(SplatVertex in) {
 inline half3 splatColor(SplatVertex in) {
   half4 packed = unpack_unorm10a2_to_half(in.color);
   return packed.rgb * (1.0h + (kMaxColorScale - 1.0h) * packed.a);
+}
+
+inline void revealGlow(constant Camera& cam, float height, thread Projected& p) {
+  if (!(cam.reveal.y > 0.0)) return;
+  float glow = clamp(1.0 - (cam.reveal.x - height) / cam.reveal.y, 0.0, 1.0);
+  glow *= glow;
+  if (!(glow > 0.0)) return;
+  float2 rg = unpackHalf2(p.color0), ba = unpackHalf2(p.color1);
+  float3 rgb = float3(rg, ba.x);
+  if (cam.outputLinear == 1u) rgb = pow(rgb, float3(1.0 / kDisplayGamma));
+  rgb = mix(rgb, cam.revealTint.xyz, cam.reveal.z * glow) * (1.0 + cam.reveal.w * glow);
+  if (cam.outputLinear == 1u) rgb = pow(rgb, float3(kDisplayGamma));
+  p.color0 = as_type<uint>(half2(rgb.rg));
+  p.color1 = as_type<uint>(half2(rgb.b, ba.y));
 }

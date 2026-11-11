@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <atomic>
 #include <cstddef>
 #include <cstdint>
@@ -8,6 +9,8 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <type_traits>
+#include <utility>
 
 #include "splat/core/CoordinateFrame.h"
 #include "splat/core/Result.h"
@@ -24,8 +27,8 @@ namespace splat {
 // `load`, the result waits until the render thread takes it, and a newer load replaces
 // one still waiting. A world is decoded, reordered spatially and, when a
 // budget is set, turned into a level of detail tree. Loads may run
-// concurrently; the last one to finish is the one taken. With a memory guard, a load the
-// process could not hold fails before it allocates.
+// concurrently; within a reservation the last one to finish is the one taken. With a memory guard,
+// a load the process could not hold fails before it allocates.
 class SplatWorldLoader {
  public:
   // A world ready for upload: the cloud, or with a budget the tree, whose nodes carry
@@ -91,9 +94,44 @@ class SplatWorldLoader {
   // Before the first load.
   void setMemoryGuard(MemoryGuard guard);
 
+  struct LoadOptions {
+    std::optional<std::array<std::uint8_t, 32>> expectedSha256;
+    std::optional<std::array<std::uint8_t, 32>> expectedLabelsSha256;
+    // Source splats, or leaves for a prepared tree, never its total node count.
+    std::optional<std::size_t> expectedSplatCount;
+  };
+  Result<WorldReport> loadWorld(const std::uint8_t* data, std::size_t size,
+                                const LoadOptions& options);
+  Result<WorldReport> loadWorldFile(const std::string& path, const LoadOptions& options);
+
+  // Any thread. A reservation supersedes earlier decodes and discards their pending world.
+  // Zero is the initial generation used by legacy calls; explicit reservations start at one.
+  std::uint64_t beginLoad();
+  std::uint64_t currentLoad() const { return currentLoad_.load(); }
+  // Stale requests return ErrorCode::superseded, including when decoding failed.
+  Result<WorldReport> loadWorld(std::uint64_t request, const std::uint8_t* data, std::size_t size,
+                                const std::uint8_t* labels = nullptr, std::size_t labelsSize = 0,
+                                const LoadOptions& options = {});
+  Result<WorldReport> loadWorldFile(std::uint64_t request, const std::string& path,
+                                    const std::string& labelsPath = {},
+                                    const LoadOptions& options = {});
+  Result<WorldReport> loadTiledWorldFile(std::uint64_t request, const std::string& path);
+
   // Errors leave whatever was waiting untouched.
   Result<WorldReport> loadWorld(const std::uint8_t* data, std::size_t size);
   Result<WorldReport> loadWorldFile(const std::string& path);
+  Result<WorldReport> loadWorld(const std::uint8_t* data, std::size_t size,
+                                const std::uint8_t* labels, std::size_t labelsSize);
+  Result<WorldReport> loadWorld(const std::uint8_t* data, std::size_t size,
+                                const std::uint8_t* labels, std::size_t labelsSize,
+                                const LoadOptions& options);
+  Result<WorldReport> loadWorldFile(const std::string& path, const std::string& labelsPath,
+                                    const LoadOptions& options);
+  // A template leaves loadWorldFile(path, {}) unambiguously a LoadOptions call.
+  template <typename Path, std::enable_if_t<std::is_convertible_v<Path, std::string>, int> = 0>
+  Result<WorldReport> loadWorldFile(const std::string& path, Path&& labelsPath) {
+    return loadWorldFile(path, std::string(std::forward<Path>(labelsPath)), LoadOptions{});
+  }
   // A tiled world from its index (a tileset.json next to its tiles). Only the index is
   // read here; tiles stream in as the camera needs them.
   Result<WorldReport> loadTiledWorldFile(const std::string& path);
@@ -105,6 +143,19 @@ class SplatWorldLoader {
   std::unique_ptr<Collider> takeCollider();
 
  private:
+  Result<WorldReport> finishRequest(std::uint64_t request, Result<WorldReport> report) const;
+  Result<WorldReport> loadTiledWorldFileRequest(std::uint64_t request, const std::string& path);
+  std::atomic<std::uint64_t> currentLoad_{0};
+  Result<WorldReport> loadWorldRequest(std::uint64_t request, const std::uint8_t* data,
+                                       std::size_t size, const std::uint8_t* labels,
+                                       std::size_t labelsSize, const LoadOptions& identity);
+  Result<WorldReport> loadLodWorldRequest(std::uint64_t request, const std::uint8_t* data,
+                                          std::size_t size, const std::uint8_t* labels,
+                                          std::size_t labelsSize, const LoadOptions& identity);
+  Result<WorldReport> loadWorldFileRequest(std::uint64_t request, const std::string& path,
+                                           const std::string& labelsPath,
+                                           const LoadOptions& options);
+
   // What a load needs and has, as the report carries them; or why it cannot be held.
   struct MemoryUse {
     std::uint64_t needed = 0;

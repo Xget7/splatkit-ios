@@ -19,6 +19,7 @@ vertex SplatVertex splatVertex(uint vertexId [[vertex_id]], uint instanceId [[in
     out.color = 0;
     return out;
   }
+  revealGlow(cam, splats[index].py, p);
   return expandQuad(cam, p, vertexId);
 }
 

@@ -15,7 +15,10 @@ std::atomic<std::uint64_t> gPeak{0};
 
 // Each block keeps the size asked for just before the bytes handed out: what malloc rounds
 // a block up to is address space the caller never writes, so it is not counted.
-constexpr std::size_t kMinHeaderBytes = alignof(std::max_align_t);
+// Ordinary new must also serve types up to the compiler default new alignment.
+// On Apple arm64 that can exceed max_align_t.
+constexpr std::size_t kMinHeaderBytes =
+    std::max(alignof(std::max_align_t), std::size_t{__STDCPP_DEFAULT_NEW_ALIGNMENT__});
 
 std::size_t headerBytes(std::size_t alignment) {
   return std::max(alignment, kMinHeaderBytes);

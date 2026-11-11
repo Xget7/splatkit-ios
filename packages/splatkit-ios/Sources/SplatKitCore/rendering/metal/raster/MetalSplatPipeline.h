@@ -1,6 +1,7 @@
 #pragma once
 
 #import <Metal/Metal.h>
+#include <TargetConditionals.h>
 
 #include <array>
 #include <cstdint>
@@ -45,12 +46,23 @@ class MetalSplatPipeline {
               id<MTLBuffer> uniforms, const MetalWorld* world, int shDegree, const GpuOrder& gpu,
               uint32_t drawCount, bool gpuOrder) const;
 
+  void setBackgroundColor(const std::array<double, 3>& color) {
+    background_ = MTLClearColorMake(color[0], color[1], color[2], 1);
+  }
+
+  void setTransparentBackground(bool enabled) { transparentBackground_ = enabled; }
+
  private:
+  MTLClearColor background_ = {0.05, 0.05, 0.08, 1.0};
+  bool transparentBackground_ = false;
   std::array<id<MTLRenderPipelineState>, kMaxShDegree + 1> splatPipelines_{};
   // The GPU order path: front to back in batches, a saturation mask between them, the
   // background last.
   id<MTLRenderPipelineState> projectedPipeline_ = nil;
+  // No framebuffer-fetch mask pipeline is created on the simulator.
+#if !TARGET_OS_SIMULATOR
   id<MTLRenderPipelineState> maskPipeline_ = nil;
+#endif
   id<MTLRenderPipelineState> backgroundPipeline_ = nil;
   id<MTLDepthStencilState> splatDepth_ = nil;  // pass unless masked, never write
   id<MTLDepthStencilState> maskDepth_ = nil;   // always write
