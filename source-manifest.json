@@ -160,7 +160,7 @@
   "packages/splat-core/tools/ply2spz.cpp": "98ae3b2e907053ebe4dbdfdf3f327c81805ff4cc0e92f7671180d6fd3f4c5f0e",
   "packages/splat-core/tools/splat-tile.cpp": "9c54362025d74e1c1cabf1e0bc2e0b7b5b39a7af7274d97e4fef78aa91736f51",
   "packages/splat-core/tools/splat_collider.cpp": "d60c810e31e1523dd83778a9b8cc081c6a6480465a30f178cd4d9c6dcbfb4e2d",
-  "packages/splat-core/tools/splat_lod_build.cpp": "1d44ebd361e7ba971f4f94acea3249af87005c9e9a82227fa726b2533940730a",
+  "packages/splat-core/tools/splat_lod_build.cpp": "4011a64b192d7974af172d5b291590266cd17c04aee2c5bfdbfbe3f68d9e2512",
   "packages/splatkit-engine/CMakeLists.txt": "670590c9796cf2f2c6872a5077492c324f69d63535effeef248b3f345eaaa591",
   "packages/splatkit-engine/include/splatkit/Log.h": "d88cad8c5164ce439c59ce3872fb784a229afde30ff76c783d0165d28e1bb10a",
   "packages/splatkit-engine/include/splatkit/camera/CameraRequest.h": "bdf307bfe138c50082892b77e2943400998ebbf1617cd34133d437107ed5a65f",
